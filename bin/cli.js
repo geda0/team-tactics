@@ -124,6 +124,28 @@ function ensureGitignore(targetDir) {
   if (next !== cur) { fs.writeFileSync(gi, next); say("gitignore", ".gitignore (tdd-pairing managed block)"); }
 }
 
+function mergeSettings(targetDir) {
+  const dest = path.join(targetDir, ".claude", "settings.json");
+  const kitSettings = JSON.parse(fs.readFileSync(path.join(CFG, "settings.json"), "utf8"));
+  let existing = {};
+  if (fs.existsSync(dest)) {
+    try { existing = JSON.parse(fs.readFileSync(dest, "utf8")); }
+    catch (e) { fs.copyFileSync(dest, dest + ".bak"); say("backup", ".claude/settings.json.bak (was invalid JSON)"); existing = {}; }
+  }
+  const isKit = (g) => g && Array.isArray(g.hooks) && g.hooks.some((h) => h && typeof h.command === "string" && h.command.indexOf(".claude/hooks/") !== -1);
+  const hooks = Object.assign({}, existing.hooks || {});
+  const kitHooks = kitSettings.hooks || {};
+  for (const ev of new Set(Object.keys(hooks).concat(Object.keys(kitHooks)))) {
+    const combined = (hooks[ev] || []).filter((g) => !isKit(g)).concat(kitHooks[ev] || []);
+    if (combined.length) hooks[ev] = combined; else delete hooks[ev];
+  }
+  const merged = Object.assign({}, existing, { hooks: hooks });
+  ensureDir(path.dirname(dest));
+  fs.writeFileSync(dest, JSON.stringify(merged, null, 2) + "\n");
+  say("settings", ".claude/settings.json (kit hooks merged" + (Object.keys(existing).length ? "; user keys preserved)" : ")"));
+  record(".claude/settings.json", "entry");
+}
+
 ensureDir(path.join(target, ".claude", "agents"));
 ensureDir(path.join(target, ".claude", "hooks"));
 ensureDir(path.join(target, ".claude", "state"));
@@ -161,13 +183,7 @@ seedOnce(path.join(KIT, "ci", "tdd-verify.yml"),
          path.join(".github", "workflows", "tdd-verify.yml"));
 
 // 3) settings.json — install or sidecar.
-{
-  const dest = path.join(target, ".claude", "settings.json");
-  if (fs.existsSync(dest) && !force) {
-    copy(path.join(CFG, "settings.json"), path.join(target, ".claude", "settings.tdd-pairing.json"));
-    say("sidecar", ".claude/settings.tdd-pairing.json (merge the hooks block)");
-  } else { copy(path.join(CFG, "settings.json"), dest); say("install", ".claude/settings.json"); }
-}
+mergeSettings(target);  // P1-7: merge kit hooks into settings.json, preserve user keys
 
 // 4) Entry docs.
 for (const f of ["AGENTS.md", "CLAUDE.md", "KICKOFF.md"])
