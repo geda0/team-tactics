@@ -34,7 +34,7 @@ for (const a of argv) {
   else rest.push(a);
 }
 let cmd = "init";
-if (["init", "update", "help", "selftest", "report"].includes(rest[0])) cmd = rest.shift();
+if (["init", "update", "help", "selftest", "report", "validate"].includes(rest[0])) cmd = rest.shift();
 const target = path.resolve(rest[0] || process.cwd());
 
 if (cmd === "help") {
@@ -49,6 +49,7 @@ if (!fs.existsSync(CFG)) {
 
 if (cmd === "selftest") { process.exit(selftest(target)); }
 if (cmd === "report") { process.exit(report(target)); }
+if (cmd === "validate") { process.exit(validateInstall(target)); }
 
 // ---- helpers ------------------------------------------------------------
 function ensureDir(d) { fs.mkdirSync(d, { recursive: true }); }
@@ -126,6 +127,37 @@ Done. Next steps:
 Note: the hooks are bash scripts (use WSL/git-bash on Windows). Hook event names
 and exit-code semantics shift between Claude Code releases — confirm against
 code.claude.com/docs/en/hooks before relying on the gate.`);
+
+// Auto-validate (P0-4): report a stale/broken config NOW, not via a blocked edit.
+if (validateInstall(target) !== 0) {
+  console.log("\n[!] validate FAILED — the TDD gate may not work. Fix the above, then re-run `npx create-tdd-pairing validate`.");
+}
+
+// ---- validate -----------------------------------------------------------
+// Sources the ACTUAL installed lib.sh + tdd.config and asserts the resolver is
+// available and every declared layer resolves to a command. Catches a stale or
+// broken config AT UPDATE TIME instead of via a blocked edit later.
+function validateInstall(targetDir) {
+  const lib = path.join(targetDir, ".claude", "hooks", "lib.sh");
+  if (!fs.existsSync(lib)) {
+    console.error("validate: .claude/hooks/lib.sh is missing — the resolver mechanism is gone. Run `npx create-tdd-pairing update`.");
+    return 1;
+  }
+  const bashOk = (() => { try { return cp.spawnSync("bash", ["-c", "exit 0"]).status === 0; } catch (e) { return false; } })();
+  if (!bashOk) { console.log("validate: bash not found — skipped (hooks need bash; use WSL/git-bash on Windows)."); return 0; }
+  const script =
+    'set -u\n' +
+    'ROOT=' + JSON.stringify(targetDir) + '\n' +
+    '. "$ROOT/.claude/hooks/lib.sh" 2>/dev/null || true\n' +
+    'if ! type resolve_layer >/dev/null 2>&1; then echo "ERROR: resolve_layer is unavailable (.claude/hooks/lib.sh stale or unsourced). Run: npx create-tdd-pairing update"; exit 1; fi\n' +
+    'if [ -z "${LAYERS:-}" ]; then echo "ERROR: no LAYERS defined in .claude/tdd.config"; exit 1; fi\n' +
+    'for L in $LAYERS; do resolve_layer "$L"; if [ -z "$TEST_CMD" ]; then echo "ERROR: layer $L resolves to no test command (set TEST_CMD_$L or ALL_TEST_CMD)"; exit 1; fi; echo "  ok  $L -> $TEST_CMD"; done\n' +
+    'echo "validate: OK — resolver present; every layer resolves."\n';
+  const r = cp.spawnSync("bash", ["-c", script], { encoding: "utf8" });
+  if (r.stdout) process.stdout.write(r.stdout);
+  if (r.status !== 0 && r.stderr) process.stderr.write(r.stderr);
+  return r.status === 0 ? 0 : 1;
+}
 
 // ---- selftest -----------------------------------------------------------
 // Fires synthetic hook payloads at the INSTALLED hook scripts in a throwaway
