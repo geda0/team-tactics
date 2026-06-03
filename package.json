@@ -27,5 +27,14 @@
   "scripts": {
     "test": "node --test",
     "prepublishOnly": "node --test"
+  },
+  "author": "geda0",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/geda0/teamentic.git"
+  },
+  "homepage": "https://github.com/geda0/teamentic#readme",
+  "bugs": {
+    "url": "https://github.com/geda0/teamentic/issues"
   }
 }
