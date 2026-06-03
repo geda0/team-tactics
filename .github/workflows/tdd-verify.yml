@@ -1,0 +1,18 @@
+# teamentic CI — the package's own suite + a real install/selftest smoke.
+name: tdd-verify
+on:
+  push:
+  pull_request:
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 20 }
+      - run: node --test
+      - name: install + gate selftest (as a user would)
+        run: |
+          tmp="$(mktemp -d)"
+          node bin/cli.js "$tmp"
+          node bin/cli.js selftest "$tmp"

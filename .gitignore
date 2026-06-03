@@ -1,3 +1,26 @@
 node_modules/
 *.tgz
 .DS_Store
+
+# >>> teamentic (managed) >>>
+# Transient kit artifacts - never commit (other state files ARE committed for continuity).
+.claude/state/suite-status
+.claude/state/telemetry.jsonl
+.claude/**/*.bak
+*.teamentic.*
+# <<< teamentic (managed) <<<
+
+# teamentic dogfoods itself: the .claude/ harness + method-doc copies are GENERATED
+# from kit/ by `node bin/cli.js .`. kit/ is the committed source of truth; only the
+# project-specific config + invariants + CI are committed.
+/.claude/agents/
+/.claude/hooks/
+/.claude/state/
+/.claude/settings.json
+/.claude/.teamentic/
+/docs/tdd/tdd-workflow.md
+/docs/tdd/testing-philosophy.md
+/docs/tdd/conventions.md
+/AGENTS.md
+/CLAUDE.md
+/KICKOFF.md

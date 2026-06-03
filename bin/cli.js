@@ -245,19 +245,7 @@ ensureGitignore(target);
 if (presetActive === "full-team")
   console.log("\n[full-team] outer-loop roles installed (product-owner, architect, qa-verifier, project-manager, dev-ops) — see docs/tdd/outer-loop.md.");
 
-console.log(`
-Done. Next steps:
-  1. Edit .claude/tdd.config — set LAYERS and the test command(s) for your stack.
-  2. Fill in docs/tdd/project-invariants.md with rules your project must uphold.
-  3. Review the managed block atop AGENTS.md / CLAUDE.md — your own content is kept
-     below it; that block refreshes on update.
-  4. Open the project in Claude Code and approve the hooks in settings.json.
-  5. Run one dry red->green cycle with verbose output to watch the hooks fire.
-  6. Start a feature: fill in KICKOFF.md and paste it to the orchestrator.
-
-Note: the hooks are bash scripts (use WSL/git-bash on Windows). Hook event names
-and exit-code semantics shift between Claude Code releases — confirm against
-code.claude.com/docs/en/hooks before relying on the gate.`);
+console.log("\nDone — teamentic installed. One thing to do, then you're building:\n\n  Open this project in Claude Code, approve the hooks, and paste your first\n  message — the orchestrator configures the harness for you (nothing to hand-edit):\n\n    Read AGENTS.md and CLAUDE.md. Detect this project's stack and set LAYERS + the\n    test command(s) in .claude/tdd.config, and draft docs/tdd/project-invariants.md\n    from the code for me to confirm. Then build the first feature with the\n    red->green loop: <what you want built>.\n\n  KICKOFF.md has this prompt ready to copy (with an acceptance template).\n\nNote: the hooks are bash scripts (use WSL/git-bash on Windows). Hook event names\nand exit-code semantics shift between Claude Code releases — confirm against\ncode.claude.com/docs/en/hooks before relying on the gate.");
 
 // Auto-validate (P0-4): report a stale/broken config NOW, not via a blocked edit.
 if (validateInstall(target) !== 0) {

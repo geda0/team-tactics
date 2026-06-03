@@ -7,17 +7,20 @@ discipline (no source edits in red, no test edits in green, no finishing on a
 red bar). Works for a single package or a multi-layer monorepo.
 
 ## Quick start
-Run inside your project (or pass a target path):
 ```bash
-npx teamentic            # install into the current directory
-npx teamentic ./my-app   # install into a specific path
+npx teamentic            # install into your project (or: npx teamentic ./my-app)
 ```
+Open the project in Claude Code, approve the hooks when prompted, then paste this
+as your **first message** — the orchestrator does the setup, so there are no config
+files to hand-edit:
 
-Then:
-1. Edit `.claude/tdd.config` — set `LAYERS` and the test command(s) for your stack.
-2. Fill in `docs/tdd/project-invariants.md`.
-3. Open the project in Claude Code, approve the hooks, run one dry cycle.
-4. Fill in `KICKOFF.md` and paste it to the orchestrator to start a feature.
+> Read `AGENTS.md` and `CLAUDE.md`. Detect this project's stack and set `LAYERS` +
+> the test command(s) in `.claude/tdd.config`, and draft
+> `docs/tdd/project-invariants.md` from the code for me to confirm. Then build the
+> first feature with the red→green loop: **`<what you want built>`**.
+
+`KICKOFF.md` ships this prompt ready to copy (with an acceptance-criteria template).
+Approving the hooks is the one manual step — it's what makes the gate enforce.
 
 ## Commands
 ```bash
@@ -84,5 +87,17 @@ orchestrator sets `red`/`green`/`refactor`. Any *unrecognized or missing* phase
 - Claude Code hook event names and exit-code semantics shift between releases;
   confirm against code.claude.com/docs/en/hooks and watch one dry cycle before
   relying on the gate.
+
+## Developing teamentic
+teamentic dogfoods its own harness. `kit/` is the source of truth; the `.claude/`
+install is generated. After cloning:
+
+```bash
+node bin/cli.js .     # materialize the dev harness (.claude/, gate, docs) from kit/
+node --test           # the suite
+```
+
+Approve the hooks in Claude Code, then edit the product under `bin/` and `kit/`
+(what the gate guards); re-run `node bin/cli.js .` after changing `kit/`.
 
 MIT licensed.
