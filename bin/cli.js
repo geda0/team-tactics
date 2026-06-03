@@ -67,6 +67,20 @@ const manifestFiles = {};
 let backups = 0;
 function record(rel, cls) { manifestFiles[rel] = { class: cls, version: PKG.version, sha256: sha256(path.join(target, rel)) }; }
 
+// ---- version + breaking notes (P0-5) ----
+function vcmp(a, b) {
+  const pa = String(a || "0").split("-")[0].split(".").map(Number);
+  const pb = String(b || "0").split("-")[0].split(".").map(Number);
+  for (let i = 0; i < 3; i++) { const x = pa[i] || 0, y = pb[i] || 0; if (x !== y) return x < y ? -1 : 1; }
+  return 0;
+}
+const BREAKING = {
+  "0.4.0": [
+    "tdd.config is now DATA ONLY - the resolver moved to .claude/hooks/lib.sh (refreshed). Your layer values are preserved; pre-0.4 BE_/FE_/E2E_TEST_CMD names still resolve.",
+    "Empty .claude/state/phase now FAILS CLOSED (blocks edits). Use 'off' to disarm the gate for manual/non-TDD work - never leave phase empty.",
+  ],
+};
+
 function refresh(src, destRel) {            // always overwrite (pure mechanism)
   const dest = path.join(target, destRel);
   if (fs.existsSync(dest)) {
@@ -98,6 +112,13 @@ ensureDir(path.join(target, ".claude", "state"));
 ensureDir(path.join(target, "docs", "tdd"));
 
 console.log((cmd === "update" ? "Updating" : "Installing") + " TDD pairing kit -> " + target);
+if (cmd === "update") {
+  const _from = priorManifest.kitVersion, _to = PKG.version;
+  console.log("  " + (_from || "pre-0.4 (no manifest)") + " -> " + _to);
+  const _notes = [];
+  for (const v of Object.keys(BREAKING)) if (vcmp(_from, v) < 0 && vcmp(v, _to) <= 0) for (const n of BREAKING[v]) _notes.push("  - " + n);
+  if (_notes.length) { console.log("\nBREAKING / MIGRATIONS:"); for (const n of _notes) console.log(n); console.log(""); }
+}
 
 // 1) Mechanism — refreshed every run.
 for (const a of ["test-writer", "implementer", "tdd-critic", "planner"])
