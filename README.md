@@ -27,6 +27,7 @@ npx create-tdd-pairing update [target]   # refresh agents/hooks/docs, keep your 
 npx create-tdd-pairing selftest [target] # verify the gate works in YOUR environment
 npx create-tdd-pairing report [target]   # summarize cycle telemetry (process metrics)
 npx create-tdd-pairing --force [target]  # also reset seeded (user-owned) files
+npx create-tdd-pairing --preset full-team [target]  # also install the outer-loop team (PO/architect/QA/PM/dev-ops)
 npx create-tdd-pairing help
 ```
 

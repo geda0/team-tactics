@@ -8,6 +8,7 @@
  *   npx create-tdd-pairing init [target]   same as above
  *   npx create-tdd-pairing update [target] refresh mechanism, keep your files
  *   npx create-tdd-pairing --force [target] also reset seeded (user-owned) files
+ *   npx create-tdd-pairing --preset full-team [target] also install the outer-loop team
  *   npx create-tdd-pairing help
  *
  * Non-destructive: mechanism (agents, hooks, method docs) is refreshed; your
@@ -30,13 +31,21 @@ const CFG = path.join(KIT, "claude-config");
 const argv = process.argv.slice(2);
 let force = false;
 const rest = [];
-for (const a of argv) {
+let preset = null;
+for (let i = 0; i < argv.length; i++) {
+  const a = argv[i];
   if (a === "--force" || a === "-f") force = true;
   else if (a === "-h" || a === "--help") rest.push("help");
+  else if (a === "--preset") preset = argv[++i] || "";
+  else if (a.startsWith("--preset=")) preset = a.slice(9);
   else if (a.startsWith("-")) {
     console.error("create-tdd-pairing: unknown option '" + a + "'. Try `create-tdd-pairing help`.");
     process.exit(2);
   } else rest.push(a);
+}
+if (preset !== null && preset !== "full-team" && preset !== "none") {
+  console.error("create-tdd-pairing: unknown preset '" + preset + "'. Known presets: full-team (or 'none' to remove).");
+  process.exit(2);
 }
 let cmd = "init";
 if (["init", "update", "help", "selftest", "report", "validate"].includes(rest[0])) cmd = rest.shift();
@@ -67,6 +76,10 @@ const MANIFEST_REL = path.join(".claude", ".tdd-pairing", "manifest.json");
 function sha256(p) { try { return crypto.createHash("sha256").update(fs.readFileSync(p)).digest("hex"); } catch (e) { return null; } }
 const priorManifest = (() => { try { return JSON.parse(fs.readFileSync(path.join(target, MANIFEST_REL), "utf8")); } catch (e) { return { files: {} }; } })();
 const priorSha = (rel) => (priorManifest.files && priorManifest.files[rel] && priorManifest.files[rel].sha256) || null;
+
+// P2-14: the team preset is sticky — recorded in the manifest so `update` keeps
+// refreshing it without re-passing the flag. `--preset none` clears it.
+const presetActive = preset === "none" ? null : (preset || priorManifest.preset || null);
 const manifestFiles = {};
 let backups = 0;
 function record(rel, cls) { manifestFiles[rel] = { class: cls, version: PKG.version, sha256: sha256(path.join(target, rel)) }; }
@@ -185,6 +198,16 @@ for (const h of ["guard-edit-scope", "run-suite", "require-green-to-stop", "sess
 for (const d of ["tdd-workflow", "testing-philosophy", "conventions"])
   refresh(path.join(KIT, "docs", "tdd", d + ".md"), path.join("docs", "tdd", d + ".md"));
 
+// 1b) Optional team preset (sticky) — outer-loop roles + method doc + state templates.
+if (presetActive === "full-team") {
+  const PRESET = path.join(KIT, "presets", "full-team");
+  for (const a of ["product-owner", "architect", "qa-verifier", "project-manager", "dev-ops"])
+    refresh(path.join(PRESET, "agents", a + ".md"), path.join(".claude", "agents", a + ".md"));
+  refresh(path.join(PRESET, "docs", "outer-loop.md"), path.join("docs", "tdd", "outer-loop.md"));
+  for (const s of ["backlog.md", "releases.md"])
+    seedOnce(path.join(PRESET, "state", s), path.join(".claude", "state", s));
+}
+
 // 2) Seeded — written once, never clobbered.
 seedOnce(path.join(CFG, "tdd.config"), path.join(".claude", "tdd.config"), "yours");
 seedOnce(path.join(CFG, "hooks", "local.d", "README.md"), path.join(".claude", "hooks", "local.d", "README.md"));
@@ -205,9 +228,11 @@ for (const f of ["AGENTS.md", "CLAUDE.md", "KICKOFF.md"])
 // Manifest (P0-3): record kit-owned files + content hashes, for clobber-safe updates.
 ensureDir(path.join(target, ".claude", ".tdd-pairing"));
 fs.writeFileSync(path.join(target, MANIFEST_REL),
-  JSON.stringify({ kit: "create-tdd-pairing", kitVersion: PKG.version, configSchema: 2, updatedAt: new Date().toISOString(), files: manifestFiles }, null, 2) + "\n");
+  JSON.stringify({ kit: "create-tdd-pairing", kitVersion: PKG.version, configSchema: 2, preset: presetActive, updatedAt: new Date().toISOString(), files: manifestFiles }, null, 2) + "\n");
 say("manifest", MANIFEST_REL + (backups ? "  (" + backups + " local change(s) backed up to .bak)" : ""));
 ensureGitignore(target);
+if (presetActive === "full-team")
+  console.log("\n[full-team] outer-loop roles installed (product-owner, architect, qa-verifier, project-manager, dev-ops) — see docs/tdd/outer-loop.md.");
 
 console.log(`
 Done. Next steps:
