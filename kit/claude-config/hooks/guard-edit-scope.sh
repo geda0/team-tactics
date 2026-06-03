@@ -9,7 +9,7 @@
 set -uo pipefail
 HERE="$(cd "$(dirname "$0")" && pwd)"; ROOT="$(cd "$HERE/../.." && pwd)"
 # shellcheck disable=SC1091
-. "$ROOT/.claude/tdd.config"
+. "$ROOT/.claude/hooks/lib.sh"
 
 PHASE="$(cat "$ROOT/.claude/state/phase" 2>/dev/null || echo unknown)"
 LAYER="$(cat "$ROOT/.claude/state/layer" 2>/dev/null || echo unknown)"

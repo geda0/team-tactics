@@ -7,7 +7,7 @@
 set -uo pipefail
 HERE="$(cd "$(dirname "$0")" && pwd)"; ROOT="$(cd "$HERE/../.." && pwd)"
 # shellcheck disable=SC1091
-. "$ROOT/.claude/tdd.config"
+. "$ROOT/.claude/hooks/lib.sh"
 
 [ "${SESSION_BASELINE_CHECK:-1}" = "1" ] || exit 0
 CMD="${BASELINE_CMD:-$ALL_TEST_CMD}"

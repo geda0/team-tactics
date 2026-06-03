@@ -82,6 +82,8 @@ console.log((cmd === "update" ? "Updating" : "Installing") + " TDD pairing kit -
 // 1) Mechanism — refreshed every run.
 for (const a of ["test-writer", "implementer", "tdd-critic", "planner"])
   refresh(path.join(CFG, "agents", a + ".md"), path.join(".claude", "agents", a + ".md"));
+// Shared hook library (resolver + defaults), sourced by the hooks below.
+refresh(path.join(CFG, "hooks", "lib.sh"), path.join(".claude", "hooks", "lib.sh"));
 for (const h of ["guard-edit-scope", "run-suite", "require-green-to-stop", "session-green-check"]) {
   const rel = path.join(".claude", "hooks", h + ".sh");
   refresh(path.join(CFG, "hooks", h + ".sh"), rel);
@@ -147,7 +149,7 @@ function selftest(targetDir) {
   const ST = path.join(S, ".claude", "state");
   fs.mkdirSync(SH, { recursive: true });
   fs.mkdirSync(ST, { recursive: true });
-  for (const h of ["guard-edit-scope", "run-suite", "require-green-to-stop"])
+  for (const h of ["lib", "guard-edit-scope", "run-suite", "require-green-to-stop"])
     fs.copyFileSync(path.join(hooksDir, h + ".sh"), path.join(SH, h + ".sh"));
 
   // Minimal known config with a controllable test command (env TDD_SELFTEST_FAIL).
