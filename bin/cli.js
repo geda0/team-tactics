@@ -12,7 +12,7 @@
  *
  * Non-destructive: mechanism (agents, hooks, method docs) is refreshed; your
  * config/state/invariants are seeded once and never clobbered; existing entry
- * docs and settings.json are written alongside as *.tdd-pairing.* to merge.
+ * docs get a thin managed block while your content is preserved as an overlay.
  *
  * Pure Node, zero dependencies.
  */
@@ -32,7 +32,11 @@ let force = false;
 const rest = [];
 for (const a of argv) {
   if (a === "--force" || a === "-f") force = true;
-  else rest.push(a);
+  else if (a === "-h" || a === "--help") rest.push("help");
+  else if (a.startsWith("-")) {
+    console.error("create-tdd-pairing: unknown option '" + a + "'. Try `create-tdd-pairing help`.");
+    process.exit(2);
+  } else rest.push(a);
 }
 let cmd = "init";
 if (["init", "update", "help", "selftest", "report", "validate"].includes(rest[0])) cmd = rest.shift();
@@ -95,14 +99,6 @@ function seedOnce(src, destRel, label) {    // copy only if absent
   if (fs.existsSync(dest) && !force) { say("keep", destRel + (label ? " (" + label + ")" : "")); }
   else { copy(src, dest); say("seed", destRel); }
   record(destRel, "data");
-}
-function seedOrSidecar(src, destRel) {      // entry docs: install or drop a sidecar
-  const dest = path.join(target, destRel);
-  if (fs.existsSync(dest) && !force) {
-    const side = destRel.replace(/\.md$/, ".tdd-pairing.md");
-    copy(src, path.join(target, side)); say("sidecar", side + " (merge into your " + destRel + ")");
-  } else { copy(src, dest); say("install", destRel); }
-  record(destRel, "entry");
 }
 
 // ---- run ----------------------------------------------------------------
@@ -199,7 +195,7 @@ seedOnce(path.join(KIT, "docs", "tdd", "project-invariants.template.md"),
 seedOnce(path.join(KIT, "ci", "tdd-verify.yml"),
          path.join(".github", "workflows", "tdd-verify.yml"));
 
-// 3) settings.json — install or sidecar.
+// 3) settings.json — content-aware merge (kit hooks added, your keys preserved).
 mergeSettings(target);  // P1-7: merge kit hooks into settings.json, preserve user keys
 
 // 4) Entry docs - thin managed block + your overlay (method lives in docs/tdd/; no sidecar).
@@ -217,7 +213,8 @@ console.log(`
 Done. Next steps:
   1. Edit .claude/tdd.config — set LAYERS and the test command(s) for your stack.
   2. Fill in docs/tdd/project-invariants.md with rules your project must uphold.
-  3. Merge any *.tdd-pairing.* sidecars into your existing files.
+  3. Review the managed block atop AGENTS.md / CLAUDE.md — your own content is kept
+     below it; that block refreshes on update.
   4. Open the project in Claude Code and approve the hooks in settings.json.
   5. Run one dry red->green cycle with verbose output to watch the hooks fire.
   6. Start a feature: fill in KICKOFF.md and paste it to the orchestrator.
