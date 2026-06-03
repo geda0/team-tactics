@@ -1,0 +1,27 @@
+{
+  "name": "create-tdd-pairing",
+  "version": "0.3.0",
+  "description": "Bootstrap the TDD pairing kit (test-driven agent pairing for Claude Code) into any project.",
+  "bin": {
+    "create-tdd-pairing": "bin/cli.js"
+  },
+  "type": "commonjs",
+  "engines": {
+    "node": ">=16"
+  },
+  "files": [
+    "bin/",
+    "kit/",
+    "install.sh",
+    "README.md"
+  ],
+  "keywords": [
+    "claude-code",
+    "tdd",
+    "agents",
+    "pairing",
+    "scaffold",
+    "hooks"
+  ],
+  "license": "MIT"
+}
