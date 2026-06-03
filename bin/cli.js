@@ -106,6 +106,24 @@ function seedOrSidecar(src, destRel) {      // entry docs: install or drop a sid
 }
 
 // ---- run ----------------------------------------------------------------
+function ensureGitignore(targetDir) {
+  const gi = path.join(targetDir, ".gitignore");
+  const START = "# >>> tdd-pairing (managed) >>>", END = "# <<< tdd-pairing (managed) <<<";
+  const block = START + "\n" +
+    "# Transient kit artifacts - never commit (other state files ARE committed for continuity).\n" +
+    ".claude/state/suite-status\n" +
+    ".claude/state/telemetry.jsonl\n" +
+    ".claude/**/*.bak\n" +
+    "*.tdd-pairing.*\n" +
+    END;
+  let cur = ""; try { cur = fs.readFileSync(gi, "utf8"); } catch (e) {}
+  const i = cur.indexOf(START), j = cur.indexOf(END);
+  let next;
+  if (i !== -1 && j !== -1 && j > i) { next = cur.slice(0, i) + block + cur.slice(j + END.length); }
+  else { next = cur + (cur && !cur.endsWith("\n") ? "\n" : "") + (cur ? "\n" : "") + block + "\n"; }
+  if (next !== cur) { fs.writeFileSync(gi, next); say("gitignore", ".gitignore (tdd-pairing managed block)"); }
+}
+
 ensureDir(path.join(target, ".claude", "agents"));
 ensureDir(path.join(target, ".claude", "hooks"));
 ensureDir(path.join(target, ".claude", "state"));
@@ -160,6 +178,7 @@ ensureDir(path.join(target, ".claude", ".tdd-pairing"));
 fs.writeFileSync(path.join(target, MANIFEST_REL),
   JSON.stringify({ kit: "create-tdd-pairing", kitVersion: PKG.version, configSchema: 2, updatedAt: new Date().toISOString(), files: manifestFiles }, null, 2) + "\n");
 say("manifest", MANIFEST_REL + (backups ? "  (" + backups + " local change(s) backed up to .bak)" : ""));
+ensureGitignore(target);
 
 console.log(`
 Done. Next steps:
