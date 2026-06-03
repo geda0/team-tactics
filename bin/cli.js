@@ -21,6 +21,7 @@ const fs = require("fs");
 const path = require("path");
 const os = require("os");
 const cp = require("child_process");
+const crypto = require("crypto");
 
 const KIT = path.join(__dirname, "..", "kit");
 const CFG = path.join(KIT, "claude-config");
@@ -56,13 +57,30 @@ function ensureDir(d) { fs.mkdirSync(d, { recursive: true }); }
 function say(action, file) { console.log("  " + action.padEnd(9) + file); }
 function copy(src, dest) { ensureDir(path.dirname(dest)); fs.copyFileSync(src, dest); }
 
+// ---- manifest (P0-3): track kit-owned files so updates never silently clobber ----
+const PKG = require("../package.json");
+const MANIFEST_REL = path.join(".claude", ".tdd-pairing", "manifest.json");
+function sha256(p) { try { return crypto.createHash("sha256").update(fs.readFileSync(p)).digest("hex"); } catch (e) { return null; } }
+const priorManifest = (() => { try { return JSON.parse(fs.readFileSync(path.join(target, MANIFEST_REL), "utf8")); } catch (e) { return { files: {} }; } })();
+const priorSha = (rel) => (priorManifest.files && priorManifest.files[rel] && priorManifest.files[rel].sha256) || null;
+const manifestFiles = {};
+let backups = 0;
+function record(rel, cls) { manifestFiles[rel] = { class: cls, version: PKG.version, sha256: sha256(path.join(target, rel)) }; }
+
 function refresh(src, destRel) {            // always overwrite (pure mechanism)
-  copy(src, path.join(target, destRel)); say("refresh", destRel);
+  const dest = path.join(target, destRel);
+  if (fs.existsSync(dest)) {
+    const cur = sha256(dest), rec = priorSha(destRel);
+    const modified = rec ? (cur !== rec) : (cur !== sha256(src));
+    if (modified) { fs.copyFileSync(dest, dest + ".bak"); say("backup", destRel + ".bak (locally modified - review before discarding)"); backups++; }
+  }
+  copy(src, dest); say("refresh", destRel); record(destRel, "mechanism");
 }
 function seedOnce(src, destRel, label) {    // copy only if absent
   const dest = path.join(target, destRel);
   if (fs.existsSync(dest) && !force) { say("keep", destRel + (label ? " (" + label + ")" : "")); }
   else { copy(src, dest); say("seed", destRel); }
+  record(destRel, "data");
 }
 function seedOrSidecar(src, destRel) {      // entry docs: install or drop a sidecar
   const dest = path.join(target, destRel);
@@ -70,6 +88,7 @@ function seedOrSidecar(src, destRel) {      // entry docs: install or drop a sid
     const side = destRel.replace(/\.md$/, ".tdd-pairing.md");
     copy(src, path.join(target, side)); say("sidecar", side + " (merge into your " + destRel + ")");
   } else { copy(src, dest); say("install", destRel); }
+  record(destRel, "entry");
 }
 
 // ---- run ----------------------------------------------------------------
@@ -114,6 +133,12 @@ seedOnce(path.join(KIT, "ci", "tdd-verify.yml"),
 // 4) Entry docs.
 for (const f of ["AGENTS.md", "CLAUDE.md", "KICKOFF.md"])
   seedOrSidecar(path.join(KIT, f), f);
+
+// Manifest (P0-3): record kit-owned files + content hashes, for clobber-safe updates.
+ensureDir(path.join(target, ".claude", ".tdd-pairing"));
+fs.writeFileSync(path.join(target, MANIFEST_REL),
+  JSON.stringify({ kit: "create-tdd-pairing", kitVersion: PKG.version, configSchema: 2, updatedAt: new Date().toISOString(), files: manifestFiles }, null, 2) + "\n");
+say("manifest", MANIFEST_REL + (backups ? "  (" + backups + " local change(s) backed up to .bak)" : ""));
 
 console.log(`
 Done. Next steps:
