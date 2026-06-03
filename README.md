@@ -1,6 +1,6 @@
-# create-tdd-pairing
+# teamentic
 
-Bootstrap the **TDD pairing kit** into any project with one command. The kit
+Bootstrap the **teamentic kit** into any project with one command. The kit
 makes Claude Code agents build software by test-driven pairing — a `test-writer`
 and an `implementer` ping-pong red→green while Claude Code hooks enforce the
 discipline (no source edits in red, no test edits in green, no finishing on a
@@ -9,9 +9,8 @@ red bar). Works for a single package or a multi-layer monorepo.
 ## Quick start
 Run inside your project (or pass a target path):
 ```bash
-npx create-tdd-pairing            # install into the current directory
-npm create tdd-pairing            # same, via npm
-npx create-tdd-pairing ./my-app   # install into a specific path
+npx teamentic            # install into the current directory
+npx teamentic ./my-app   # install into a specific path
 ```
 
 Then:
@@ -22,13 +21,13 @@ Then:
 
 ## Commands
 ```bash
-npx create-tdd-pairing [init] [target]   # install (default)
-npx create-tdd-pairing update [target]   # refresh agents/hooks/docs, keep your files
-npx create-tdd-pairing selftest [target] # verify the gate works in YOUR environment
-npx create-tdd-pairing report [target]   # summarize cycle telemetry (process metrics)
-npx create-tdd-pairing --force [target]  # also reset seeded (user-owned) files
-npx create-tdd-pairing --preset full-team [target]  # also install the outer-loop team (PO/architect/QA/PM/dev-ops)
-npx create-tdd-pairing help
+npx teamentic [init] [target]   # install (default)
+npx teamentic update [target]   # refresh agents/hooks/docs, keep your files
+npx teamentic selftest [target] # verify the gate works in YOUR environment
+npx teamentic report [target]   # summarize cycle telemetry (process metrics)
+npx teamentic --force [target]  # also reset seeded (user-owned) files
+npx teamentic --preset full-team [target]  # also install the outer-loop team (PO/architect/QA/PM/dev-ops)
+npx teamentic help
 ```
 
 `selftest` fires synthetic PreToolUse/PostToolUse/Stop payloads at the installed
@@ -46,16 +45,16 @@ improve — how the loop is performing.
 - **Mechanism** (agents, hooks, method docs) is refreshed on every run.
 - **Your files** (`.claude/tdd.config`, `.claude/state/`,
   `docs/tdd/project-invariants.md`) are seeded once and never clobbered.
-- Existing `AGENTS.md` / `CLAUDE.md` / `KICKOFF.md` / `settings.json` are written
-  alongside as `*.tdd-pairing.*` so you can merge instead of being overwritten.
+- Existing `AGENTS.md` / `CLAUDE.md` / `KICKOFF.md` get a thin **managed block**
+  (refreshed on update) with your content preserved as an overlay below it;
+  `settings.json` is content-merged (kit hooks added, your keys kept).
 
 Re-run anytime to pull updates; `--force` resets the seeded files.
 
 ## Other ways to run
 ```bash
-npx github:<owner>/create-tdd-pairing        # straight from a git repo
-npx ./create-tdd-pairing-0.1.0.tgz           # from a local tarball (offline)
-./install.sh /path/to/project                # bash installer, no Node needed
+npx github:<owner>/teamentic        # straight from a git repo
+npx ./teamentic-0.5.0.tgz           # from a local tarball (offline)
 ```
 
 ## What gets installed

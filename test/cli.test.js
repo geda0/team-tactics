@@ -11,7 +11,7 @@ test("P2-11: --help prints help and does NOT install into ./--help", () => {
   try {
     const r = run(["--help"], d);
     assert.strictEqual(r.status, 0, r.stderr);
-    assert.match(r.stdout, /create-tdd-pairing|TDD pairing/i, "prints help");
+    assert.match(r.stdout, /teamentic|TDD pairing/i, "prints help");
     assert.ok(!fs.existsSync(path.join(d, "--help")), "no ./--help dir");
     assert.ok(!fs.existsSync(path.join(d, ".claude")), "did not install");
   } finally { fs.rmSync(d, { recursive: true, force: true }); }

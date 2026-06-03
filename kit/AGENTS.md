@@ -1,6 +1,6 @@
 # AGENTS.md - start here, every agent, every session
 
-This project is built by **test-driven agent pairing** (the `create-tdd-pairing` kit).
+This project is built by **test-driven agent pairing** (the `teamentic` kit).
 The method is single-sourced in `docs/tdd/` - read it; don't re-document it here.
 
 - **Read first:** `docs/tdd/tdd-workflow.md` (the loop), `docs/tdd/testing-philosophy.md`,

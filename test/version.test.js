@@ -9,7 +9,7 @@ const fs = require("fs"), os = require("os"), path = require("path"), cp = requi
 const CLI = path.join(__dirname, "..", "bin", "cli.js");
 function run(args, cwd) { return cp.spawnSync("node", [CLI, ...args], { encoding: "utf8", cwd: cwd || os.tmpdir() }); }
 function install() { const d = fs.mkdtempSync(path.join(os.tmpdir(), "tdd-version-")); run([d]); return d; }
-const MAN = (d) => path.join(d, ".claude", ".tdd-pairing", "manifest.json");
+const MAN = (d) => path.join(d, ".claude", ".teamentic", "manifest.json");
 
 test("update across a version boundary prints from->to + BREAKING notes", () => {
   const d = install();

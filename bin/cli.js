@@ -2,14 +2,14 @@
 "use strict";
 
 /*
- * create-tdd-pairing — install/update the TDD pairing kit in a project.
+ * teamentic — install/update the teamentic kit in a project.
  *
- *   npx create-tdd-pairing [target]        install (default command)
- *   npx create-tdd-pairing init [target]   same as above
- *   npx create-tdd-pairing update [target] refresh mechanism, keep your files
- *   npx create-tdd-pairing --force [target] also reset seeded (user-owned) files
- *   npx create-tdd-pairing --preset full-team [target] also install the outer-loop team
- *   npx create-tdd-pairing help
+ *   npx teamentic [target]        install (default command)
+ *   npx teamentic init [target]   same as above
+ *   npx teamentic update [target] refresh mechanism, keep your files
+ *   npx teamentic --force [target] also reset seeded (user-owned) files
+ *   npx teamentic --preset full-team [target] also install the outer-loop team
+ *   npx teamentic help
  *
  * Non-destructive: mechanism (agents, hooks, method docs) is refreshed; your
  * config/state/invariants are seeded once and never clobbered; existing entry
@@ -39,12 +39,12 @@ for (let i = 0; i < argv.length; i++) {
   else if (a === "--preset") preset = argv[++i] || "";
   else if (a.startsWith("--preset=")) preset = a.slice(9);
   else if (a.startsWith("-")) {
-    console.error("create-tdd-pairing: unknown option '" + a + "'. Try `create-tdd-pairing help`.");
+    console.error("teamentic: unknown option '" + a + "'. Try `teamentic help`.");
     process.exit(2);
   } else rest.push(a);
 }
 if (preset !== null && preset !== "full-team" && preset !== "none") {
-  console.error("create-tdd-pairing: unknown preset '" + preset + "'. Known presets: full-team (or 'none' to remove).");
+  console.error("teamentic: unknown preset '" + preset + "'. Known presets: full-team (or 'none' to remove).");
   process.exit(2);
 }
 let cmd = "init";
@@ -72,9 +72,15 @@ function copy(src, dest) { ensureDir(path.dirname(dest)); fs.copyFileSync(src, d
 
 // ---- manifest (P0-3): track kit-owned files so updates never silently clobber ----
 const PKG = require("../package.json");
-const MANIFEST_REL = path.join(".claude", ".tdd-pairing", "manifest.json");
+const MANIFEST_REL = path.join(".claude", ".teamentic", "manifest.json");
+const OLD_MANIFEST_REL = path.join(".claude", ".tdd-pairing", "manifest.json"); // pre-rename (create-tdd-pairing)
 function sha256(p) { try { return crypto.createHash("sha256").update(fs.readFileSync(p)).digest("hex"); } catch (e) { return null; } }
-const priorManifest = (() => { try { return JSON.parse(fs.readFileSync(path.join(target, MANIFEST_REL), "utf8")); } catch (e) { return { files: {} }; } })();
+const priorManifest = (() => {
+  for (const rel of [MANIFEST_REL, OLD_MANIFEST_REL]) {
+    try { return JSON.parse(fs.readFileSync(path.join(target, rel), "utf8")); } catch (e) { /* try next */ }
+  }
+  return { files: {} };
+})();
 const priorSha = (rel) => (priorManifest.files && priorManifest.files[rel] && priorManifest.files[rel].sha256) || null;
 
 // P2-14: the team preset is sticky — recorded in the manifest so `update` keeps
@@ -117,20 +123,22 @@ function seedOnce(src, destRel, label) {    // copy only if absent
 // ---- run ----------------------------------------------------------------
 function ensureGitignore(targetDir) {
   const gi = path.join(targetDir, ".gitignore");
-  const START = "# >>> tdd-pairing (managed) >>>", END = "# <<< tdd-pairing (managed) <<<";
+  const START = "# >>> teamentic (managed) >>>", END = "# <<< teamentic (managed) <<<";
   const block = START + "\n" +
     "# Transient kit artifacts - never commit (other state files ARE committed for continuity).\n" +
     ".claude/state/suite-status\n" +
     ".claude/state/telemetry.jsonl\n" +
     ".claude/**/*.bak\n" +
-    "*.tdd-pairing.*\n" +
+    "*.teamentic.*\n" +
     END;
+  const OLD_START = "# >>> tdd-pairing (managed) >>>", OLD_END = "# <<< tdd-pairing (managed) <<<";
   let cur = ""; try { cur = fs.readFileSync(gi, "utf8"); } catch (e) {}
-  const i = cur.indexOf(START), j = cur.indexOf(END);
+  let i = cur.indexOf(START), j = cur.indexOf(END), endLen = END.length;
+  if (i === -1) { const oi = cur.indexOf(OLD_START), oj = cur.indexOf(OLD_END); if (oi !== -1 && oj !== -1 && oj > oi) { i = oi; j = oj; endLen = OLD_END.length; } }
   let next;
-  if (i !== -1 && j !== -1 && j > i) { next = cur.slice(0, i) + block + cur.slice(j + END.length); }
+  if (i !== -1 && j !== -1 && j > i) { next = cur.slice(0, i) + block + cur.slice(j + endLen); }
   else { next = cur + (cur && !cur.endsWith("\n") ? "\n" : "") + (cur ? "\n" : "") + block + "\n"; }
-  if (next !== cur) { fs.writeFileSync(gi, next); say("gitignore", ".gitignore (tdd-pairing managed block)"); }
+  if (next !== cur) { fs.writeFileSync(gi, next); say("gitignore", ".gitignore (teamentic managed block)"); }
 }
 
 function mergeSettings(targetDir) {
@@ -157,13 +165,16 @@ function mergeSettings(targetDir) {
 
 function mergeEntryDoc(srcAbs, destRel) {
   const dest = path.join(target, destRel);
-  const START = "<!-- >>> tdd-pairing: managed (refreshed on update; do not edit) >>> -->";
-  const END = "<!-- <<< tdd-pairing: managed <<< -->";
+  const START = "<!-- >>> teamentic: managed (refreshed on update; do not edit) >>> -->";
+  const END = "<!-- <<< teamentic: managed <<< -->";
   const block = START + "\n" + fs.readFileSync(srcAbs, "utf8").trim() + "\n" + END;
+  const OLD_START = "<!-- >>> tdd-pairing: managed (refreshed on update; do not edit) >>> -->";
+  const OLD_END = "<!-- <<< tdd-pairing: managed <<< -->";
   let cur = ""; try { cur = fs.readFileSync(dest, "utf8"); } catch (e) {}
-  const i = cur.indexOf(START), j = cur.indexOf(END);
+  let i = cur.indexOf(START), j = cur.indexOf(END), endLen = END.length;
+  if (i === -1) { const oi = cur.indexOf(OLD_START), oj = cur.indexOf(OLD_END); if (oi !== -1 && oj !== -1 && oj > oi) { i = oi; j = oj; endLen = OLD_END.length; } }
   let next, how;
-  if (i !== -1 && j !== -1 && j > i) { next = cur.slice(0, i) + block + cur.slice(j + END.length); how = "refresh"; }
+  if (i !== -1 && j !== -1 && j > i) { next = cur.slice(0, i) + block + cur.slice(j + endLen); how = "refresh"; }
   else if (cur.trim() === "") { next = block + "\n\n<!-- Your project overlay below - yours; update never touches it. -->\n## Project notes\n"; how = "install"; }
   else { next = block + "\n\n<!-- Existing content preserved as your project overlay (update never touches below). -->\n\n" + cur; how = "wrap"; }
   if (next !== cur) { ensureDir(path.dirname(dest)); fs.writeFileSync(dest, next); say(how, destRel + " (managed block + overlay)"); }
@@ -176,7 +187,7 @@ ensureDir(path.join(target, ".claude", "hooks"));
 ensureDir(path.join(target, ".claude", "state"));
 ensureDir(path.join(target, "docs", "tdd"));
 
-console.log((cmd === "update" ? "Updating" : "Installing") + " TDD pairing kit -> " + target);
+console.log((cmd === "update" ? "Updating" : "Installing") + " teamentic kit -> " + target);
 if (cmd === "update") {
   const _from = priorManifest.kitVersion, _to = PKG.version;
   console.log("  " + (_from || "pre-0.4 (no manifest)") + " -> " + _to);
@@ -226,9 +237,9 @@ for (const f of ["AGENTS.md", "CLAUDE.md", "KICKOFF.md"])
   mergeEntryDoc(path.join(KIT, f), f);
 
 // Manifest (P0-3): record kit-owned files + content hashes, for clobber-safe updates.
-ensureDir(path.join(target, ".claude", ".tdd-pairing"));
+ensureDir(path.join(target, ".claude", ".teamentic"));
 fs.writeFileSync(path.join(target, MANIFEST_REL),
-  JSON.stringify({ kit: "create-tdd-pairing", kitVersion: PKG.version, configSchema: 2, preset: presetActive, updatedAt: new Date().toISOString(), files: manifestFiles }, null, 2) + "\n");
+  JSON.stringify({ kit: "teamentic", kitVersion: PKG.version, configSchema: 2, preset: presetActive, updatedAt: new Date().toISOString(), files: manifestFiles }, null, 2) + "\n");
 say("manifest", MANIFEST_REL + (backups ? "  (" + backups + " local change(s) backed up to .bak)" : ""));
 ensureGitignore(target);
 if (presetActive === "full-team")
@@ -250,7 +261,7 @@ code.claude.com/docs/en/hooks before relying on the gate.`);
 
 // Auto-validate (P0-4): report a stale/broken config NOW, not via a blocked edit.
 if (validateInstall(target) !== 0) {
-  console.log("\n[!] validate FAILED — the TDD gate may not work. Fix the above, then re-run `npx create-tdd-pairing validate`.");
+  console.log("\n[!] validate FAILED — the TDD gate may not work. Fix the above, then re-run `npx teamentic validate`.");
 }
 
 // ---- validate -----------------------------------------------------------
@@ -260,7 +271,7 @@ if (validateInstall(target) !== 0) {
 function validateInstall(targetDir) {
   const lib = path.join(targetDir, ".claude", "hooks", "lib.sh");
   if (!fs.existsSync(lib)) {
-    console.error("validate: .claude/hooks/lib.sh is missing — the resolver mechanism is gone. Run `npx create-tdd-pairing update`.");
+    console.error("validate: .claude/hooks/lib.sh is missing — the resolver mechanism is gone. Run `npx teamentic update`.");
     return 1;
   }
   const bashOk = (() => { try { return cp.spawnSync("bash", ["-c", "exit 0"]).status === 0; } catch (e) { return false; } })();
@@ -269,7 +280,7 @@ function validateInstall(targetDir) {
     'set -u\n' +
     'ROOT=' + JSON.stringify(targetDir) + '\n' +
     '. "$ROOT/.claude/hooks/lib.sh" 2>/dev/null || true\n' +
-    'if ! type resolve_layer >/dev/null 2>&1; then echo "ERROR: resolve_layer is unavailable (.claude/hooks/lib.sh stale or unsourced). Run: npx create-tdd-pairing update"; exit 1; fi\n' +
+    'if ! type resolve_layer >/dev/null 2>&1; then echo "ERROR: resolve_layer is unavailable (.claude/hooks/lib.sh stale or unsourced). Run: npx teamentic update"; exit 1; fi\n' +
     'if [ -z "${LAYERS:-}" ]; then echo "ERROR: no LAYERS defined in .claude/tdd.config"; exit 1; fi\n' +
     'for L in $LAYERS; do resolve_layer "$L"; if [ -z "$TEST_CMD" ]; then echo "ERROR: layer $L resolves to no test command (set TEST_CMD_$L or ALL_TEST_CMD)"; exit 1; fi; echo "  ok  $L -> $TEST_CMD"; done\n' +
     'echo "validate: OK — resolver present; every layer resolves."\n';
@@ -286,7 +297,7 @@ function validateInstall(targetDir) {
 function selftest(targetDir) {
   const hooksDir = path.join(targetDir, ".claude", "hooks");
   if (!fs.existsSync(hooksDir)) {
-    console.error("selftest: no kit found at " + targetDir + " — run `npx create-tdd-pairing` first.");
+    console.error("selftest: no kit found at " + targetDir + " — run `npx teamentic` first.");
     return 1;
   }
   // Need bash to run the hooks.
@@ -338,7 +349,7 @@ resolve_layer() {
     ok ? pass++ : fail++;
   };
 
-  console.log("TDD pairing selftest — firing synthetic payloads at installed hooks\n");
+  console.log("teamentic selftest — firing synthetic payloads at installed hooks\n");
 
   // guard-edit-scope: phase x scope
   setState("layer", "app");

@@ -1,9 +1,9 @@
 {
-  "name": "create-tdd-pairing",
+  "name": "teamentic",
   "version": "0.5.0",
-  "description": "Bootstrap the TDD pairing kit (test-driven agent pairing for Claude Code) into any project.",
+  "description": "Bootstrap the teamentic kit (test-driven agent pairing for Claude Code) into any project.",
   "bin": {
-    "create-tdd-pairing": "bin/cli.js"
+    "teamentic": "bin/cli.js"
   },
   "type": "commonjs",
   "engines": {
@@ -12,10 +12,10 @@
   "files": [
     "bin/",
     "kit/",
-    "install.sh",
     "README.md"
   ],
   "keywords": [
+    "teamentic",
     "claude-code",
     "tdd",
     "agents",
@@ -25,6 +25,7 @@
   ],
   "license": "MIT",
   "scripts": {
-    "test": "node --test"
+    "test": "node --test",
+    "prepublishOnly": "node --test"
   }
 }
