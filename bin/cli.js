@@ -175,6 +175,7 @@ for (const d of ["tdd-workflow", "testing-philosophy", "conventions"])
 
 // 2) Seeded — written once, never clobbered.
 seedOnce(path.join(CFG, "tdd.config"), path.join(".claude", "tdd.config"), "yours");
+seedOnce(path.join(CFG, "hooks", "local.d", "README.md"), path.join(".claude", "hooks", "local.d", "README.md"));
 for (const s of ["design-notes.md", "progress.md", "plan.md", "phase", "layer", ".gitkeep"])
   seedOnce(path.join(CFG, "state", s), path.join(".claude", "state", s));
 seedOnce(path.join(KIT, "docs", "tdd", "project-invariants.template.md"),

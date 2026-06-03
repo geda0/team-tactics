@@ -38,3 +38,7 @@ resolve_layer() {
   [ -n "$TEST_GLOB" ] || TEST_GLOB="$DEFAULT_TEST_GLOB"
   [ -n "$SRC_GLOB" ]  || SRC_GLOB="$DEFAULT_SRC_GLOB"
 }
+
+# Project extension point: source hooks/local.d/*.sh LAST, so a project can override
+# the resolver/defaults or add helpers WITHOUT editing this (refreshed) file.
+for _f in "$ROOT"/.claude/hooks/local.d/*.sh; do [ -f "$_f" ] && . "$_f"; done
