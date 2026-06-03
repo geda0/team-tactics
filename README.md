@@ -7,20 +7,27 @@ discipline (no source edits in red, no test edits in green, no finishing on a
 red bar). Works for a single package or a multi-layer monorepo.
 
 ## Quick start
+
+### Already in a coding agent? (one-shot)
+In Claude Code / Cursor / etc., paste this one message — the agent installs teamentic
+**and** bootstraps the repo in a single shot:
+
+> Install and bootstrap teamentic in this repo. Run `npx teamentic .`, then read
+> `AGENTS.md` and `CLAUDE.md`, detect the stack and set `LAYERS` + the test
+> command(s) in `.claude/tdd.config`, and draft `docs/tdd/project-invariants.md` from
+> the code for me to confirm. If this is an existing codebase, **adopt it and bring it
+> up to standard** (characterization tests, green baseline, CI) before new work. Then
+> start the first feature with the red→green loop: **`<what you want built>`**.
+
+### From a terminal? (two steps)
 ```bash
 npx teamentic            # install into your project (or: npx teamentic ./my-app)
 ```
-Open the project in Claude Code, approve the hooks when prompted, then paste this
-as your **first message** — the orchestrator does the setup, so there are no config
-files to hand-edit:
+Open the project in Claude Code, approve the hooks, and paste the prompt in
+`KICKOFF.md` — it does the setup, so there are no config files to hand-edit.
 
-> Read `AGENTS.md` and `CLAUDE.md`. Detect this project's stack and set `LAYERS` +
-> the test command(s) in `.claude/tdd.config`, and draft
-> `docs/tdd/project-invariants.md` from the code for me to confirm. Then build the
-> first feature with the red→green loop: **`<what you want built>`**.
-
-`KICKOFF.md` ships this prompt ready to copy (with an acceptance-criteria template).
-Approving the hooks is the one manual step — it's what makes the gate enforce.
+> **Adopting an existing repo?** Install with `npx teamentic --preset full-team` so the
+> product-owner / architect / qa-verifier are on hand to characterize and upgrade it.
 
 ## Commands
 ```bash

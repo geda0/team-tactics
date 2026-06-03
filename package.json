@@ -1,6 +1,6 @@
 {
   "name": "teamentic",
-  "version": "0.5.0",
+  "version": "0.6.0",
   "description": "Bootstrap the teamentic kit (test-driven agent pairing for Claude Code) into any project.",
   "bin": {
     "teamentic": "bin/cli.js"

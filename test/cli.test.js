@@ -40,3 +40,17 @@ test("next-steps: a fresh install no longer tells you to merge sidecars (0.4 cre
     assert.doesNotMatch(r.stdout, /sidecar/i, "no stale sidecar-merge instruction");
   } finally { fs.rmSync(d, { recursive: true, force: true }); }
 });
+
+test("0.6: README documents the AGENT quick-start — one-shot (install+bootstrap) AND the 2-step path", () => {
+  const r = fs.readFileSync(path.join(__dirname, "..", "README.md"), "utf8");
+  assert.match(r, /one[- ]shot/i, "has a one-shot agent path");
+  assert.match(r, /npx teamentic \./, "the one-shot tells the agent to run the install itself");
+  assert.match(r, /bootstrap/i, "the one-shot bootstraps, not just installs");
+  assert.match(r, /two[- ]step|terminal/i, "still offers the manual/terminal 2-step path");
+});
+
+test("0.6: KICKOFF.md covers both greenfield and existing-repo adoption", () => {
+  const k = fs.readFileSync(path.join(__dirname, "..", "kit", "KICKOFF.md"), "utf8");
+  assert.match(k, /adopt|existing/i, "has an existing-repo adoption path");
+  assert.match(k, /one[- ]shot/i, "references the one-shot");
+});

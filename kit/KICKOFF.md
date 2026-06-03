@@ -1,20 +1,27 @@
 # KICKOFF — your first message to the orchestrator
 
-After installing teamentic and approving the hooks in Claude Code, copy the prompt
-below, fill in the FEATURE (and acceptance bullets), and paste it as your **first
-message**. The orchestrator sets up the harness, then builds — no files to hand-edit.
+Pick the path that matches where you are.
 
----
+## One-shot (you're already in a coding agent)
+Paste this — the agent installs teamentic **and** bootstraps the repo in one go:
 
-Read `AGENTS.md` and `CLAUDE.md` first, then:
+```
+Install and bootstrap teamentic in this repo. Run: npx teamentic .  — then read
+AGENTS.md and CLAUDE.md, detect the stack and set LAYERS + the test command(s) in
+.claude/tdd.config, and draft docs/tdd/project-invariants.md for my OK. If this is an
+existing codebase, adopt it and bring it up to standard (characterization tests, a
+green baseline, CI) before new work. Then build with the red->green loop: <what you
+want built>.
+```
 
-**Set up the harness (once):**
-1. Detect this project's stack and set `LAYERS` + the test command(s) in
-   `.claude/tdd.config` (one layer per independently-tested slice); confirm it runs.
-2. Draft `docs/tdd/project-invariants.md` from the codebase — the rules this project
-   must always uphold — and show me to confirm.
+## After `npx teamentic` (two-step) — paste this as your first message
+Read `AGENTS.md` and `CLAUDE.md` first, then set up the harness once:
+1. Detect the stack and set `LAYERS` + the test command(s) in `.claude/tdd.config`.
+2. Draft `docs/tdd/project-invariants.md` from the codebase for my confirmation.
 
-**Then build this feature (red→green loop):**
+Then, depending on the repo:
+
+**New project — build a feature:**
 
 FEATURE: <one line — the unit of work you want>
 
@@ -22,8 +29,10 @@ ACCEPTANCE  (each → one or more red→green cycles; tag the layer)
 - [<layer>] given … when … then …
 - [<layer>] <a project invariant from docs/tdd/project-invariants.md it must prove>
 
-CONSTRAINTS / NON-GOALS
-- <public API to keep stable, perf bounds, anything off-limits>
+**Existing project — adopt + upgrade to standard:**
+- **architect** maps the seams + writes short ADRs; **product-owner** drafts the
+  invariants and a backlog (a documented green baseline, characterization tests on the
+  load-bearing-but-untested paths, CI), then runs the loop. Never regress the suite.
 
 Set `.claude/state/{layer,phase}` before each step, delegate red→`test-writer` /
 green→`implementer`, run `tdd-critic` every ~3 cycles. Done when every bullet is
