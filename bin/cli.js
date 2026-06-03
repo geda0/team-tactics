@@ -146,6 +146,22 @@ function mergeSettings(targetDir) {
   record(".claude/settings.json", "entry");
 }
 
+function mergeEntryDoc(srcAbs, destRel) {
+  const dest = path.join(target, destRel);
+  const START = "<!-- >>> tdd-pairing: managed (refreshed on update; do not edit) >>> -->";
+  const END = "<!-- <<< tdd-pairing: managed <<< -->";
+  const block = START + "\n" + fs.readFileSync(srcAbs, "utf8").trim() + "\n" + END;
+  let cur = ""; try { cur = fs.readFileSync(dest, "utf8"); } catch (e) {}
+  const i = cur.indexOf(START), j = cur.indexOf(END);
+  let next, how;
+  if (i !== -1 && j !== -1 && j > i) { next = cur.slice(0, i) + block + cur.slice(j + END.length); how = "refresh"; }
+  else if (cur.trim() === "") { next = block + "\n\n<!-- Your project overlay below - yours; update never touches it. -->\n## Project notes\n"; how = "install"; }
+  else { next = block + "\n\n<!-- Existing content preserved as your project overlay (update never touches below). -->\n\n" + cur; how = "wrap"; }
+  if (next !== cur) { ensureDir(path.dirname(dest)); fs.writeFileSync(dest, next); say(how, destRel + " (managed block + overlay)"); }
+  else { say("keep", destRel + " (managed block up to date)"); }
+  record(destRel, "entry");
+}
+
 ensureDir(path.join(target, ".claude", "agents"));
 ensureDir(path.join(target, ".claude", "hooks"));
 ensureDir(path.join(target, ".claude", "state"));
@@ -186,9 +202,9 @@ seedOnce(path.join(KIT, "ci", "tdd-verify.yml"),
 // 3) settings.json — install or sidecar.
 mergeSettings(target);  // P1-7: merge kit hooks into settings.json, preserve user keys
 
-// 4) Entry docs.
+// 4) Entry docs - thin managed block + your overlay (method lives in docs/tdd/; no sidecar).
 for (const f of ["AGENTS.md", "CLAUDE.md", "KICKOFF.md"])
-  seedOrSidecar(path.join(KIT, f), f);
+  mergeEntryDoc(path.join(KIT, f), f);
 
 // Manifest (P0-3): record kit-owned files + content hashes, for clobber-safe updates.
 ensureDir(path.join(target, ".claude", ".tdd-pairing"));
