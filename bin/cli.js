@@ -339,11 +339,15 @@ resolve_layer() {
   } catch (e) { telemetryOk = 0; }
   check("telemetry JSONL emitted per run", telemetryOk, 1);
 
-  // require-green-to-stop: gated by phase + suite-status
-  setState("suite-status", "red");
-  setState("phase", "green");   check("stop blocks on red in green",  run("require-green-to-stop"), 2);
-  setState("phase", "red");     check("stop allows on red in red",    run("require-green-to-stop"), 0);
-  setState("phase", "off");     check("stop allows when disarmed",    run("require-green-to-stop"), 0);
+  // require-green-to-stop: phase-gated, and it RE-VERIFIES a cached red before blocking.
+  setState("suite-status", "red"); setState("phase", "green");
+  check("stop blocks on red in green (re-verify still red)", run("require-green-to-stop", { env: { TDD_SELFTEST_FAIL: "1" } }), 2);
+  setState("suite-status", "red"); setState("phase", "green");
+  check("stop allows when cached red is STALE (re-verify green)", run("require-green-to-stop", { env: { TDD_SELFTEST_FAIL: "0" } }), 0);
+  setState("suite-status", "red"); setState("phase", "red");
+  check("stop allows on red in red phase", run("require-green-to-stop"), 0);
+  setState("phase", "off");
+  check("stop allows when disarmed", run("require-green-to-stop"), 0);
 
   try { fs.rmSync(S, { recursive: true, force: true }); } catch (e) {}
 
