@@ -13,6 +13,19 @@ LAYER="$(cat "$ROOT/.claude/state/layer" 2>/dev/null || echo unknown)"
 PHASE="$(cat "$ROOT/.claude/state/phase" 2>/dev/null || echo unknown)"
 resolve_layer "$LAYER"
 
+# P2-10: skip the suite (and telemetry) for an edit that matches no layer glob —
+# editing a README/config/doc must not trigger a test run. Empty stdin (a manual
+# invocation with no payload) yields no path, so the suite runs as before.
+INPUT="$(cat)"
+if command -v jq >/dev/null 2>&1; then
+  EDITED="$(printf '%s' "$INPUT" | jq -r '.tool_input.file_path // .tool_input.path // empty' 2>/dev/null)"
+else
+  EDITED="$(printf '%s' "$INPUT" | grep -oE '"(file_)?path"[[:space:]]*:[[:space:]]*"[^"]+"' | head -1 | sed -E 's/.*"([^"]+)"$/\1/')"
+fi
+if [ -n "${EDITED:-}" ] && ! printf '%s' "$EDITED" | grep -qE "$TEST_GLOB" && ! printf '%s' "$EDITED" | grep -qE "$SRC_GLOB"; then
+  exit 0
+fi
+
 START="$(date +%s)"
 OUT="$(cd "$ROOT" && eval "$TEST_CMD" 2>&1)"; CODE=$?
 DUR=$(( $(date +%s) - START ))
