@@ -16,6 +16,7 @@ _lib_dir="$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")" && pwd)"
 : "${TELEMETRY:=1}"
 : "${TICS:=1}"
 : "${TIC_STORE:=jsonl}"
+: "${CLAIMS_ENFORCE:=1}"
 : "${SESSION_BASELINE_CHECK:=1}"
 : "${BASELINE_CMD:=$ALL_TEST_CMD}"
 

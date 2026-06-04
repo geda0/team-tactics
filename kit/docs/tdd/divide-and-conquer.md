@@ -38,7 +38,9 @@ conductor`) and synthesizes. (The `Agent` and `Workflow` tools already do this f
 
 ## Write-side fan-out — disjoint only
 Two writers are safe on the main repo **only** if their files don't overlap. Each pair
-`claim`s its targets; `tics conductor` / `tics claims` surface any collision. Overlap →
+`claim`s its targets — with `CLAIMS_ENFORCE` (default on) the guard **blocks** an edit to a
+file held by another scope (emitting a `need`), so disjoint partitions can't silently
+collide; `tics conductor` / `tics claims` show what's held. Overlap →
 serialize (one holds the claim, the other waits), split the file (fix the seam), or — last
 resort — give the concurrent writers separate **worktrees** (a per-worker gate identity,
 sharing one bus via `TICS_DIR`; see `docs/tdd/sectioning.md`, full-team preset).

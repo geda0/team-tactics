@@ -209,6 +209,51 @@ test("worktree sections share one bus: TICS_DIR in tdd.config unifies emit + rea
   } finally { [A, B, shared].forEach((x) => fs.rmSync(x, { recursive: true, force: true })); }
 });
 
+test("tics claim-check: blocks a path held by another scope, allows own/released/unscoped (P1)", () => {
+  const d = freshWithTics([
+    T({ seq: 1, kind: "claim", from: "inv-pair", to: "*", scope: "inventory/S1", ref: "kernel/types.ts", msg: "kernel/types.ts" }),
+    T({ seq: 2, kind: "claim", from: "ord-pair", to: "*", scope: "orders/S2", ref: "orders/cart.ts", msg: "orders/cart.ts" }),
+    T({ seq: 3, kind: "release", from: "ord-pair", to: "*", scope: "orders/S2", ref: "orders/cart.ts" }),
+  ]);
+  const reader = path.join(d, ".claude", "hooks", "tics");
+  try {
+    const conflict = cp.spawnSync(reader, ["claim-check", "kernel/types.ts", "orders/S2"], { encoding: "utf8", cwd: d });
+    assert.strictEqual(conflict.status, 3, "cross-scope claim is a conflict");
+    assert.match(conflict.stdout, /inventory\/S1/, "names the holder");
+    const own = cp.spawnSync(reader, ["claim-check", "kernel/types.ts", "inventory/S1"], { encoding: "utf8", cwd: d });
+    assert.strictEqual(own.status, 0, "owner may edit its own claim");
+    const released = cp.spawnSync(reader, ["claim-check", "orders/cart.ts", "inventory/S1"], { encoding: "utf8", cwd: d });
+    assert.strictEqual(released.status, 0, "released claim no longer blocks");
+    const unscoped = cp.spawnSync(reader, ["claim-check", "kernel/types.ts", ""], { encoding: "utf8", cwd: d });
+    assert.strictEqual(unscoped.status, 0, "unscoped editor bypasses claims");
+  } finally { fs.rmSync(d, { recursive: true, force: true }); }
+});
+
+test("guard-edit-scope enforces claims: blocks an edit to a file held by another scope (P1)", () => {
+  const d = freshWithTics([
+    T({ seq: 1, kind: "claim", from: "inv-pair", to: "*", scope: "inventory/S1", ref: "src/kernel.ts", msg: "src/kernel.ts" }),
+  ]);
+  try {
+    fs.writeFileSync(path.join(d, ".claude", "state", "phase"), "refactor\n");
+    fs.writeFileSync(path.join(d, ".claude", "state", "layer"), "app\n");
+    fs.writeFileSync(path.join(d, ".claude", "state", "scope"), "orders/S2\n");
+    const guard = path.join(d, ".claude", "hooks", "guard-edit-scope.sh");
+    const payload = JSON.stringify({ tool_input: { file_path: "src/kernel.ts" } });
+    const blocked = cp.spawnSync("bash", [guard], { input: payload, encoding: "utf8", cwd: d });
+    assert.strictEqual(blocked.status, 2, "blocked: held by inventory/S1");
+    assert.match(blocked.stderr, /claim|held/i);
+    const log = cp.spawnSync(path.join(d, ".claude", "hooks", "tics"), ["log"], { encoding: "utf8", cwd: d });
+    assert.match(log.stdout, /need/, "a need tic surfaces the conflict");
+    fs.writeFileSync(path.join(d, ".claude", "state", "scope"), "inventory/S1\n");
+    const ok = cp.spawnSync("bash", [guard], { input: payload, encoding: "utf8", cwd: d });
+    assert.strictEqual(ok.status, 0, "owner may edit its own claim");
+    fs.writeFileSync(path.join(d, ".claude", "state", "scope"), "orders/S2\n");
+    fs.appendFileSync(path.join(d, ".claude", "tdd.config"), "\nCLAIMS_ENFORCE=0\n");
+    const disarmed = cp.spawnSync("bash", [guard], { input: payload, encoding: "utf8", cwd: d });
+    assert.strictEqual(disarmed.status, 0, "CLAIMS_ENFORCE=0 disarms enforcement");
+  } finally { fs.rmSync(d, { recursive: true, force: true }); }
+});
+
 test("update migrates the stale tics-view.js reader to .cjs", () => {
   const d = fs.mkdtempSync(path.join(os.tmpdir(), "tt-mig-"));
   run([d]);

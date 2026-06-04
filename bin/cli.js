@@ -50,8 +50,10 @@ if (preset !== null && preset !== "full-team" && preset !== "none") {
   process.exit(2);
 }
 let cmd = "init";
-if (["init", "update", "help", "selftest", "report", "validate", "log", "inbox", "conductor", "claims", "sections"].includes(rest[0])) cmd = rest.shift();
+if (["init", "update", "help", "selftest", "report", "validate", "log", "inbox", "conductor", "claims", "sections", "claim-check"].includes(rest[0])) cmd = rest.shift();
 const role = cmd === "inbox" ? rest.shift() : null;
+const cfFile = cmd === "claim-check" ? rest.shift() : null;
+const cfScope = cmd === "claim-check" ? (rest.shift() || scope || "") : null;
 const target = path.resolve(rest[0] || process.cwd());
 
 if (cmd === "help") {
@@ -72,6 +74,7 @@ if (cmd === "inbox") { process.exit(TV.ticsInbox(target, role, scope)); }
 if (cmd === "conductor") { process.exit(TV.ticsConductor(target)); }
 if (cmd === "claims") { process.exit(TV.ticsClaims(target)); }
 if (cmd === "sections") { process.exit(TV.ticsSections(target)); }
+if (cmd === "claim-check") { process.exit(TV.claimCheckCli(target, cfFile, cfScope)); }
 
 // ---- helpers ------------------------------------------------------------
 function ensureDir(d) { fs.mkdirSync(d, { recursive: true }); }
