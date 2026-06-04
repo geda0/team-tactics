@@ -69,3 +69,18 @@ test("install-hooks does not clobber a foreign pre-commit", () => {
     assert.match(fs.readFileSync(pc, "utf8"), /my own hook/, "foreign hook preserved");
   } finally { fs.rmSync(d, { recursive: true, force: true }); }
 });
+
+test("install-hooks installs a post-commit that emits a commit tic (cross-tool bus visibility)", () => {
+  const d = gitInstall();
+  try {
+    assert.strictEqual(node("install-hooks", d).status, 0);
+    const pc = path.join(commonHooks(d), "post-commit");
+    assert.ok(fs.existsSync(pc), "post-commit installed");
+    assert.ok((fs.statSync(pc).mode & 0o111) !== 0, "executable");
+    fs.writeFileSync(path.join(d, "z.txt"), "1"); git(d, "add", "-A");
+    assert.strictEqual(git(d, "commit", "-m", "land a thing").status, 0, "commit ok (pre-commit green)");
+    const log = cp.spawnSync(path.join(d, ".claude", "hooks", "tics"), ["log"], { encoding: "utf8", cwd: d, env: ENV });
+    assert.match(log.stdout, /commit/, "a commit tic landed on the bus");
+    assert.match(log.stdout, /land a thing/, "with the commit subject");
+  } finally { fs.rmSync(d, { recursive: true, force: true }); }
+});

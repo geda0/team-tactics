@@ -254,6 +254,32 @@ test("guard-edit-scope enforces claims: blocks an edit to a file held by another
   } finally { fs.rmSync(d, { recursive: true, force: true }); }
 });
 
+test("tics cycle shows phase/layer and nudges a tdd-critic pass after enough cycles", () => {
+  const lines = [T({ seq: 1, kind: "verdict", from: "tdd-critic", to: "orchestrator", result: "pass", msg: "ok" })];
+  for (let i = 0; i < 6; i++) lines.push(T({ seq: 2 + i, kind: "signal", from: "run-suite", to: "*", result: "green", msg: "suite green" }));
+  const d = freshWithTics(lines);
+  try {
+    fs.writeFileSync(path.join(d, ".claude", "state", "phase"), "green\n");
+    fs.writeFileSync(path.join(d, ".claude", "state", "layer"), "frontend\n");
+    const r = run(["cycle", d]);
+    assert.strictEqual(r.status, 0, r.stderr);
+    assert.match(r.stdout, /phase=green/); assert.match(r.stdout, /layer=frontend/);
+    assert.match(r.stdout, /6/, "counts cycles since the last verdict");
+    assert.match(r.stdout, /critic/i, "nudges a critic pass");
+  } finally { fs.rmSync(d, { recursive: true, force: true }); }
+});
+
+test("tics cycle does not nudge the critic right after a verdict", () => {
+  const d = freshWithTics([
+    T({ seq: 1, kind: "signal", from: "run-suite", to: "*", result: "green", msg: "g" }),
+    T({ seq: 2, kind: "verdict", from: "tdd-critic", to: "orchestrator", result: "pass", msg: "ok" }),
+  ]);
+  try {
+    const r = run(["cycle", d]);
+    assert.doesNotMatch(r.stdout, /consider/i, "no nudge when a verdict is recent");
+  } finally { fs.rmSync(d, { recursive: true, force: true }); }
+});
+
 test("update migrates the stale tics-view.js reader to .cjs", () => {
   const d = fs.mkdtempSync(path.join(os.tmpdir(), "tt-mig-"));
   run([d]);

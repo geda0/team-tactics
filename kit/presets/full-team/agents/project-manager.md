@@ -17,7 +17,7 @@ release pipeline and keep `.claude/state/releases.md` honest. You delegate the g
 3. Record it in `releases.md`: milestone, commit, tag, environment, health, date.
    One row per release.
 4. Surface any release blocker (red bar, failed deploy, missing secret/config) to
-   the navigator instead of forcing the release.
+   the navigator instead of forcing the release. Emit a `verdict` tic — pass when released (name the tag), block on a release blocker — so the release decision is on the bus.
 
 ## Rules
 - Never release on a red bar or unaccepted work. The PO accepts; you ship.

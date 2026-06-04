@@ -1,0 +1,11 @@
+#!/bin/sh
+# team-tactics post-commit — emits a `commit` tic so work LANDED shows on the bus under ANY tool
+# (git runs this, so Cursor/CLI/Claude commits all become visible). Installed by `tics install-hooks`.
+# Disable: COMMIT_TIC=0 in .claude/tdd.config.
+[ "${COMMIT_TIC:-1}" = "1" ] || exit 0
+root=$(git rev-parse --show-toplevel 2>/dev/null) || exit 0
+[ -x "$root/.claude/hooks/tic.sh" ] || exit 0
+h=$(git rev-parse --short HEAD 2>/dev/null); b=$(git rev-parse --abbrev-ref HEAD 2>/dev/null)
+s=$(git log -1 --pretty=%s 2>/dev/null)
+"$root/.claude/hooks/tic.sh" git "*" commit "$s ($h on $b)" "$h" >/dev/null 2>&1 || true
+exit 0

@@ -132,6 +132,20 @@ function claimCheckCli(targetDir, file, myScope) {
   if (c) { console.log(c.scope + " (#" + (c.seq || "?") + " " + (c.from || "?") + ", claim:" + c.token + ")"); return 3; }
   return 0;
 }
+function ticsCycle(targetDir) {
+  const st = path.join(targetDir, ".claude", "state");
+  const rd = (f) => { try { return fs.readFileSync(path.join(st, f), "utf8").trim(); } catch (e) { return ""; } };
+  const phase = rd("phase") || "?", layer = rd("layer") || "?", scope = rd("scope") || "*";
+  const t = loadTics(targetDir);
+  const lastSig = [...t].reverse().find((x) => x.kind === "signal");
+  let since = 0;
+  for (let i = t.length - 1; i >= 0; i--) { if (t[i].kind === "verdict") break; if (t[i].kind === "signal" || t[i].kind === "handoff") since++; }
+  console.log("Cycle: phase=" + phase + " layer=" + layer + " scope=" + scope);
+  console.log("  last suite: " + (lastSig ? (lastSig.result || "?") : "(none yet)"));
+  if (since > 5) console.log("  " + since + " cycles since the last tdd-critic verdict — consider a critic pass (rule: every ~3-5 cycles).");
+  else console.log("  " + since + " cycles since the last critic verdict.");
+  return 0;
+}
 function main(argv, defaultRoot) {
   let scope = null; const rest = [];
   for (let i = 0; i < argv.length; i++) { const a = argv[i]; if (a === "--scope") scope = argv[++i] || ""; else rest.push(a); }
@@ -146,6 +160,7 @@ function main(argv, defaultRoot) {
     case "conductor": return ticsConductor(target);
     case "claims": return ticsClaims(target);
     case "sections": return ticsSections(target);
+    case "cycle": return ticsCycle(target);
     case "claim-check": return claimCheckCli(target, cfFile, cfScope);
     default: console.error("usage: tics <log [--scope S] | inbox <role> [--scope S] | conductor | claims | sections | claim-check <file> <scope>>"); return 2;
   }
@@ -153,4 +168,4 @@ function main(argv, defaultRoot) {
 if (require.main === module) {
   process.exit(main(process.argv.slice(2), path.join(__dirname, "..", "..")) || 0);
 }
-module.exports = { loadTics, loadSignalEvents, ticsLog, ticsInbox, ticsConductor, ticsClaims, ticsSections, claimCheck, claimCheckCli, main };
+module.exports = { loadTics, loadSignalEvents, ticsLog, ticsInbox, ticsConductor, ticsClaims, ticsSections, ticsCycle, claimCheck, claimCheckCli, main };

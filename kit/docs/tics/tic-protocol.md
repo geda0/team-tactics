@@ -63,11 +63,13 @@ Use the installed reader `.claude/hooks/tics <cmd>` (agents) or `npx team-tactic
 - `tics report` — process metrics aggregated from the `signal` tics.
 - `tics conductor` — the cross-pair coupling tics only (claim/release/contract/need/msg).
 - `tics claims` — active file/module claims (claim minus release), by scope.
+- `tics cycle` — inner-loop dashboard: phase/layer/scope + last suite signal + cycles since the last tdd-critic verdict (nudges a critic pass when overdue).
 
 ## Parallel pairs (the coupling kit)
 Run independent slices as **parallel pairs**, coordinated by coupling-tics:
 - `claim` / `release` — a pair claims a file/module (`ref`) so two pairs don't edit the same
   thing; release when done. With `CLAIMS_ENFORCE` (default on) the guard blocks an edit to a file held by another scope and emits a `need`. `tics claims` lists what's owned (claim minus release), by scope.
+- `commit` — a VCS landing event from the post-commit git hook; git runs it under ANY tool, so commits land on the bus even where the Claude Code hooks don't fire (e.g. Cursor) — the cross-tool visibility bridge.
 - `contract` — the architect publishes a seam (a coupling-tic) that unblocks dependent pairs.
 - `need` — a pair signals a dependency ("need contract C").
 

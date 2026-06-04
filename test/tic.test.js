@@ -155,6 +155,15 @@ test("emit_tic honors TICS_DIR — a shared spool bus across roots (worktree sec
   } finally { fs.rmSync(d, { recursive: true, force: true }); fs.rmSync(shared, { recursive: true, force: true }); }
 });
 
+test("tic.sh accepts the commit kind (a VCS landing event)", () => {
+  const d = sandbox();
+  try {
+    const r = cp.spawnSync("bash", [path.join(d, ".claude", "hooks", "tic.sh"), "git", "*", "commit", "landed abc on main", "abc"], { encoding: "utf8", cwd: d });
+    assert.strictEqual(r.status, 0, r.stderr);
+    assert.strictEqual(ticsOf(d).pop().kind, "commit");
+  } finally { fs.rmSync(d, { recursive: true, force: true }); }
+});
+
 test("tic.sh rejects an unknown kind — no noise in the log, lists the valid set", () => {
   const d = sandbox();
   try {
