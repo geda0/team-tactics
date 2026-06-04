@@ -57,13 +57,14 @@ pairing-tic is just a tightly-scoped coupling-tic. Filtering by scope keeps a vi
 
 ## Viewing
 Use the installed reader `.claude/hooks/tics <cmd>` (agents) or `npx team-tactics <cmd>` (shell); `tic.sh` only EMITS.
-- `tics log [--scope <s>]` — the thread; with --scope, just that scope + global (`*`).
+- `tics log [--scope <s>]` — the thread; with --scope, just that scope + global (`*`); with `--all`, merged across every git worktree's bus (whole picture).
 - `tics inbox <role> [--scope <s>]` — your inbox: tics where `to ∈ {<role>, *}` (and scope, if given). Read it at the start of your
   turn and address any directed `msg`.
 - `tics report` — process metrics aggregated from the `signal` tics.
 - `tics conductor` — the cross-pair coupling tics only (claim/release/contract/need/msg).
 - `tics claims` — active file/module claims (claim minus release), by scope.
 - `tics cycle` — inner-loop dashboard: phase/layer/scope + last suite signal + cycles since the last tdd-critic verdict (nudges a critic pass when overdue).
+- `tics gate` — release gate: exits non-zero unless the required outer-loop verdicts (product-owner accept + tdd-critic PASS) are on the bus; the project-manager runs it before tagging.
 
 ## Parallel pairs (the coupling kit)
 Run independent slices as **parallel pairs**, coordinated by coupling-tics:

@@ -75,6 +75,26 @@ test("run-suite signal tic: red carries a nonzero exit", () => {
   } finally { fs.rmSync(d, { recursive: true, force: true }); }
 });
 
+test("run-suite folds TYPECHECK_CMD into the signal (tests green + typecheck red => red)", () => {
+  const d = sandbox("true");                                  // tests pass
+  fs.appendFileSync(path.join(d, ".claude", "tdd.config"), '\nTYPECHECK_CMD="false"\n');  // typecheck fails
+  try {
+    fire(d, "run-suite.sh", edit("src/x.js"));
+    const sig = ticsOf(d).filter((x) => x.kind === "signal").pop();
+    assert.strictEqual(sig.result, "red", "typecheck failure makes a vitest-green cycle red");
+  } finally { fs.rmSync(d, { recursive: true, force: true }); }
+});
+
+test("run-suite stays green when tests AND TYPECHECK_CMD both pass", () => {
+  const d = sandbox("true");
+  fs.appendFileSync(path.join(d, ".claude", "tdd.config"), '\nTYPECHECK_CMD="true"\n');
+  try {
+    fire(d, "run-suite.sh", edit("src/x.js"));
+    const sig = ticsOf(d).filter((x) => x.kind === "signal").pop();
+    assert.strictEqual(sig.result, "green");
+  } finally { fs.rmSync(d, { recursive: true, force: true }); }
+});
+
 test("guard emits a block tic on exit 2, and nothing on an allowed edit", () => {
   const d = sandbox();
   try {

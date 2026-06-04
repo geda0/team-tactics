@@ -162,6 +162,37 @@ function ticsCycle(targetDir) {
   else console.log("  " + since + " cycles since the last critic verdict.");
   return 0;
 }
+function verdictOutcome(x) {
+  const r = (x.result || "").toLowerCase();
+  if (r === "pass") return "pass";
+  if (r === "concerns" || r === "block" || r === "blocked") return r;
+  const m = (x.msg || "").toLowerCase();
+  if (/\b(block|concern|fail|reject)/.test(m)) return "concerns";
+  if (/\bpass\b/.test(m)) return "pass";
+  return "unknown";
+}
+function ticsGate(targetDir, all) {
+  const t = (all ? loadTicsAll(targetDir) : loadTics(targetDir)).filter((x) => x.kind === "verdict");
+  const latest = {};
+  for (const x of t) latest[x.from] = x;
+  const problems = [];
+  for (const role of ["product-owner", "tdd-critic"]) {
+    const v = latest[role];
+    if (!v) { problems.push("no " + role + " verdict on the bus"); continue; }
+    const o = verdictOutcome(v);
+    if (o !== "pass") problems.push(role + ": " + o + "  (#" + (v.seq || "?") + " " + (v.msg || "").slice(0, 60) + ")");
+  }
+  const qa = latest["qa-verifier"];
+  if (qa && verdictOutcome(qa) !== "pass") problems.push("qa-verifier: " + verdictOutcome(qa));
+  if (!problems.length) {
+    console.log("Release gate: CLEAR — product-owner + tdd-critic verdicts are pass" + (qa ? " (+ qa-verifier)" : "") + ".");
+    return 0;
+  }
+  console.error("Release gate: BLOCKED — " + problems.length + " issue(s):");
+  for (const p of problems) console.error("  - " + p);
+  console.error("  Release only when PO-accept + tdd-critic PASS are on the bus (see docs/tdd/outer-loop.md).");
+  return 1;
+}
 function main(argv, defaultRoot) {
   let scope = null, all = false; const rest = [];
   for (let i = 0; i < argv.length; i++) { const a = argv[i]; if (a === "--scope") scope = argv[++i] || ""; else if (a === "--all") all = true; else rest.push(a); }
@@ -177,6 +208,7 @@ function main(argv, defaultRoot) {
     case "claims": return ticsClaims(target, all);
     case "sections": return ticsSections(target, all);
     case "cycle": return ticsCycle(target);
+    case "gate": return ticsGate(target, all);
     case "claim-check": return claimCheckCli(target, cfFile, cfScope);
     default: console.error("usage: tics <log [--scope S] | inbox <role> [--scope S] | conductor | claims | sections | claim-check <file> <scope>] [--all]>"); return 2;
   }
@@ -184,4 +216,4 @@ function main(argv, defaultRoot) {
 if (require.main === module) {
   process.exit(main(process.argv.slice(2), path.join(__dirname, "..", "..")) || 0);
 }
-module.exports = { loadTics, loadSignalEvents, ticsLog, ticsInbox, ticsConductor, ticsClaims, ticsSections, ticsCycle, claimCheck, claimCheckCli, main };
+module.exports = { loadTics, loadSignalEvents, ticsLog, ticsInbox, ticsConductor, ticsClaims, ticsSections, ticsCycle, ticsGate, claimCheck, claimCheckCli, main };

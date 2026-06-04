@@ -50,7 +50,7 @@ if (preset !== null && preset !== "full-team" && preset !== "none") {
   process.exit(2);
 }
 let cmd = "init";
-if (["init", "update", "help", "selftest", "report", "validate", "log", "inbox", "conductor", "claims", "sections", "claim-check", "install-hooks", "cycle"].includes(rest[0])) cmd = rest.shift();
+if (["init", "update", "help", "selftest", "report", "validate", "log", "inbox", "conductor", "claims", "sections", "claim-check", "install-hooks", "cycle", "gate"].includes(rest[0])) cmd = rest.shift();
 const role = cmd === "inbox" ? rest.shift() : null;
 const cfFile = cmd === "claim-check" ? rest.shift() : null;
 const cfScope = cmd === "claim-check" ? (rest.shift() || scope || "") : null;
@@ -75,6 +75,7 @@ if (cmd === "conductor") { process.exit(TV.ticsConductor(target, all)); }
 if (cmd === "claims") { process.exit(TV.ticsClaims(target, all)); }
 if (cmd === "sections") { process.exit(TV.ticsSections(target, all)); }
 if (cmd === "cycle") { process.exit(TV.ticsCycle(target)); }
+if (cmd === "gate") { process.exit(TV.ticsGate(target, all)); }
 if (cmd === "claim-check") { process.exit(TV.claimCheckCli(target, cfFile, cfScope)); }
 if (cmd === "install-hooks") { process.exit(installHooks(target)); }
 

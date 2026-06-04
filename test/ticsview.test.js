@@ -331,3 +331,25 @@ test("full-team preset seeds .claude/state/sections.md (the context map)", () =>
   try { assert.ok(fs.existsSync(path.join(d, ".claude", "state", "sections.md")), "sections.md seeded"); }
   finally { fs.rmSync(d, { recursive: true, force: true }); }
 });
+
+test("tics gate is CLEAR when product-owner + tdd-critic verdicts pass, BLOCKED otherwise", () => {
+  const pass = freshWithTics([
+    T({ seq: 1, kind: "verdict", from: "tdd-critic", to: "orchestrator", result: "pass", msg: "M4 audit clean" }),
+    T({ seq: 2, kind: "verdict", from: "product-owner", to: "orchestrator", result: "pass", msg: "M4 accepted" }),
+  ]);
+  try {
+    const r = run(["gate", pass]);
+    assert.strictEqual(r.status, 0, "clear: " + r.stderr);
+    assert.match(r.stdout, /CLEAR/i);
+  } finally { fs.rmSync(pass, { recursive: true, force: true }); }
+  const blocked = freshWithTics([
+    T({ seq: 1, kind: "verdict", from: "tdd-critic", to: "orchestrator", result: "concerns", msg: "owes cost-gating proof" }),
+  ]);
+  try {
+    const r = run(["gate", blocked]);
+    assert.notStrictEqual(r.status, 0, "blocked");
+    assert.match(r.stdout + r.stderr, /BLOCK/i);
+    assert.match(r.stdout + r.stderr, /product-owner/, "names the missing PO verdict");
+    assert.match(r.stdout + r.stderr, /tdd-critic/, "names the critic concerns");
+  } finally { fs.rmSync(blocked, { recursive: true, force: true }); }
+});

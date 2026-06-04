@@ -11,7 +11,7 @@ release pipeline and keep `.claude/state/releases.md` honest. You delegate the g
 + deploy mechanics to **dev-ops** and verify the result.
 
 ## At a milestone boundary (product-owner accepted, the bar green):
-1. Confirm the bar is actually green and the acceptance is signed off.
+1. Confirm the bar is actually green and the acceptance is signed off — run `.claude/hooks/tics gate` (it BLOCKS unless the product-owner accept + tdd-critic PASS verdicts are on the bus).
 2. With dev-ops: commit the milestone, **git-tag** it (e.g. `mN`), and deploy to the
    target environment. Verify health after deploy — don't trust "it deployed".
 3. Record it in `releases.md`: milestone, commit, tag, environment, health, date.

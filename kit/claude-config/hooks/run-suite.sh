@@ -27,6 +27,13 @@ fi
 
 START="$(date +%s)"
 OUT="$(cd "$ROOT" && eval "$TEST_CMD" 2>&1)"; CODE=$?
+# Green means GREEN: on a passing suite, also run the optional type-check so a vitest-green /
+# tsc-red cycle (e.g. noUncheckedIndexedAccess) can't pass the signal. Opt-in: TYPECHECK_CMD.
+if [ "$CODE" -eq 0 ] && [ -n "${TYPECHECK_CMD:-}" ]; then
+  TCOUT="$(cd "$ROOT" && eval "$TYPECHECK_CMD" 2>&1)"; TC=$?
+  if [ "$TC" -ne 0 ]; then CODE=$TC; OUT="[typecheck RED] ($TYPECHECK_CMD)
+$TCOUT"; fi
+fi
 DUR=$(( $(date +%s) - START ))
 
 if [ "$CODE" -eq 0 ]; then
