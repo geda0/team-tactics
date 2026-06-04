@@ -146,3 +146,12 @@ test("installed .claude/hooks/tics is a local reader (inbox/log) — agents read
     assert.match(lg.stdout, /suite green/);
   } finally { fs.rmSync(d, { recursive: true, force: true }); }
 });
+
+test("installed JS hooks carry an eslint-disable header (don't break a host's lint)", () => {
+  const d = fs.mkdtempSync(path.join(os.tmpdir(), "tt-lint-"));
+  run([d]);
+  try {
+    assert.match(fs.readFileSync(path.join(d, ".claude", "hooks", "tics-view.js"), "utf8"), /eslint-disable/);
+    assert.match(fs.readFileSync(path.join(d, ".claude", "hooks", "tics"), "utf8"), /eslint-disable/);
+  } finally { fs.rmSync(d, { recursive: true, force: true }); }
+});

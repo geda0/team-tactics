@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+/* eslint-disable -- generated kit reader (CommonJS Node) */
 "use strict";
 const path = require("path");
 const root = path.join(__dirname, "..", ".."); // .claude/hooks/tics -> project root

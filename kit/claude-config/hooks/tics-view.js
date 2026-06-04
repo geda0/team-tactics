@@ -1,3 +1,4 @@
+/* eslint-disable -- generated kit reader (CommonJS Node) */
 "use strict";
 // tics-view.js — the tic READ layer (loadTics + views), shared by the installed reader
 // (.claude/hooks/tics) and the package CLI (bin/cli.js). Zero-dep; do NOT edit (refreshed).
