@@ -67,7 +67,7 @@ Use the installed reader `.claude/hooks/tics <cmd>` (agents) or `npx team-tactic
 ## Parallel pairs (the coupling kit)
 Run independent slices as **parallel pairs**, coordinated by coupling-tics:
 - `claim` / `release` — a pair claims a file/module (`ref`) so two pairs don't edit the same
-  thing; release when done. `tics claims` lists what's owned (claim minus release), by scope.
+  thing; release when done. With `CLAIMS_ENFORCE` (default on) the guard blocks an edit to a file held by another scope and emits a `need`. `tics claims` lists what's owned (claim minus release), by scope.
 - `contract` — the architect publishes a seam (a coupling-tic) that unblocks dependent pairs.
 - `need` — a pair signals a dependency ("need contract C").
 
