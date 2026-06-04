@@ -48,7 +48,8 @@ if (preset !== null && preset !== "full-team" && preset !== "none") {
   process.exit(2);
 }
 let cmd = "init";
-if (["init", "update", "help", "selftest", "report", "validate"].includes(rest[0])) cmd = rest.shift();
+if (["init", "update", "help", "selftest", "report", "validate", "log", "inbox"].includes(rest[0])) cmd = rest.shift();
+const role = cmd === "inbox" ? rest.shift() : null;
 const target = path.resolve(rest[0] || process.cwd());
 
 if (cmd === "help") {
@@ -64,6 +65,8 @@ if (!fs.existsSync(CFG)) {
 if (cmd === "selftest") { process.exit(selftest(target)); }
 if (cmd === "report") { process.exit(report(target)); }
 if (cmd === "validate") { process.exit(validateInstall(target)); }
+if (cmd === "log") { process.exit(ticsLog(target)); }
+if (cmd === "inbox") { process.exit(ticsInbox(target, role)); }
 
 // ---- helpers ------------------------------------------------------------
 function ensureDir(d) { fs.mkdirSync(d, { recursive: true }); }
@@ -391,15 +394,50 @@ resolve_layer() {
 // ---- report -------------------------------------------------------------
 // Summarize the cycle telemetry so you can see how the PROCESS is performing —
 // cycles per layer, implementer retries, suite durations, pass rates.
+// ---- tic views: the agent-to-agent thread (.claude/state/tics.jsonl) ----
+function loadTics(targetDir) {
+  try {
+    return fs.readFileSync(path.join(targetDir, ".claude", "state", "tics.jsonl"), "utf8")
+      .split("\n").filter(Boolean)
+      .map((l) => { try { return JSON.parse(l); } catch (e) { return null; } }).filter(Boolean);
+  } catch (e) { return []; }
+}
+function loadSignalEvents(targetDir) {
+  if (fs.existsSync(path.join(targetDir, ".claude", "state", "tics.jsonl")))
+    return loadTics(targetDir).filter((t) => t.kind === "signal");
+  try {
+    return fs.readFileSync(path.join(targetDir, ".claude", "state", "telemetry.jsonl"), "utf8")
+      .split("\n").filter(Boolean)
+      .map((l) => { try { return JSON.parse(l); } catch (e) { return null; } })
+      .filter((e) => e && e.event === "suite");
+  } catch (e) { return []; }
+}
+function ticsLog(targetDir) {
+  const t = loadTics(targetDir);
+  if (!t.length) { console.log("No tics yet — the agent thread is empty (.claude/state/tics.jsonl)."); return 0; }
+  for (const x of t) {
+    const when = (x.ts || "").slice(11, 19) || "--:--:--";
+    const arrow = ((x.from || "?") + " -> " + (x.to || "*")).padEnd(28);
+    const kind = (x.kind || "?").padEnd(9);
+    const ctx = ("[" + (x.layer || "?") + "/" + (x.phase || "?") + "]").padEnd(14);
+    console.log(String(x.seq || "").padStart(3) + "  " + when + "  " + arrow + kind + ctx + " " + (x.msg || "") + (x.result ? "  (" + x.result + ")" : ""));
+  }
+  return 0;
+}
+function ticsInbox(targetDir, role) {
+  if (!role) { console.error("usage: tics inbox <role>   (e.g. tics inbox architect)"); return 2; }
+  const t = loadTics(targetDir).filter((x) => x.to === role || x.to === "*");
+  if (!t.length) { console.log("Inbox empty for '" + role + "' (no tics addressed to it or broadcast)."); return 0; }
+  console.log("Inbox for " + role + "  (to = " + role + " or *):");
+  for (const x of t) console.log("  #" + (x.seq || "?") + "  " + (x.from || "?") + " [" + (x.kind || "?") + "]  " + (x.msg || "") + (x.result ? "  (" + x.result + ")" : ""));
+  return 0;
+}
 function report(targetDir) {
-  const tf = path.join(targetDir, ".claude", "state", "telemetry.jsonl");
-  if (!fs.existsSync(tf)) {
-    console.log("No telemetry yet at " + tf + ".\nRun some red->green cycles (telemetry is emitted by the run-suite hook), then re-run report.");
+  const events = loadSignalEvents(targetDir);
+  if (events.length === 0) {
+    console.log("No suite signals yet. Run some red->green cycles (run-suite emits a 'signal' tic), then re-run `tics report`.");
     return 0;
   }
-  const events = fs.readFileSync(tf, "utf8").split("\n").filter(Boolean)
-    .map((l) => { try { return JSON.parse(l); } catch (e) { return null; } }).filter(Boolean);
-  if (events.length === 0) { console.log("Telemetry file has no parseable events."); return 0; }
 
   const layers = {};
   let totalDur = 0, runs = 0;

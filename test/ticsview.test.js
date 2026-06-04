@@ -1,0 +1,70 @@
+"use strict";
+// tic views: `tics log` (the thread), `tics inbox <role>` (to in {role,*}), `tics report` (signal tics + telemetry fallback).
+const { test } = require("node:test");
+const assert = require("node:assert");
+const fs = require("fs"), os = require("os"), path = require("path"), cp = require("child_process");
+const CLI = path.join(__dirname, "..", "bin", "cli.js");
+const run = (args, cwd) => cp.spawnSync("node", [CLI, ...args], { encoding: "utf8", cwd: cwd || os.tmpdir() });
+const T = (o) => Object.assign({ ts: "2026-06-04T01:00:00Z", seq: 1, kind: "note", from: "a", to: "*", phase: "green", layer: "app", msg: "", ref: "", result: "" }, o);
+function freshWithTics(lines) {
+  const d = fs.mkdtempSync(path.join(os.tmpdir(), "tt-view-"));
+  run([d]);
+  fs.writeFileSync(path.join(d, ".claude", "state", "tics.jsonl"), lines.map((l) => JSON.stringify(l)).join("\n") + "\n");
+  return d;
+}
+
+test("`tics log` renders the thread (from->to, kind, msg, result); skips junk lines", () => {
+  const d = freshWithTics([
+    T({ seq: 1, kind: "delegate", from: "orchestrator", to: "test-writer", msg: "slice S2" }),
+    T({ seq: 2, kind: "signal", from: "run-suite", to: "*", result: "red", msg: "[app] suite red" }),
+    T({ seq: 3, kind: "handoff", from: "test-writer", to: "orchestrator", result: "red", msg: "added failing test" }),
+  ]);
+  try {
+    fs.appendFileSync(path.join(d, ".claude", "state", "tics.jsonl"), "junk not json\n");
+    const r = run(["log", d]);
+    assert.strictEqual(r.status, 0, r.stderr);
+    assert.match(r.stdout, /orchestrator -> test-writer/);
+    for (const k of ["delegate", "signal", "handoff", "slice S2"]) assert.match(r.stdout, new RegExp(k));
+  } finally { fs.rmSync(d, { recursive: true, force: true }); }
+});
+
+test("`tics inbox <role>` shows tics to the role or broadcast, excludes others", () => {
+  const d = freshWithTics([
+    T({ seq: 1, kind: "msg", from: "navigator", to: "architect", msg: "use option B" }),
+    T({ seq: 2, kind: "msg", from: "orchestrator", to: "*", msg: "standup" }),
+    T({ seq: 3, kind: "msg", from: "navigator", to: "implementer", msg: "not for arch" }),
+  ]);
+  try {
+    const r = run(["inbox", "architect", d]);
+    assert.strictEqual(r.status, 0, r.stderr);
+    assert.match(r.stdout, /use option B/);
+    assert.match(r.stdout, /standup/);
+    assert.doesNotMatch(r.stdout, /not for arch/);
+  } finally { fs.rmSync(d, { recursive: true, force: true }); }
+});
+
+test("`tics report` reads signal tics (per-layer metrics)", () => {
+  const d = freshWithTics([
+    T({ seq: 1, kind: "signal", layer: "app", phase: "red", result: "red", durationSec: 3 }),
+    T({ seq: 2, kind: "signal", layer: "app", phase: "green", result: "green", durationSec: 5 }),
+    T({ seq: 3, kind: "delegate", from: "orchestrator", to: "x" }),
+  ]);
+  try {
+    const r = run(["report", d]);
+    assert.strictEqual(r.status, 0, r.stderr);
+    assert.match(r.stdout, /app/);
+  } finally { fs.rmSync(d, { recursive: true, force: true }); }
+});
+
+test("`tics report` falls back to legacy telemetry.jsonl when tics.jsonl is absent", () => {
+  const d = fs.mkdtempSync(path.join(os.tmpdir(), "tt-view-"));
+  run([d]);
+  try {
+    fs.rmSync(path.join(d, ".claude", "state", "tics.jsonl"), { force: true });
+    fs.writeFileSync(path.join(d, ".claude", "state", "telemetry.jsonl"),
+      JSON.stringify({ ts: "x", event: "suite", layer: "app", phase: "green", result: "green", exit: 0, durationSec: 4 }) + "\n");
+    const r = run(["report", d]);
+    assert.strictEqual(r.status, 0, r.stderr);
+    assert.match(r.stdout, /app/);
+  } finally { fs.rmSync(d, { recursive: true, force: true }); }
+});
