@@ -55,6 +55,17 @@ test("0.6: KICKOFF.md covers both greenfield and existing-repo adoption", () => 
   assert.match(k, /one[- ]shot/i, "references the one-shot");
 });
 
+test("0.8: install ships the divide-and-conquer doctrine", () => {
+  const d = fs.mkdtempSync(path.join(os.tmpdir(), "tdd-cli-"));
+  try {
+    run([d]);
+    const doc = path.join(d, "docs", "tdd", "divide-and-conquer.md");
+    assert.ok(fs.existsSync(doc), "divide-and-conquer.md installed");
+    const s = fs.readFileSync(doc, "utf8");
+    assert.match(s, /divide and conquer/i); assert.match(s, /read-only|read-side/i); assert.match(s, /scope/);
+  } finally { fs.rmSync(d, { recursive: true, force: true }); }
+});
+
 test("0.7: install ships the tic-protocol spec + an executable tic.sh", () => {
   const d = fs.mkdtempSync(path.join(os.tmpdir(), "tdd-cli-"));
   try {
