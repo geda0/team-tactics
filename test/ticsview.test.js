@@ -98,3 +98,35 @@ test("`tics inbox <role> --scope` filters by addressee AND scope", () => {
     assert.doesNotMatch(r.stdout, /for impl in S5/);
   } finally { fs.rmSync(d, { recursive: true, force: true }); }
 });
+
+test("`tics conductor` shows only coupling kinds (claim/release/contract/need/msg), hides pairing noise", () => {
+  const d = freshWithTics([
+    T({ seq: 1, kind: "contract", from: "architect", to: "*", scope: "contract:RankedFeed", msg: "seam ready" }),
+    T({ seq: 2, kind: "claim", from: "pairA", to: "*", scope: "pair:S2", ref: "backend/feed.ts", msg: "own feed" }),
+    T({ seq: 3, kind: "signal", from: "run-suite", to: "*", scope: "pair:S2", result: "green", msg: "S2 green" }),
+    T({ seq: 4, kind: "delegate", from: "orchestrator", to: "impl", scope: "pair:S2", msg: "do S2" }),
+    T({ seq: 5, kind: "need", from: "pairB", to: "architect", msg: "need the feed contract" }),
+  ]);
+  try {
+    const r = run(["conductor", d]);
+    assert.strictEqual(r.status, 0, r.stderr);
+    for (const m of ["seam ready", "own feed", "need the feed contract"]) assert.match(r.stdout, new RegExp(m));
+    assert.doesNotMatch(r.stdout, /S2 green/);   // signal = pairing noise to the conductor
+    assert.doesNotMatch(r.stdout, /do S2/);       // delegate = pairing noise
+  } finally { fs.rmSync(d, { recursive: true, force: true }); }
+});
+
+test("`tics claims` lists active claims (claim minus release), by scope", () => {
+  const d = freshWithTics([
+    T({ seq: 1, kind: "claim", scope: "pair:S2", ref: "backend/feed.ts", msg: "own" }),
+    T({ seq: 2, kind: "claim", scope: "pair:S5", ref: "frontend/app.tsx", msg: "own" }),
+    T({ seq: 3, kind: "release", scope: "pair:S2", ref: "backend/feed.ts", msg: "done" }),
+  ]);
+  try {
+    const r = run(["claims", d]);
+    assert.strictEqual(r.status, 0, r.stderr);
+    assert.match(r.stdout, /frontend\/app\.tsx/);       // still claimed by S5
+    assert.match(r.stdout, /pair:S5/);
+    assert.doesNotMatch(r.stdout, /backend\/feed\.ts/); // released by S2
+  } finally { fs.rmSync(d, { recursive: true, force: true }); }
+});

@@ -49,7 +49,7 @@ if (preset !== null && preset !== "full-team" && preset !== "none") {
   process.exit(2);
 }
 let cmd = "init";
-if (["init", "update", "help", "selftest", "report", "validate", "log", "inbox"].includes(rest[0])) cmd = rest.shift();
+if (["init", "update", "help", "selftest", "report", "validate", "log", "inbox", "conductor", "claims"].includes(rest[0])) cmd = rest.shift();
 const role = cmd === "inbox" ? rest.shift() : null;
 const target = path.resolve(rest[0] || process.cwd());
 
@@ -68,6 +68,8 @@ if (cmd === "report") { process.exit(report(target)); }
 if (cmd === "validate") { process.exit(validateInstall(target)); }
 if (cmd === "log") { process.exit(ticsLog(target, scope)); }
 if (cmd === "inbox") { process.exit(ticsInbox(target, role, scope)); }
+if (cmd === "conductor") { process.exit(ticsConductor(target)); }
+if (cmd === "claims") { process.exit(ticsClaims(target)); }
 
 // ---- helpers ------------------------------------------------------------
 function ensureDir(d) { fs.mkdirSync(d, { recursive: true }); }
@@ -140,6 +142,7 @@ function ensureGitignore(targetDir) {
     ".claude/state/suite-status\n" +
     ".claude/state/telemetry.jsonl\n" +
     ".claude/state/tics.jsonl\n" +
+    ".claude/state/tics.d/\n" +
     ".claude/**/*.bak\n" +
     "*.team-tactics.*\n" +
     END;
@@ -401,14 +404,17 @@ resolve_layer() {
 // cycles per layer, implementer retries, suite durations, pass rates.
 // ---- tic views: the agent-to-agent thread (.claude/state/tics.jsonl) ----
 function loadTics(targetDir) {
-  try {
-    return fs.readFileSync(path.join(targetDir, ".claude", "state", "tics.jsonl"), "utf8")
-      .split("\n").filter(Boolean)
-      .map((l) => { try { return JSON.parse(l); } catch (e) { return null; } }).filter(Boolean);
-  } catch (e) { return []; }
+  const dir = path.join(targetDir, ".claude", "state");
+  const parse = (s) => { try { return JSON.parse(s); } catch (e) { return null; } };
+  const out = [];
+  try { for (const l of fs.readFileSync(path.join(dir, "tics.jsonl"), "utf8").split("\n")) if (l.trim()) { const o = parse(l); if (o) out.push(o); } } catch (e) {}
+  try { for (const f of fs.readdirSync(path.join(dir, "tics.d"))) if (f.endsWith(".json")) { const o = parse(fs.readFileSync(path.join(dir, "tics.d", f), "utf8").trim()); if (o) out.push(o); } } catch (e) {}
+  out.sort((a, b) => String(a.ts || "").localeCompare(String(b.ts || "")) || ((a.seq || 0) - (b.seq || 0)));
+  return out;
 }
 function loadSignalEvents(targetDir) {
-  if (fs.existsSync(path.join(targetDir, ".claude", "state", "tics.jsonl")))
+  const _st = path.join(targetDir, ".claude", "state");
+  if (fs.existsSync(path.join(_st, "tics.jsonl")) || fs.existsSync(path.join(_st, "tics.d")))
     return loadTics(targetDir).filter((t) => t.kind === "signal");
   try {
     return fs.readFileSync(path.join(targetDir, ".claude", "state", "telemetry.jsonl"), "utf8")
@@ -437,6 +443,28 @@ function ticsInbox(targetDir, role, scopeFilter) {
   if (!t.length) { console.log("Inbox empty for '" + role + "' (no tics addressed to it or broadcast)."); return 0; }
   console.log("Inbox for " + role + "  (to = " + role + " or *):");
   for (const x of t) console.log("  #" + (x.seq || "?") + "  " + (x.from || "?") + " [" + (x.kind || "?") + "]  " + (x.msg || "") + (x.result ? "  (" + x.result + ")" : ""));
+  return 0;
+}
+function ticsConductor(targetDir) {
+  const COUPLING = ["claim", "release", "contract", "need", "msg"];
+  const t = loadTics(targetDir).filter((x) => COUPLING.indexOf(x.kind) !== -1);
+  if (!t.length) { console.log("No coupling tics yet (claim/release/contract/need/msg)."); return 0; }
+  console.log("Conductor view — cross-pair coupling tics:");
+  for (const x of t) {
+    const when = (x.ts || "").slice(11, 19);
+    console.log("  #" + (x.seq || "?") + " " + when + "  " + (x.from || "?") + " -> " + (x.to || "*") + "  [" + (x.kind || "?") + " " + (x.scope || "*") + "]  " + (x.msg || "") + (x.ref ? " {" + x.ref + "}" : "") + (x.result ? " (" + x.result + ")" : ""));
+  }
+  return 0;
+}
+function ticsClaims(targetDir) {
+  const active = new Map();
+  for (const x of loadTics(targetDir)) {
+    if (x.kind === "claim" && x.ref) active.set(x.ref, x);
+    else if (x.kind === "release" && x.ref) active.delete(x.ref);
+  }
+  if (!active.size) { console.log("No active claims."); return 0; }
+  console.log("Active claims (claim minus release):");
+  for (const x of active.values()) console.log("  " + x.ref + "  <-  " + (x.scope || "?") + "  (#" + (x.seq || "?") + " " + (x.from || "?") + ")");
   return 0;
 }
 function report(targetDir) {

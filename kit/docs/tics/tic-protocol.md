@@ -60,6 +60,27 @@ pairing-tic is just a tightly-scoped coupling-tic. Filtering by scope keeps a vi
 - `tics inbox <role> [--scope <s>]` — your inbox: tics where `to ∈ {<role>, *}` (and scope, if given). Read it at the start of your
   turn and address any directed `msg`.
 - `tics report` — process metrics aggregated from the `signal` tics.
+- `tics conductor` — the cross-pair coupling tics only (claim/release/contract/need/msg).
+- `tics claims` — active file/module claims (claim minus release), by scope.
+
+## Parallel pairs (the coupling kit)
+Run independent slices as **parallel pairs**, coordinated by coupling-tics:
+- `claim` / `release` — a pair claims a file/module (`ref`) so two pairs don't edit the same
+  thing; release when done. `tics claims` lists what's owned (claim minus release), by scope.
+- `contract` — the architect publishes a seam (a coupling-tic) that unblocks dependent pairs.
+- `need` — a pair signals a dependency ("need contract C").
+
+The **conductor** (orchestrator) watches `tics conductor` — only the cross-pair coupling tics,
+with each pair's high-frequency pairing-tics filtered out as noise — and assigns conflict-free
+scopes. Each pair works in its scope (`echo pair:S2 > .claude/state/scope`) and reads its own
+thread via `tics log --scope pair:S2`.
+
+### The shared bus (store)
+For parallel writers sharing one log, set `TIC_STORE=spool` in `.claude/tdd.config`: each tic
+becomes its own file under `.claude/state/tics.d/` — concurrency-safe (no shared-file append or
+seq race). Default `TIC_STORE=jsonl` (one append-only file) suits a single session; the views
+merge either store transparently. SQLite is intentionally avoided — it would break the zero-dep
+/ Node>=16 / bash-hook portability invariants for wins not needed at session scale.
 
 ## Why it stays faithful to "never through chat"
 - `signal`/`block` are produced by the hooks — agents cannot forge an objective fact.
