@@ -158,6 +158,33 @@ test("installed JS hooks carry an eslint-disable header (don't break a host's li
   } finally { fs.rmSync(d, { recursive: true, force: true }); }
 });
 
+test("tics log folds consecutive run-suite signals of the same result (x N); store untouched", () => {
+  const d = freshWithTics([
+    T({ seq: 1, kind: "signal", from: "run-suite", to: "*", result: "green", msg: "[frontend] suite green" }),
+    T({ seq: 2, kind: "signal", from: "run-suite", to: "*", result: "green", msg: "[frontend] suite green" }),
+    T({ seq: 3, kind: "signal", from: "run-suite", to: "*", result: "green", msg: "[frontend] suite green" }),
+    T({ seq: 4, kind: "signal", from: "run-suite", to: "*", result: "red", msg: "[frontend] suite red" }),
+  ]);
+  try {
+    const r = run(["log", d]);
+    assert.strictEqual(r.status, 0, r.stderr);
+    assert.match(r.stdout, /suite green x3/, "the three greens fold into one row");
+    assert.strictEqual((r.stdout.match(/suite (green|red)/g) || []).length, 2, "view shows 2 signal rows, not 4");
+  } finally { fs.rmSync(d, { recursive: true, force: true }); }
+});
+
+test("a non-signal tic between run-suite signals breaks the fold (distinct steps stay distinct)", () => {
+  const d = freshWithTics([
+    T({ seq: 1, kind: "signal", from: "run-suite", to: "*", result: "green", msg: "suite green" }),
+    T({ seq: 2, kind: "handoff", from: "implementer", to: "orchestrator", result: "green", msg: "did the thing" }),
+    T({ seq: 3, kind: "signal", from: "run-suite", to: "*", result: "green", msg: "suite green" }),
+  ]);
+  try {
+    const r = run(["log", d]);
+    assert.strictEqual((r.stdout.match(/suite green/g) || []).length, 2, "not folded across the handoff");
+  } finally { fs.rmSync(d, { recursive: true, force: true }); }
+});
+
 test("update migrates the stale tics-view.js reader to .cjs", () => {
   const d = fs.mkdtempSync(path.join(os.tmpdir(), "tt-mig-"));
   run([d]);

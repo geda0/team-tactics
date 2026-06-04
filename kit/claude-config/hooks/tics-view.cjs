@@ -27,16 +27,29 @@ function scopeMatch(s, f) {
   s = s || "*";
   return s === f || s === "*" || f === "*" || s.indexOf(f + "/") === 0 || f.indexOf(s + "/") === 0;
 }
+function collapseRunSuite(list) {
+  // Fold a run of consecutive run-suite signals with the same result into one row (x N) —
+  // keeps the thread readable; the store is untouched so report() still sees every run.
+  const out = [];
+  for (const x of list) {
+    const p = out[out.length - 1];
+    if (p && p.kind === "signal" && p.from === "run-suite" && x.kind === "signal" && x.from === "run-suite" && (x.result || "") === (p.result || "")) {
+      p._count = (p._count || 1) + 1; p.ts = x.ts || p.ts; p.seq = x.seq || p.seq;
+    } else { out.push(Object.assign({}, x)); }
+  }
+  return out;
+}
 function ticsLog(targetDir, scopeFilter) {
   let t = loadTics(targetDir);
   if (scopeFilter) t = t.filter((x) => scopeMatch(x.scope, scopeFilter));
   if (!t.length) { console.log("No tics yet — the agent thread is empty (.claude/state/tics.jsonl)."); return 0; }
+  t = collapseRunSuite(t);
   for (const x of t) {
     const when = (x.ts || "").slice(11, 19) || "--:--:--";
     const arrow = ((x.from || "?") + " -> " + (x.to || "*")).padEnd(28);
     const kind = (x.kind || "?").padEnd(9);
     const ctx = ("[" + (x.layer || "?") + "/" + (x.phase || "?") + " " + (x.scope || "*") + "]").padEnd(22);
-    console.log(String(x.seq || "").padStart(3) + "  " + when + "  " + arrow + kind + ctx + " " + (x.msg || "") + (x.result ? "  (" + x.result + ")" : ""));
+    console.log(String(x.seq || "").padStart(3) + "  " + when + "  " + arrow + kind + ctx + " " + (x.msg || "") + (x._count > 1 ? " x" + x._count : "") + (x.result ? "  (" + x.result + ")" : ""));
   }
   return 0;
 }
@@ -45,8 +58,9 @@ function ticsInbox(targetDir, role, scopeFilter) {
   let t = loadTics(targetDir).filter((x) => x.to === role || x.to === "*");
   if (scopeFilter) t = t.filter((x) => scopeMatch(x.scope, scopeFilter));
   if (!t.length) { console.log("Inbox empty for '" + role + "' (no tics addressed to it or broadcast)."); return 0; }
+  t = collapseRunSuite(t);
   console.log("Inbox for " + role + "  (to = " + role + " or *):");
-  for (const x of t) console.log("  #" + (x.seq || "?") + "  " + (x.from || "?") + " [" + (x.kind || "?") + "]  " + (x.msg || "") + (x.result ? "  (" + x.result + ")" : ""));
+  for (const x of t) console.log("  #" + (x.seq || "?") + "  " + (x.from || "?") + " [" + (x.kind || "?") + "]  " + (x.msg || "") + (x._count > 1 ? " x" + x._count : "") + (x.result ? "  (" + x.result + ")" : ""));
   return 0;
 }
 function ticsConductor(targetDir) {

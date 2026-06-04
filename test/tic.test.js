@@ -124,12 +124,15 @@ test("emit_tic scope: falls back to '*' only when neither scope nor layer is set
   } finally { fs.rmSync(d, { recursive: true, force: true }); }
 });
 
-test("tic.sh warns on an unknown kind but still records it (data hygiene)", () => {
+test("tic.sh rejects an unknown kind — no noise in the log, lists the valid set", () => {
   const d = sandbox();
   try {
     const r = cp.spawnSync("bash", [path.join(d, ".claude", "hooks", "tic.sh"), "a", "b", "frontend:green", "oops"], { encoding: "utf8", cwd: d });
-    assert.match(r.stderr, /unknown kind/i, "warns about the bad kind");
-    assert.strictEqual(ticsOf(d).pop().kind, "frontend:green", "still recorded (never lose data)");
+    assert.notStrictEqual(r.status, 0, "non-zero exit on a bad kind");
+    assert.match(r.stderr, /delegate handoff signal/i, "lists the valid kinds");
+    let t = [];
+    try { t = fs.readFileSync(path.join(d, ".claude", "state", "tics.jsonl"), "utf8").trim().split("\n").filter(Boolean).map(JSON.parse); } catch (e) {}
+    assert.ok(!t.some((x) => x.kind === "frontend:green"), "bogus kind not recorded");
   } finally { fs.rmSync(d, { recursive: true, force: true }); }
 });
 
@@ -137,7 +140,9 @@ test("tic.sh refuses a read-shaped call (no garbage emit; points to the reader)"
   const d = sandbox();
   try {
     const r = cp.spawnSync("bash", [path.join(d, ".claude", "hooks", "tic.sh"), "implementer", "inbox", "--scope", "frontend"], { encoding: "utf8", cwd: d });
+    assert.notStrictEqual(r.status, 0, "non-zero exit on a read-shaped call");
     assert.match(r.stderr, /\.claude\/hooks\/tics|to read/i, "points to the reader");
+    assert.doesNotMatch(r.stderr, /tics --scope/, "doesn't echo the bad arg as the example");
     let t = [];
     try { t = fs.readFileSync(path.join(d, ".claude", "state", "tics.jsonl"), "utf8").trim().split("\n").filter(Boolean).map(JSON.parse); } catch (e) {}
     assert.ok(!t.some((x) => x.kind === "inbox" || x.kind === "--scope"), "no read-shaped garbage recorded");
