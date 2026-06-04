@@ -369,13 +369,14 @@ resolve_layer() {
   run("run-suite", { env: { TDD_SELFTEST_FAIL: "1" } });
   check("run-suite records red on fail",   fs.readFileSync(path.join(ST, "suite-status"), "utf8").trim() === "red" ? 1 : 0, 1);
 
-  // telemetry: one parseable JSON event per run
-  let telemetryOk = 0;
+  // tics: run-suite emits one signal tic per run (subsumes the old telemetry event)
+  let ticsOk = 0;
   try {
-    const lines = fs.readFileSync(path.join(ST, "telemetry.jsonl"), "utf8").split("\n").filter(Boolean).map((l) => JSON.parse(l));
-    telemetryOk = (lines.length >= 2 && lines.every((e) => e.event === "suite" && "result" in e && "durationSec" in e)) ? 1 : 0;
-  } catch (e) { telemetryOk = 0; }
-  check("telemetry JSONL emitted per run", telemetryOk, 1);
+    const lines = fs.readFileSync(path.join(ST, "tics.jsonl"), "utf8").split("\n").filter(Boolean).map((l) => JSON.parse(l));
+    const sig = lines.filter((e) => e.kind === "signal");
+    ticsOk = (sig.length >= 2 && sig.every((e) => "result" in e && "durationSec" in e)) ? 1 : 0;
+  } catch (e) { ticsOk = 0; }
+  check("signal tic emitted per suite run", ticsOk, 1);
 
   // require-green-to-stop: phase-gated, and it RE-VERIFIES a cached red before blocking.
   setState("suite-status", "red"); setState("phase", "green");
