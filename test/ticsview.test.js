@@ -353,3 +353,15 @@ test("tics gate is CLEAR when product-owner + tdd-critic verdicts pass, BLOCKED 
     assert.match(r.stdout + r.stderr, /tdd-critic/, "names the critic concerns");
   } finally { fs.rmSync(blocked, { recursive: true, force: true }); }
 });
+
+test("tics gate recognizes product-owner ACCEPT / approved (verdict vocabulary, not just result=pass)", () => {
+  const d = freshWithTics([
+    T({ seq: 1, kind: "verdict", from: "tdd-critic", to: "orchestrator", result: "pass", msg: "audit clean" }),
+    T({ seq: 2, kind: "verdict", from: "product-owner", to: "orchestrator", msg: "ACCEPT M4 (all clauses proven)" }),
+  ]);
+  try {
+    const r = run(["gate", d]);
+    assert.strictEqual(r.status, 0, "ACCEPT counts as pass: " + (r.stdout + r.stderr));
+    assert.match(r.stdout, /CLEAR/i);
+  } finally { fs.rmSync(d, { recursive: true, force: true }); }
+});

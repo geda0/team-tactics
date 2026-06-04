@@ -164,11 +164,11 @@ function ticsCycle(targetDir) {
 }
 function verdictOutcome(x) {
   const r = (x.result || "").toLowerCase();
-  if (r === "pass") return "pass";
-  if (r === "concerns" || r === "block" || r === "blocked") return r;
+  if (r === "pass" || r === "accept" || r === "accepted" || r === "approved") return "pass";
+  if (r === "concerns" || r === "block" || r === "blocked" || r === "reject" || r === "rejected") return r;
   const m = (x.msg || "").toLowerCase();
   if (/\b(block|concern|fail|reject)/.test(m)) return "concerns";
-  if (/\bpass\b/.test(m)) return "pass";
+  if (/\b(pass|accept|approv)/.test(m)) return "pass";
   return "unknown";
 }
 function ticsGate(targetDir, all) {
