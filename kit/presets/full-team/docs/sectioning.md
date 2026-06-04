@@ -36,10 +36,14 @@ If you're sectioning to organize *one* worker's tasks, stop — that's just the 
   Then `tics log --scope <section>` is the section's whole thread, `--scope <section>/<pair>`
   is one pair, and a pair also sees its section-level + global tics. `tics sections` is the
   live per-section dashboard.
-- **Run pairs in parallel** where sections are independent. Use the **spool store**
-  (`TIC_STORE=spool` in `.claude/tdd.config`) so concurrent writers never clobber the log;
-  the views merge it transparently. Optionally give each section a git **worktree** so
-  parallel edits don't fight — same repo, same spool bus.
+- **Run pairs in parallel** where sections are independent. In `.claude/tdd.config` set
+  `TIC_STORE=spool` (concurrent writers each append their own file — no clobber) and, when
+  sections live on separate git **worktrees**, point them all at ONE bus:
+  `TICS_DIR="$(cd "$ROOT" && cd "$(git rev-parse --git-common-dir)" && pwd)/tics-bus"`
+  — the git common dir is shared by every worktree, so all sections read/write one spool.
+  Without it each worktree keeps its own `.claude/state/`, the bus splits, and the conductor
+  can't correlate a `need` in one section with the `contract` that fills it. The views merge
+  jsonl + spool transparently.
 - **Coordinate seams with coupling-tics, not chat:**
   - `contract` — "here is the shape I publish" (provider → consumers).
   - `need` — "I'm blocked on your seam" (consumer → provider).

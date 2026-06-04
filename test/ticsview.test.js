@@ -185,6 +185,30 @@ test("a non-signal tic between run-suite signals breaks the fold (distinct steps
   } finally { fs.rmSync(d, { recursive: true, force: true }); }
 });
 
+test("worktree sections share one bus: TICS_DIR in tdd.config unifies emit + reader (conductor correlates across sections)", () => {
+  const shared = fs.mkdtempSync(path.join(os.tmpdir(), "tt-bus-"));
+  const A = fs.mkdtempSync(path.join(os.tmpdir(), "tt-wtA-"));
+  const B = fs.mkdtempSync(path.join(os.tmpdir(), "tt-wtB-"));
+  run([A]); run([B]);
+  for (const d of [A, B]) {
+    fs.appendFileSync(path.join(d, ".claude", "tdd.config"), "\nTIC_STORE=spool\nTICS_DIR='" + shared + "'\n");
+    fs.writeFileSync(path.join(d, ".claude", "state", "phase"), "off\n");
+    fs.writeFileSync(path.join(d, ".claude", "state", "layer"), "app\n");
+  }
+  fs.writeFileSync(path.join(A, ".claude", "state", "scope"), "inventory/S1\n");
+  fs.writeFileSync(path.join(B, ".claude", "state", "scope"), "orders/S2\n");
+  try {
+    cp.spawnSync(path.join(A, ".claude", "hooks", "tic.sh"), ["architect", "orders", "contract", "StockLevel", "StockLevel"], { cwd: A, encoding: "utf8" });
+    cp.spawnSync(path.join(B, ".claude", "hooks", "tic.sh"), ["ord-pair", "inventory", "need", "need StockLevel", "StockLevel"], { cwd: B, encoding: "utf8" });
+    const la = cp.spawnSync(path.join(A, ".claude", "hooks", "tics"), ["log"], { cwd: A, encoding: "utf8" });
+    assert.strictEqual(la.status, 0, la.stderr);
+    assert.match(la.stdout, /contract/, "A's reader sees the contract");
+    assert.match(la.stdout, /need/, "A's reader also sees orders' need (shared bus)");
+    const cd = cp.spawnSync(path.join(B, ".claude", "hooks", "tics"), ["conductor"], { cwd: B, encoding: "utf8" });
+    assert.match(cd.stdout, /contract/); assert.match(cd.stdout, /need/);
+  } finally { [A, B, shared].forEach((x) => fs.rmSync(x, { recursive: true, force: true })); }
+});
+
 test("update migrates the stale tics-view.js reader to .cjs", () => {
   const d = fs.mkdtempSync(path.join(os.tmpdir(), "tt-mig-"));
   run([d]);

@@ -124,6 +124,17 @@ test("emit_tic scope: falls back to '*' only when neither scope nor layer is set
   } finally { fs.rmSync(d, { recursive: true, force: true }); }
 });
 
+test("emit_tic honors TICS_DIR — a shared spool bus across roots (worktree sections)", () => {
+  const d = sandbox();
+  const shared = fs.mkdtempSync(path.join(os.tmpdir(), "tt-bus-"));
+  try {
+    const r = srcLib(d, "export TIC_STORE=spool; export TICS_DIR='" + shared + "'; emit_tic inv-pair '*' contract 'StockLevel' StockLevel");
+    assert.strictEqual(r.status, 0, r.stderr);
+    assert.strictEqual(fs.readdirSync(shared).filter((f) => f.endsWith(".json")).length, 1, "tic written to the shared bus");
+    assert.ok(!fs.existsSync(path.join(d, ".claude", "state", "tics.d")), "nothing in the per-root spool");
+  } finally { fs.rmSync(d, { recursive: true, force: true }); fs.rmSync(shared, { recursive: true, force: true }); }
+});
+
 test("tic.sh rejects an unknown kind — no noise in the log, lists the valid set", () => {
   const d = sandbox();
   try {
