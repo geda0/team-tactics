@@ -22,7 +22,6 @@ _lib_dir="$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")" && pwd)"
 : "${BASELINE_CMD:=$ALL_TEST_CMD}"
 
 # 3) Resolver (bash 3.2 safe). Defined LAST -> always the current kit version.
-# Per layer L: TEST_CMD_<L> -> pre-0.4 legacy alias (BE_/FE_/E2E_) -> ALL_TEST_CMD.
 resolve_layer() {
   _l="$1"
   eval "TEST_CMD=\"\${TEST_CMD_${_l}:-}\""
@@ -43,6 +42,8 @@ resolve_layer() {
 # 4) Tic protocol — append one structured agent-to-agent communication unit (a "tic") to
 # .claude/state/tics.jsonl. Hooks emit signal/block; agents emit delegate/handoff/verdict/msg
 # via .claude/hooks/tic.sh. Append-only + JSON-escaped; a logging failure never breaks a hook.
+# `scope` is ambient: read from .claude/state/scope (e.g. pair:S2), default "*" (global) — so a
+# pairing session's tics are tagged automatically and views can filter to 100% signal.
 #   emit_tic FROM TO KIND MSG [REF] [RESULT] [EXTRA_JSON]
 _tic_esc() { printf '%s' "$1" | tr -d '\r\n' | sed 's/\\/\\\\/g; s/"/\\"/g'; }
 emit_tic() {
@@ -52,10 +53,11 @@ emit_tic() {
   _seq=1; [ -f "$_tf" ] && _seq=$(( $(wc -l < "$_tf" 2>/dev/null) + 1 ))
   _ph="$(cat "$ROOT/.claude/state/phase" 2>/dev/null || echo unknown)"
   _ly="$(cat "$ROOT/.claude/state/layer" 2>/dev/null || echo unknown)"
-  printf '{"ts":"%s","seq":%s,"kind":"%s","from":"%s","to":"%s","phase":"%s","layer":"%s","msg":"%s","ref":"%s","result":"%s"%s}\n' \
+  _sc="$(cat "$ROOT/.claude/state/scope" 2>/dev/null || echo '*')"
+  printf '{"ts":"%s","seq":%s,"kind":"%s","from":"%s","to":"%s","phase":"%s","layer":"%s","scope":"%s","msg":"%s","ref":"%s","result":"%s"%s}\n' \
     "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$_seq" \
     "$(_tic_esc "${3:-note}")" "$(_tic_esc "${1:-?}")" "$(_tic_esc "${2:-*}")" \
-    "$(_tic_esc "$_ph")" "$(_tic_esc "$_ly")" \
+    "$(_tic_esc "$_ph")" "$(_tic_esc "$_ly")" "$(_tic_esc "$_sc")" \
     "$(_tic_esc "${4:-}")" "$(_tic_esc "${5:-}")" "$(_tic_esc "${6:-}")" "${7:-}" \
     >> "$_tf" 2>/dev/null || true
 }

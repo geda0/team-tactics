@@ -5,7 +5,7 @@ const assert = require("node:assert");
 const fs = require("fs"), os = require("os"), path = require("path"), cp = require("child_process");
 const CLI = path.join(__dirname, "..", "bin", "cli.js");
 const run = (args, cwd) => cp.spawnSync("node", [CLI, ...args], { encoding: "utf8", cwd: cwd || os.tmpdir() });
-const T = (o) => Object.assign({ ts: "2026-06-04T01:00:00Z", seq: 1, kind: "note", from: "a", to: "*", phase: "green", layer: "app", msg: "", ref: "", result: "" }, o);
+const T = (o) => Object.assign({ ts: "2026-06-04T01:00:00Z", seq: 1, kind: "note", from: "a", to: "*", phase: "green", layer: "app", scope: "*", msg: "", ref: "", result: "" }, o);
 function freshWithTics(lines) {
   const d = fs.mkdtempSync(path.join(os.tmpdir(), "tt-view-"));
   run([d]);
@@ -66,5 +66,35 @@ test("`tics report` falls back to legacy telemetry.jsonl when tics.jsonl is abse
     const r = run(["report", d]);
     assert.strictEqual(r.status, 0, r.stderr);
     assert.match(r.stdout, /app/);
+  } finally { fs.rmSync(d, { recursive: true, force: true }); }
+});
+
+test("`tics log --scope` shows that scope + global (*), hides others", () => {
+  const d = freshWithTics([
+    T({ seq: 1, kind: "signal", scope: "pair:S2", msg: "S2 green", result: "green" }),
+    T({ seq: 2, kind: "msg", scope: "*", from: "navigator", msg: "global note" }),
+    T({ seq: 3, kind: "signal", scope: "pair:S5", msg: "S5 red", result: "red" }),
+  ]);
+  try {
+    const r = run(["log", "--scope", "pair:S2", d]);
+    assert.strictEqual(r.status, 0, r.stderr);
+    assert.match(r.stdout, /S2 green/);
+    assert.match(r.stdout, /global note/);
+    assert.doesNotMatch(r.stdout, /S5 red/);
+  } finally { fs.rmSync(d, { recursive: true, force: true }); }
+});
+
+test("`tics inbox <role> --scope` filters by addressee AND scope", () => {
+  const d = freshWithTics([
+    T({ seq: 1, kind: "msg", to: "implementer", scope: "pair:S2", msg: "for impl in S2" }),
+    T({ seq: 2, kind: "msg", to: "implementer", scope: "pair:S5", msg: "for impl in S5" }),
+    T({ seq: 3, kind: "msg", to: "*", scope: "*", msg: "global broadcast" }),
+  ]);
+  try {
+    const r = run(["inbox", "implementer", "--scope", "pair:S2", d]);
+    assert.strictEqual(r.status, 0, r.stderr);
+    assert.match(r.stdout, /for impl in S2/);
+    assert.match(r.stdout, /global broadcast/);
+    assert.doesNotMatch(r.stdout, /for impl in S5/);
   } finally { fs.rmSync(d, { recursive: true, force: true }); }
 });

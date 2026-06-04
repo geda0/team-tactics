@@ -31,12 +31,13 @@ const CFG = path.join(KIT, "claude-config");
 const argv = process.argv.slice(2);
 let force = false;
 const rest = [];
-let preset = null;
+let preset = null, scope = null;
 for (let i = 0; i < argv.length; i++) {
   const a = argv[i];
   if (a === "--force" || a === "-f") force = true;
   else if (a === "-h" || a === "--help") rest.push("help");
   else if (a === "--preset") preset = argv[++i] || "";
+  else if (a === "--scope") scope = argv[++i] || "";
   else if (a.startsWith("--preset=")) preset = a.slice(9);
   else if (a.startsWith("-")) {
     console.error("tics: unknown option '" + a + "'. Try `team-tactics help`.");
@@ -65,8 +66,8 @@ if (!fs.existsSync(CFG)) {
 if (cmd === "selftest") { process.exit(selftest(target)); }
 if (cmd === "report") { process.exit(report(target)); }
 if (cmd === "validate") { process.exit(validateInstall(target)); }
-if (cmd === "log") { process.exit(ticsLog(target)); }
-if (cmd === "inbox") { process.exit(ticsInbox(target, role)); }
+if (cmd === "log") { process.exit(ticsLog(target, scope)); }
+if (cmd === "inbox") { process.exit(ticsInbox(target, role, scope)); }
 
 // ---- helpers ------------------------------------------------------------
 function ensureDir(d) { fs.mkdirSync(d, { recursive: true }); }
@@ -416,21 +417,23 @@ function loadSignalEvents(targetDir) {
       .filter((e) => e && e.event === "suite");
   } catch (e) { return []; }
 }
-function ticsLog(targetDir) {
-  const t = loadTics(targetDir);
+function ticsLog(targetDir, scopeFilter) {
+  let t = loadTics(targetDir);
+  if (scopeFilter) t = t.filter((x) => (x.scope || "*") === scopeFilter || (x.scope || "*") === "*");
   if (!t.length) { console.log("No tics yet — the agent thread is empty (.claude/state/tics.jsonl)."); return 0; }
   for (const x of t) {
     const when = (x.ts || "").slice(11, 19) || "--:--:--";
     const arrow = ((x.from || "?") + " -> " + (x.to || "*")).padEnd(28);
     const kind = (x.kind || "?").padEnd(9);
-    const ctx = ("[" + (x.layer || "?") + "/" + (x.phase || "?") + "]").padEnd(14);
+    const ctx = ("[" + (x.layer || "?") + "/" + (x.phase || "?") + " " + (x.scope || "*") + "]").padEnd(22);
     console.log(String(x.seq || "").padStart(3) + "  " + when + "  " + arrow + kind + ctx + " " + (x.msg || "") + (x.result ? "  (" + x.result + ")" : ""));
   }
   return 0;
 }
-function ticsInbox(targetDir, role) {
+function ticsInbox(targetDir, role, scopeFilter) {
   if (!role) { console.error("usage: tics inbox <role>   (e.g. tics inbox architect)"); return 2; }
-  const t = loadTics(targetDir).filter((x) => x.to === role || x.to === "*");
+  let t = loadTics(targetDir).filter((x) => x.to === role || x.to === "*");
+  if (scopeFilter) t = t.filter((x) => (x.scope || "*") === scopeFilter || (x.scope || "*") === "*");
   if (!t.length) { console.log("Inbox empty for '" + role + "' (no tics addressed to it or broadcast)."); return 0; }
   console.log("Inbox for " + role + "  (to = " + role + " or *):");
   for (const x of t) console.log("  #" + (x.seq || "?") + "  " + (x.from || "?") + " [" + (x.kind || "?") + "]  " + (x.msg || "") + (x.result ? "  (" + x.result + ")" : ""));

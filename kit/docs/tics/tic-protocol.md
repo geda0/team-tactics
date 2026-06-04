@@ -16,6 +16,7 @@ One JSON object per line in `.claude/state/tics.jsonl` (transient — gitignored
 | `kind` | caller | one of the kinds below |
 | `from` / `to` | caller | emitter role / addressee role (`*` = broadcast) |
 | `phase` / `layer` | auto | from `.claude/state/{phase,layer}` |
+| `scope` | auto | ambient from `.claude/state/scope` (e.g. `pair:S2`); `*` = global |
 | `msg` | caller | one-line summary |
 | `ref` | caller | pointer to the objective artifact (slice id / file / test) |
 | `result` | caller | `green`/`red`/`pass`/`concerns`/`block`/`blocked` |
@@ -46,9 +47,17 @@ the wrapper (mechanism is `emit_tic` in `.claude/hooks/lib.sh`; gated by `TICS=1
 - a subagent, on return:           `tic.sh test-writer orchestrator handoff "added failing test" live.test.ts red`
 - anyone, to contact an agent:     `tic.sh navigator architect msg "use option B for the seam"`
 
+## Scope — the signal/noise + coupling axis
+Every tic carries a `scope`, read ambiently from `.claude/state/scope` (set it per pairing
+session like phase/layer: `echo pair:S2 > .claude/state/scope`). A **pairing-tic** is scoped to
+its pair (`pair:S2`) — signal to that pair, noise to others. A **coupling-tic** uses a broader
+scope (`feature:auth`, `contract:RankedFeed`, `*`) and reaches everyone coupled to it — so a
+pairing-tic is just a tightly-scoped coupling-tic. Filtering by scope keeps a view 100% signal:
+`tics log --scope pair:S2` shows that pair plus global (`*`) tics and hides the rest.
+
 ## Viewing
-- `tics log` — the full thread.
-- `tics inbox <role>` — your inbox: tics where `to ∈ {<role>, *}`. Read it at the start of your
+- `tics log [--scope <s>]` — the thread; with --scope, just that scope + global (`*`).
+- `tics inbox <role> [--scope <s>]` — your inbox: tics where `to ∈ {<role>, *}` (and scope, if given). Read it at the start of your
   turn and address any directed `msg`.
 - `tics report` — process metrics aggregated from the `signal` tics.
 

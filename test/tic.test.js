@@ -87,3 +87,14 @@ test("guard emits a block tic on exit 2, and nothing on an allowed edit", () => 
     assert.strictEqual(ticsOf(d).length, n, "no tic on an allowed edit");
   } finally { fs.rmSync(d, { recursive: true, force: true }); }
 });
+
+test("emit_tic auto-fills scope from .claude/state/scope (default '*')", () => {
+  const d = sandbox();
+  try {
+    srcLib(d, `emit_tic a b note "no scope set"`);
+    assert.strictEqual(ticsOf(d)[0].scope, "*");
+    fs.writeFileSync(path.join(d, ".claude", "state", "scope"), "pair:S2\n");
+    srcLib(d, `emit_tic a b note "scoped"`);
+    assert.strictEqual(ticsOf(d).pop().scope, "pair:S2");
+  } finally { fs.rmSync(d, { recursive: true, force: true }); }
+});
