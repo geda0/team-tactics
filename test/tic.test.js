@@ -94,7 +94,7 @@ test("emit_tic auto-fills scope from .claude/state/scope (default '*')", () => {
   const d = sandbox();
   try {
     srcLib(d, `emit_tic a b note "no scope set"`);
-    assert.strictEqual(ticsOf(d)[0].scope, "*");
+    assert.strictEqual(ticsOf(d)[0].scope, "app"); // no scope file -> defaults to the layer
     fs.writeFileSync(path.join(d, ".claude", "state", "scope"), "pair:S2\n");
     srcLib(d, `emit_tic a b note "scoped"`);
     assert.strictEqual(ticsOf(d).pop().scope, "pair:S2");
@@ -112,5 +112,23 @@ test("subagent-handoff (SubagentStop) auto-emits a handoff tic with the suite re
     assert.strictEqual(t.from, "subagent");
     assert.strictEqual(t.to, "orchestrator");
     assert.strictEqual(t.result, "green");
+  } finally { fs.rmSync(d, { recursive: true, force: true }); }
+});
+
+test("emit_tic scope: falls back to '*' only when neither scope nor layer is set", () => {
+  const d = sandbox();
+  try {
+    fs.rmSync(path.join(d, ".claude", "state", "layer"));
+    srcLib(d, `emit_tic a b note "no layer, no scope"`);
+    assert.strictEqual(ticsOf(d)[0].scope, "*");
+  } finally { fs.rmSync(d, { recursive: true, force: true }); }
+});
+
+test("tic.sh warns on an unknown kind but still records it (data hygiene)", () => {
+  const d = sandbox();
+  try {
+    const r = cp.spawnSync("bash", [path.join(d, ".claude", "hooks", "tic.sh"), "a", "b", "frontend:green", "oops"], { encoding: "utf8", cwd: d });
+    assert.match(r.stderr, /unknown kind/i, "warns about the bad kind");
+    assert.strictEqual(ticsOf(d).pop().kind, "frontend:green", "still recorded (never lose data)");
   } finally { fs.rmSync(d, { recursive: true, force: true }); }
 });

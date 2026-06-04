@@ -16,7 +16,7 @@ One JSON object per line in `.claude/state/tics.jsonl` (transient — gitignored
 | `kind` | caller | one of the kinds below |
 | `from` / `to` | caller | emitter role / addressee role (`*` = broadcast) |
 | `phase` / `layer` | auto | from `.claude/state/{phase,layer}` |
-| `scope` | auto | ambient from `.claude/state/scope` (e.g. `pair:S2`); `*` = global |
+| `scope` | auto | `.claude/state/scope` if set (e.g. `pair:S2`), else the active layer, else `*` |
 | `msg` | caller | one-line summary |
 | `ref` | caller | pointer to the objective artifact (slice id / file / test) |
 | `result` | caller | `green`/`red`/`pass`/`concerns`/`block`/`blocked` |
