@@ -238,6 +238,7 @@ if (presetActive === "full-team") {
   for (const a of ["product-owner", "architect", "qa-verifier", "project-manager", "dev-ops"])
     refresh(path.join(PRESET, "agents", a + ".md"), path.join(".claude", "agents", a + ".md"));
   refresh(path.join(PRESET, "docs", "outer-loop.md"), path.join("docs", "tdd", "outer-loop.md"));
+  refresh(path.join(PRESET, "docs", "sectioning.md"), path.join("docs", "tdd", "sectioning.md"));
   for (const s of ["backlog.md", "releases.md", "sections.md"])
     seedOnce(path.join(PRESET, "state", s), path.join(".claude", "state", s));
 }

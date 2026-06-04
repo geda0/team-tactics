@@ -26,6 +26,7 @@ test("--preset full-team installs the 5 roles + outer-loop doc + state + records
     run(["--preset", "full-team", d]);
     for (const a of TEAM) assert.ok(has(d, ".claude", "agents", a + ".md"), a + " installed");
     assert.ok(has(d, "docs", "tdd", "outer-loop.md"), "outer-loop doc");
+    assert.ok(has(d, "docs", "tdd", "sectioning.md"), "sectioning doc");
     assert.ok(has(d, ".claude", "state", "backlog.md"), "backlog seeded");
     assert.ok(has(d, ".claude", "state", "releases.md"), "releases seeded");
     assert.strictEqual(manifest(d).preset, "full-team", "preset recorded in manifest");

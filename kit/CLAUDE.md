@@ -18,4 +18,5 @@ Method + rules: `docs/tdd/tdd-workflow.md`, `docs/tdd/testing-philosophy.md`,
 `docs/tdd/project-invariants.md`. Continuation state: `.claude/state/progress.md`.
 
 Running the outer product loop (product-owner / architect / qa / PM / dev-ops)?
-Install `--preset full-team` and follow `docs/tdd/outer-loop.md`.
+Install `--preset full-team` and follow `docs/tdd/outer-loop.md`. Large, multi-context
+project with parallel teams? Section it — `docs/tdd/sectioning.md`.
