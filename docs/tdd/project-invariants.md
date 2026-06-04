@@ -1,9 +1,9 @@
-# Project invariants — teamentic
+# Project invariants — team-tactics
 
 Rules this project must always uphold; every change proves the relevant ones.
 
 ## The package
-- **Zero runtime dependencies.** Pure Node (CommonJS), Node >= 16. `npx teamentic`
+- **Zero runtime dependencies.** Pure Node (CommonJS), Node >= 16. `npx tics`
   must run with nothing to install.
 - **`node --test` stays green** and **`node bin/cli.js selftest <install>` passes** —
   the gate must really enforce (red blocks source, green blocks tests, fail-closed on

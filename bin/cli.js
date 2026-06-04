@@ -2,14 +2,14 @@
 "use strict";
 
 /*
- * teamentic — install/update the teamentic kit in a project.
+ * team-tactics — install/update the team-tactics kit in a project.
  *
- *   npx teamentic [target]        install (default command)
- *   npx teamentic init [target]   same as above
- *   npx teamentic update [target] refresh mechanism, keep your files
- *   npx teamentic --force [target] also reset seeded (user-owned) files
- *   npx teamentic --preset full-team [target] also install the outer-loop team
- *   npx teamentic help
+ *   npx tics [target]        install (default command)
+ *   npx tics init [target]   same as above
+ *   npx tics update [target] refresh mechanism, keep your files
+ *   npx tics --force [target] also reset seeded (user-owned) files
+ *   npx tics --preset full-team [target] also install the outer-loop team
+ *   npx tics help
  *
  * Non-destructive: mechanism (agents, hooks, method docs) is refreshed; your
  * config/state/invariants are seeded once and never clobbered; existing entry
@@ -39,12 +39,12 @@ for (let i = 0; i < argv.length; i++) {
   else if (a === "--preset") preset = argv[++i] || "";
   else if (a.startsWith("--preset=")) preset = a.slice(9);
   else if (a.startsWith("-")) {
-    console.error("teamentic: unknown option '" + a + "'. Try `teamentic help`.");
+    console.error("tics: unknown option '" + a + "'. Try `team-tactics help`.");
     process.exit(2);
   } else rest.push(a);
 }
 if (preset !== null && preset !== "full-team" && preset !== "none") {
-  console.error("teamentic: unknown preset '" + preset + "'. Known presets: full-team (or 'none' to remove).");
+  console.error("tics: unknown preset '" + preset + "'. Known presets: full-team (or 'none' to remove).");
   process.exit(2);
 }
 let cmd = "init";
@@ -72,11 +72,14 @@ function copy(src, dest) { ensureDir(path.dirname(dest)); fs.copyFileSync(src, d
 
 // ---- manifest (P0-3): track kit-owned files so updates never silently clobber ----
 const PKG = require("../package.json");
-const MANIFEST_REL = path.join(".claude", ".teamentic", "manifest.json");
-const OLD_MANIFEST_REL = path.join(".claude", ".tdd-pairing", "manifest.json"); // pre-rename (create-tdd-pairing)
+const MANIFEST_REL = path.join(".claude", ".team-tactics", "manifest.json");
+const LEGACY_MANIFEST_RELS = [
+  path.join(".claude", ".teamentic", "manifest.json"),    // teamentic (0.4-0.6)
+  path.join(".claude", ".tdd-pairing", "manifest.json"),  // create-tdd-pairing (pre-0.4)
+];
 function sha256(p) { try { return crypto.createHash("sha256").update(fs.readFileSync(p)).digest("hex"); } catch (e) { return null; } }
 const priorManifest = (() => {
-  for (const rel of [MANIFEST_REL, OLD_MANIFEST_REL]) {
+  for (const rel of [MANIFEST_REL, ...LEGACY_MANIFEST_RELS]) {
     try { return JSON.parse(fs.readFileSync(path.join(target, rel), "utf8")); } catch (e) { /* try next */ }
   }
   return { files: {} };
@@ -102,6 +105,10 @@ const BREAKING = {
     "tdd.config is now DATA ONLY - the resolver moved to .claude/hooks/lib.sh (refreshed). Your layer values are preserved; pre-0.4 BE_/FE_/E2E_TEST_CMD names still resolve.",
     "Empty .claude/state/phase now FAILS CLOSED (blocks edits). Use 'off' to disarm the gate for manual/non-TDD work - never leave phase empty.",
   ],
+  "0.7.0": [
+    "Renamed: teamentic -> team-tactics; the CLI command is now 'tics'. Prior installs (teamentic / create-tdd-pairing) migrate automatically: managed markers rewritten, manifest moved to .claude/.team-tactics/, your config + state preserved.",
+    "New: the tic protocol records agent-to-agent handoffs/signals in .claude/state/tics.jsonl ('tics log' = the thread, 'tics inbox <role>' = your messages).",
+  ],
 };
 
 function refresh(src, destRel) {            // always overwrite (pure mechanism)
@@ -123,22 +130,23 @@ function seedOnce(src, destRel, label) {    // copy only if absent
 // ---- run ----------------------------------------------------------------
 function ensureGitignore(targetDir) {
   const gi = path.join(targetDir, ".gitignore");
-  const START = "# >>> teamentic (managed) >>>", END = "# <<< teamentic (managed) <<<";
+  const START = "# >>> team-tactics (managed) >>>", END = "# <<< team-tactics (managed) <<<";
   const block = START + "\n" +
     "# Transient kit artifacts - never commit (other state files ARE committed for continuity).\n" +
     ".claude/state/suite-status\n" +
     ".claude/state/telemetry.jsonl\n" +
     ".claude/**/*.bak\n" +
-    "*.teamentic.*\n" +
+    "*.team-tactics.*\n" +
     END;
-  const OLD_START = "# >>> tdd-pairing (managed) >>>", OLD_END = "# <<< tdd-pairing (managed) <<<";
+  const LEGACY = [["# >>> teamentic (managed) >>>", "# <<< teamentic (managed) <<<"],
+                  ["# >>> tdd-pairing (managed) >>>", "# <<< tdd-pairing (managed) <<<"]];
   let cur = ""; try { cur = fs.readFileSync(gi, "utf8"); } catch (e) {}
   let i = cur.indexOf(START), j = cur.indexOf(END), endLen = END.length;
-  if (i === -1) { const oi = cur.indexOf(OLD_START), oj = cur.indexOf(OLD_END); if (oi !== -1 && oj !== -1 && oj > oi) { i = oi; j = oj; endLen = OLD_END.length; } }
+  if (i === -1) for (const [ls, le] of LEGACY) { const oi = cur.indexOf(ls), oj = cur.indexOf(le); if (oi !== -1 && oj !== -1 && oj > oi) { i = oi; j = oj; endLen = le.length; break; } }
   let next;
   if (i !== -1 && j !== -1 && j > i) { next = cur.slice(0, i) + block + cur.slice(j + endLen); }
   else { next = cur + (cur && !cur.endsWith("\n") ? "\n" : "") + (cur ? "\n" : "") + block + "\n"; }
-  if (next !== cur) { fs.writeFileSync(gi, next); say("gitignore", ".gitignore (teamentic managed block)"); }
+  if (next !== cur) { fs.writeFileSync(gi, next); say("gitignore", ".gitignore (team-tactics managed block)"); }
 }
 
 function mergeSettings(targetDir) {
@@ -165,14 +173,14 @@ function mergeSettings(targetDir) {
 
 function mergeEntryDoc(srcAbs, destRel) {
   const dest = path.join(target, destRel);
-  const START = "<!-- >>> teamentic: managed (refreshed on update; do not edit) >>> -->";
-  const END = "<!-- <<< teamentic: managed <<< -->";
+  const START = "<!-- >>> team-tactics: managed (refreshed on update; do not edit) >>> -->";
+  const END = "<!-- <<< team-tactics: managed <<< -->";
   const block = START + "\n" + fs.readFileSync(srcAbs, "utf8").trim() + "\n" + END;
-  const OLD_START = "<!-- >>> tdd-pairing: managed (refreshed on update; do not edit) >>> -->";
-  const OLD_END = "<!-- <<< tdd-pairing: managed <<< -->";
+  const LEGACY = [["<!-- >>> teamentic: managed (refreshed on update; do not edit) >>> -->", "<!-- <<< teamentic: managed <<< -->"],
+                  ["<!-- >>> tdd-pairing: managed (refreshed on update; do not edit) >>> -->", "<!-- <<< tdd-pairing: managed <<< -->"]];
   let cur = ""; try { cur = fs.readFileSync(dest, "utf8"); } catch (e) {}
   let i = cur.indexOf(START), j = cur.indexOf(END), endLen = END.length;
-  if (i === -1) { const oi = cur.indexOf(OLD_START), oj = cur.indexOf(OLD_END); if (oi !== -1 && oj !== -1 && oj > oi) { i = oi; j = oj; endLen = OLD_END.length; } }
+  if (i === -1) for (const [ls, le] of LEGACY) { const oi = cur.indexOf(ls), oj = cur.indexOf(le); if (oi !== -1 && oj !== -1 && oj > oi) { i = oi; j = oj; endLen = le.length; break; } }
   let next, how;
   if (i !== -1 && j !== -1 && j > i) { next = cur.slice(0, i) + block + cur.slice(j + endLen); how = "refresh"; }
   else if (cur.trim() === "") { next = block + "\n\n<!-- Your project overlay below - yours; update never touches it. -->\n## Project notes\n"; how = "install"; }
@@ -187,7 +195,7 @@ ensureDir(path.join(target, ".claude", "hooks"));
 ensureDir(path.join(target, ".claude", "state"));
 ensureDir(path.join(target, "docs", "tdd"));
 
-console.log((cmd === "update" ? "Updating" : "Installing") + " teamentic kit -> " + target);
+console.log((cmd === "update" ? "Updating" : "Installing") + " team-tactics kit -> " + target);
 if (cmd === "update") {
   const _from = priorManifest.kitVersion, _to = PKG.version;
   console.log("  " + (_from || "pre-0.4 (no manifest)") + " -> " + _to);
@@ -237,19 +245,19 @@ for (const f of ["AGENTS.md", "CLAUDE.md", "KICKOFF.md"])
   mergeEntryDoc(path.join(KIT, f), f);
 
 // Manifest (P0-3): record kit-owned files + content hashes, for clobber-safe updates.
-ensureDir(path.join(target, ".claude", ".teamentic"));
+ensureDir(path.join(target, ".claude", ".team-tactics"));
 fs.writeFileSync(path.join(target, MANIFEST_REL),
-  JSON.stringify({ kit: "teamentic", kitVersion: PKG.version, configSchema: 2, preset: presetActive, updatedAt: new Date().toISOString(), files: manifestFiles }, null, 2) + "\n");
+  JSON.stringify({ kit: "team-tactics", kitVersion: PKG.version, configSchema: 2, preset: presetActive, updatedAt: new Date().toISOString(), files: manifestFiles }, null, 2) + "\n");
 say("manifest", MANIFEST_REL + (backups ? "  (" + backups + " local change(s) backed up to .bak)" : ""));
 ensureGitignore(target);
 if (presetActive === "full-team")
   console.log("\n[full-team] outer-loop roles installed (product-owner, architect, qa-verifier, project-manager, dev-ops) — see docs/tdd/outer-loop.md.");
 
-console.log("\nDone — teamentic installed. One thing to do, then you're building:\n\n  Open this project in Claude Code, approve the hooks, and paste your first\n  message — the orchestrator configures the harness for you (nothing to hand-edit):\n\n    Read AGENTS.md and CLAUDE.md. Detect this project's stack and set LAYERS + the\n    test command(s) in .claude/tdd.config, and draft docs/tdd/project-invariants.md\n    from the code for me to confirm. Then build the first feature with the\n    red->green loop: <what you want built>.\n\n  Existing codebase? Tell the orchestrator to ADOPT it and bring it up to standard\n  (characterization tests, green baseline, CI) before new work.\n\n  KICKOFF.md has both prompts (one-shot for an agent, and this two-step) ready to copy.\n\nNote: the hooks are bash scripts (use WSL/git-bash on Windows). Hook event names\nand exit-code semantics shift between Claude Code releases — confirm against\ncode.claude.com/docs/en/hooks before relying on the gate.");
+console.log("\nDone — team-tactics installed. One thing to do, then you're building:\n\n  Open this project in Claude Code, approve the hooks, and paste your first\n  message — the orchestrator configures the harness for you (nothing to hand-edit):\n\n    Read AGENTS.md and CLAUDE.md. Detect this project's stack and set LAYERS + the\n    test command(s) in .claude/tdd.config, and draft docs/tdd/project-invariants.md\n    from the code for me to confirm. Then build the first feature with the\n    red->green loop: <what you want built>.\n\n  Existing codebase? Tell the orchestrator to ADOPT it and bring it up to standard\n  (characterization tests, green baseline, CI) before new work.\n\n  KICKOFF.md has both prompts (one-shot for an agent, and this two-step) ready to copy.\n\nNote: the hooks are bash scripts (use WSL/git-bash on Windows). Hook event names\nand exit-code semantics shift between Claude Code releases — confirm against\ncode.claude.com/docs/en/hooks before relying on the gate.");
 
 // Auto-validate (P0-4): report a stale/broken config NOW, not via a blocked edit.
 if (validateInstall(target) !== 0) {
-  console.log("\n[!] validate FAILED — the TDD gate may not work. Fix the above, then re-run `npx teamentic validate`.");
+  console.log("\n[!] validate FAILED — the TDD gate may not work. Fix the above, then re-run `npx tics validate`.");
 }
 
 // ---- validate -----------------------------------------------------------
@@ -259,7 +267,7 @@ if (validateInstall(target) !== 0) {
 function validateInstall(targetDir) {
   const lib = path.join(targetDir, ".claude", "hooks", "lib.sh");
   if (!fs.existsSync(lib)) {
-    console.error("validate: .claude/hooks/lib.sh is missing — the resolver mechanism is gone. Run `npx teamentic update`.");
+    console.error("validate: .claude/hooks/lib.sh is missing — the resolver mechanism is gone. Run `npx tics update`.");
     return 1;
   }
   const bashOk = (() => { try { return cp.spawnSync("bash", ["-c", "exit 0"]).status === 0; } catch (e) { return false; } })();
@@ -268,7 +276,7 @@ function validateInstall(targetDir) {
     'set -u\n' +
     'ROOT=' + JSON.stringify(targetDir) + '\n' +
     '. "$ROOT/.claude/hooks/lib.sh" 2>/dev/null || true\n' +
-    'if ! type resolve_layer >/dev/null 2>&1; then echo "ERROR: resolve_layer is unavailable (.claude/hooks/lib.sh stale or unsourced). Run: npx teamentic update"; exit 1; fi\n' +
+    'if ! type resolve_layer >/dev/null 2>&1; then echo "ERROR: resolve_layer is unavailable (.claude/hooks/lib.sh stale or unsourced). Run: npx tics update"; exit 1; fi\n' +
     'if [ -z "${LAYERS:-}" ]; then echo "ERROR: no LAYERS defined in .claude/tdd.config"; exit 1; fi\n' +
     'for L in $LAYERS; do resolve_layer "$L"; if [ -z "$TEST_CMD" ]; then echo "ERROR: layer $L resolves to no test command (set TEST_CMD_$L or ALL_TEST_CMD)"; exit 1; fi; echo "  ok  $L -> $TEST_CMD"; done\n' +
     'echo "validate: OK — resolver present; every layer resolves."\n';
@@ -285,7 +293,7 @@ function validateInstall(targetDir) {
 function selftest(targetDir) {
   const hooksDir = path.join(targetDir, ".claude", "hooks");
   if (!fs.existsSync(hooksDir)) {
-    console.error("selftest: no kit found at " + targetDir + " — run `npx teamentic` first.");
+    console.error("selftest: no kit found at " + targetDir + " — run `npx tics` first.");
     return 1;
   }
   // Need bash to run the hooks.
@@ -337,7 +345,7 @@ resolve_layer() {
     ok ? pass++ : fail++;
   };
 
-  console.log("teamentic selftest — firing synthetic payloads at installed hooks\n");
+  console.log("tics selftest — firing synthetic payloads at installed hooks\n");
 
   // guard-edit-scope: phase x scope
   setState("layer", "app");

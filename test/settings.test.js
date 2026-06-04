@@ -17,7 +17,7 @@ test("install wires all kit hook events; no sidecar", () => {
     const s = S(d);
     for (const ev of ["SessionStart", "PreToolUse", "PostToolUse", "Stop", "SubagentStop"])
       assert.ok(s.hooks && s.hooks[ev] && s.hooks[ev].length, "event wired: " + ev);
-    assert.ok(!fs.existsSync(path.join(d, ".claude", "settings.teamentic.json")), "no sidecar left to merge");
+    assert.ok(!fs.existsSync(path.join(d, ".claude", "settings.team-tactics.json")), "no sidecar left to merge");
   } finally { fs.rmSync(d, { recursive: true, force: true }); }
 });
 

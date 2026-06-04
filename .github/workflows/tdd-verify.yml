@@ -1,4 +1,4 @@
-# teamentic CI — the package's own suite + a real install/selftest smoke.
+# team-tactics CI — the package's own suite + a real install/selftest smoke.
 name: tdd-verify
 on:
   push:

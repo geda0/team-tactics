@@ -7,7 +7,7 @@ const fs = require("fs"), os = require("os"), path = require("path"), cp = requi
 const CLI = path.join(__dirname, "..", "bin", "cli.js");
 const run = (args, cwd) => cp.spawnSync("node", [CLI, ...args], { encoding: "utf8", cwd: cwd || os.tmpdir() });
 const has = (d, ...p) => fs.existsSync(path.join(d, ...p));
-const manifest = (d) => JSON.parse(fs.readFileSync(path.join(d, ".claude", ".teamentic", "manifest.json"), "utf8"));
+const manifest = (d) => JSON.parse(fs.readFileSync(path.join(d, ".claude", ".team-tactics", "manifest.json"), "utf8"));
 const TEAM = ["product-owner", "architect", "qa-verifier", "project-manager", "dev-ops"];
 
 test("plain install ships only the inner-loop agents (no team)", () => {

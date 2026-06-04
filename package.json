@@ -1,9 +1,9 @@
 {
-  "name": "teamentic",
-  "version": "0.6.0",
-  "description": "Bootstrap the teamentic kit (test-driven agent pairing for Claude Code) into any project.",
+  "name": "team-tactics",
+  "version": "0.7.0",
+  "description": "Bootstrap the team-tactics kit (test-driven agent pairing for Claude Code) into any project.",
   "bin": {
-    "teamentic": "bin/cli.js"
+    "tics": "bin/cli.js"
   },
   "type": "commonjs",
   "engines": {
@@ -15,7 +15,7 @@
     "README.md"
   ],
   "keywords": [
-    "teamentic",
+    "team-tactics",
     "claude-code",
     "tdd",
     "agents",
@@ -31,10 +31,10 @@
   "author": "geda0",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/geda0/teamentic.git"
+    "url": "git+https://github.com/geda0/team-tactics.git"
   },
-  "homepage": "https://github.com/geda0/teamentic#readme",
+  "homepage": "https://github.com/geda0/team-tactics#readme",
   "bugs": {
-    "url": "https://github.com/geda0/teamentic/issues"
+    "url": "https://github.com/geda0/team-tactics/issues"
   }
 }

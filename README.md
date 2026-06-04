@@ -1,6 +1,6 @@
-# teamentic
+# team-tactics
 
-Bootstrap the **teamentic kit** into any project with one command. The kit
+Bootstrap the **team-tactics kit** into any project with one command. The kit
 makes Claude Code agents build software by test-driven pairing — a `test-writer`
 and an `implementer` ping-pong red→green while Claude Code hooks enforce the
 discipline (no source edits in red, no test edits in green, no finishing on a
@@ -9,10 +9,10 @@ red bar). Works for a single package or a multi-layer monorepo.
 ## Quick start
 
 ### Already in a coding agent? (one-shot)
-In Claude Code / Cursor / etc., paste this one message — the agent installs teamentic
+In Claude Code / Cursor / etc., paste this one message — the agent installs team-tactics
 **and** bootstraps the repo in a single shot:
 
-> Install and bootstrap teamentic in this repo. Run `npx teamentic .`, then read
+> Install and bootstrap team-tactics in this repo. Run `npx tics .`, then read
 > `AGENTS.md` and `CLAUDE.md`, detect the stack and set `LAYERS` + the test
 > command(s) in `.claude/tdd.config`, and draft `docs/tdd/project-invariants.md` from
 > the code for me to confirm. If this is an existing codebase, **adopt it and bring it
@@ -21,23 +21,23 @@ In Claude Code / Cursor / etc., paste this one message — the agent installs te
 
 ### From a terminal? (two steps)
 ```bash
-npx teamentic            # install into your project (or: npx teamentic ./my-app)
+npx tics            # install into your project (or: npx tics ./my-app)
 ```
 Open the project in Claude Code, approve the hooks, and paste the prompt in
 `KICKOFF.md` — it does the setup, so there are no config files to hand-edit.
 
-> **Adopting an existing repo?** Install with `npx teamentic --preset full-team` so the
+> **Adopting an existing repo?** Install with `npx tics --preset full-team` so the
 > product-owner / architect / qa-verifier are on hand to characterize and upgrade it.
 
 ## Commands
 ```bash
-npx teamentic [init] [target]   # install (default)
-npx teamentic update [target]   # refresh agents/hooks/docs, keep your files
-npx teamentic selftest [target] # verify the gate works in YOUR environment
-npx teamentic report [target]   # summarize cycle telemetry (process metrics)
-npx teamentic --force [target]  # also reset seeded (user-owned) files
-npx teamentic --preset full-team [target]  # also install the outer-loop team (PO/architect/QA/PM/dev-ops)
-npx teamentic help
+npx tics [init] [target]   # install (default)
+npx tics update [target]   # refresh agents/hooks/docs, keep your files
+npx tics selftest [target] # verify the gate works in YOUR environment
+npx tics report [target]   # summarize cycle telemetry (process metrics)
+npx tics --force [target]  # also reset seeded (user-owned) files
+npx tics --preset full-team [target]  # also install the outer-loop team (PO/architect/QA/PM/dev-ops)
+npx tics help
 ```
 
 `selftest` fires synthetic PreToolUse/PostToolUse/Stop payloads at the installed
@@ -63,8 +63,8 @@ Re-run anytime to pull updates; `--force` resets the seeded files.
 
 ## Other ways to run
 ```bash
-npx github:<owner>/teamentic        # straight from a git repo
-npx ./teamentic-0.5.0.tgz           # from a local tarball (offline)
+npx github:<owner>/team-tactics        # straight from a git repo
+npx ./team-tactics-0.5.0.tgz           # from a local tarball (offline)
 ```
 
 ## What gets installed
@@ -95,8 +95,8 @@ orchestrator sets `red`/`green`/`refactor`. Any *unrecognized or missing* phase
   confirm against code.claude.com/docs/en/hooks and watch one dry cycle before
   relying on the gate.
 
-## Developing teamentic
-teamentic dogfoods its own harness. `kit/` is the source of truth; the `.claude/`
+## Developing team-tactics
+team-tactics dogfoods its own harness. `kit/` is the source of truth; the `.claude/`
 install is generated. After cloning:
 
 ```bash

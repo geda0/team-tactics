@@ -9,7 +9,7 @@ const fs = require("fs"), os = require("os"), path = require("path"), cp = requi
 const CLI = path.join(__dirname, "..", "bin", "cli.js");
 function run(args, cwd) { return cp.spawnSync("node", [CLI, ...args], { encoding: "utf8", cwd: cwd || os.tmpdir() }); }
 const GI = (d) => fs.readFileSync(path.join(d, ".gitignore"), "utf8");
-const START = /# >>> teamentic \(managed\) >>>/g;
+const START = /# >>> team-tactics \(managed\) >>>/g;
 
 test("install adds a managed block: transient ignored, durable state NOT", () => {
   const d = fs.mkdtempSync(path.join(os.tmpdir(), "tdd-gi-"));

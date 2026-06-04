@@ -11,7 +11,7 @@ test("P2-11: --help prints help and does NOT install into ./--help", () => {
   try {
     const r = run(["--help"], d);
     assert.strictEqual(r.status, 0, r.stderr);
-    assert.match(r.stdout, /teamentic|TDD pairing/i, "prints help");
+    assert.match(r.stdout, /team-tactics|TDD pairing/i, "prints help");
     assert.ok(!fs.existsSync(path.join(d, "--help")), "no ./--help dir");
     assert.ok(!fs.existsSync(path.join(d, ".claude")), "did not install");
   } finally { fs.rmSync(d, { recursive: true, force: true }); }
@@ -44,7 +44,7 @@ test("next-steps: a fresh install no longer tells you to merge sidecars (0.4 cre
 test("0.6: README documents the AGENT quick-start — one-shot (install+bootstrap) AND the 2-step path", () => {
   const r = fs.readFileSync(path.join(__dirname, "..", "README.md"), "utf8");
   assert.match(r, /one[- ]shot/i, "has a one-shot agent path");
-  assert.match(r, /npx teamentic \./, "the one-shot tells the agent to run the install itself");
+  assert.match(r, /npx tics \./, "the one-shot tells the agent to run the install itself");
   assert.match(r, /bootstrap/i, "the one-shot bootstraps, not just installs");
   assert.match(r, /two[- ]step|terminal/i, "still offers the manual/terminal 2-step path");
 });

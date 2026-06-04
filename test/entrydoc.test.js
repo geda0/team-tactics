@@ -7,7 +7,7 @@ const assert = require("node:assert");
 const fs = require("fs"), os = require("os"), path = require("path"), cp = require("child_process");
 
 const CLI = path.join(__dirname, "..", "bin", "cli.js");
-const MARK = ">>> teamentic"; // plain string — no stateful /g regex shared across tests
+const MARK = ">>> team-tactics"; // plain string — no stateful /g regex shared across tests
 function run(args, cwd) { return cp.spawnSync("node", [CLI, ...args], { encoding: "utf8", cwd: cwd || os.tmpdir() }); }
 function install() { const d = fs.mkdtempSync(path.join(os.tmpdir(), "tdd-entry-")); run([d]); return d; }
 const claude = (d) => fs.readFileSync(path.join(d, "CLAUDE.md"), "utf8");
@@ -20,7 +20,7 @@ test("install: thin CLAUDE.md = managed block pointing to the method; carries ph
     assert.ok(c.includes(MARK), "managed block present");
     assert.match(c, /docs\/tdd/, "points to the single-source method");
     assert.match(c, /never leave phase empty/, "carries the phase=off convention so it propagates on refresh");
-    assert.ok(!fs.existsSync(path.join(d, "CLAUDE.teamentic.md")), "no sidecar");
+    assert.ok(!fs.existsSync(path.join(d, "CLAUDE.team-tactics.md")), "no sidecar");
   } finally { fs.rmSync(d, { recursive: true, force: true }); }
 });
 
