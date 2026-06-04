@@ -1,6 +1,6 @@
 {
   "name": "team-tactics",
-  "version": "0.9.2",
+  "version": "0.9.3",
   "description": "Bootstrap the team-tactics kit (test-driven agent pairing for Claude Code) into any project.",
   "bin": {
     "tics": "bin/cli.js"
@@ -23,7 +23,8 @@
     "scaffold",
     "hooks"
   ],
-  "license": "MIT",
+  "license": "UNLICENSED",
+  "private": true,
   "scripts": {
     "test": "node --test",
     "prepublishOnly": "node --test"

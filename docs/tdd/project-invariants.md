@@ -25,5 +25,5 @@ Rules this project must always uphold; every change proves the relevant ones.
   After editing `kit/`, re-run the dogfood install so this repo's `.claude/` matches.
 
 ## Hygiene
-- No secrets; MIT. The published package ships only what `package.json` `files`
+- No secrets; proprietary (all rights reserved — see LICENSE). The published package ships only what `package.json` `files`
   lists (`bin/`, `kit/`, `README.md`) plus `LICENSE`.

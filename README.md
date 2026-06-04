@@ -109,4 +109,4 @@ node --test           # the suite
 Approve the hooks in Claude Code, then edit the product under `bin/` and `kit/`
 (what the gate guards); re-run `node bin/cli.js .` after changing `kit/`.
 
-MIT licensed.
+Proprietary — © 2026 geda0. All rights reserved. See [LICENSE](LICENSE).
