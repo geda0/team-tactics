@@ -215,7 +215,7 @@ for (const a of ["test-writer", "implementer", "tdd-critic", "planner"])
   refresh(path.join(CFG, "agents", a + ".md"), path.join(".claude", "agents", a + ".md"));
 // Shared hook library (resolver + defaults), sourced by the hooks below.
 refresh(path.join(CFG, "hooks", "lib.sh"), path.join(".claude", "hooks", "lib.sh"));
-for (const h of ["guard-edit-scope", "run-suite", "require-green-to-stop", "session-green-check", "tic"]) {
+for (const h of ["guard-edit-scope", "run-suite", "require-green-to-stop", "session-green-check", "tic", "subagent-handoff"]) {
   const rel = path.join(".claude", "hooks", h + ".sh");
   refresh(path.join(CFG, "hooks", h + ".sh"), rel);
   try { fs.chmodSync(path.join(target, rel), 0o755); } catch (e) { /* windows */ }

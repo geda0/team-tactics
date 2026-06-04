@@ -39,3 +39,13 @@ test("merge preserves user keys + user hooks, idempotently", () => {
     assert.ok(s.hooks.SessionStart, "kit SessionStart added");
   } finally { fs.rmSync(d, { recursive: true, force: true }); }
 });
+
+test("SubagentStop wires the auto-handoff hook + ships it", () => {
+  const d = install();
+  try {
+    const s = S(d);
+    const cmds = (s.hooks.SubagentStop || []).flatMap((g) => g.hooks.map((h) => h.command));
+    assert.ok(cmds.some((c) => c.includes("subagent-handoff.sh")), "auto-handoff wired on SubagentStop");
+    assert.ok(fs.existsSync(path.join(d, ".claude", "hooks", "subagent-handoff.sh")), "hook shipped");
+  } finally { fs.rmSync(d, { recursive: true, force: true }); }
+});

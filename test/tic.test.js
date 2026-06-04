@@ -10,8 +10,10 @@ function sandbox(testCmd) {
   const d = fs.mkdtempSync(path.join(os.tmpdir(), "tt-tic-"));
   const sh = path.join(d, ".claude", "hooks"), st = path.join(d, ".claude", "state");
   fs.mkdirSync(sh, { recursive: true }); fs.mkdirSync(st, { recursive: true });
-  for (const h of ["lib.sh", "tic.sh", "run-suite.sh", "guard-edit-scope.sh"])
-    fs.copyFileSync(path.join(KIT_HOOKS, h), path.join(sh, h));
+  for (const h of ["lib.sh", "tic.sh", "run-suite.sh", "guard-edit-scope.sh", "subagent-handoff.sh"]) {
+    const src = path.join(KIT_HOOKS, h);
+    if (fs.existsSync(src)) fs.copyFileSync(src, path.join(sh, h));
+  }
   fs.writeFileSync(path.join(d, ".claude", "tdd.config"),
     `LAYERS="app"\nALL_TEST_CMD=${JSON.stringify(testCmd || "true")}\nTEST_CMD_app="$ALL_TEST_CMD"\n`);
   fs.writeFileSync(path.join(st, "phase"), "green\n");
@@ -96,5 +98,19 @@ test("emit_tic auto-fills scope from .claude/state/scope (default '*')", () => {
     fs.writeFileSync(path.join(d, ".claude", "state", "scope"), "pair:S2\n");
     srcLib(d, `emit_tic a b note "scoped"`);
     assert.strictEqual(ticsOf(d).pop().scope, "pair:S2");
+  } finally { fs.rmSync(d, { recursive: true, force: true }); }
+});
+
+test("subagent-handoff (SubagentStop) auto-emits a handoff tic with the suite result", () => {
+  const d = sandbox();
+  try {
+    fs.writeFileSync(path.join(d, ".claude", "state", "suite-status"), "green\n");
+    const r = fire(d, "subagent-handoff.sh", "");
+    assert.strictEqual(r.status, 0, r.stderr);
+    const t = ticsOf(d).pop();
+    assert.strictEqual(t.kind, "handoff");
+    assert.strictEqual(t.from, "subagent");
+    assert.strictEqual(t.to, "orchestrator");
+    assert.strictEqual(t.result, "green");
   } finally { fs.rmSync(d, { recursive: true, force: true }); }
 });
