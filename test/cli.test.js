@@ -66,6 +66,18 @@ test("0.8: install ships the divide-and-conquer doctrine", () => {
   } finally { fs.rmSync(d, { recursive: true, force: true }); }
 });
 
+test("0.9: install ships the tool-support (cross-tool) doc + AGENTS discloses it", () => {
+  const d = fs.mkdtempSync(path.join(os.tmpdir(), "tdd-cli-"));
+  try {
+    run([d]);
+    const doc = path.join(d, "docs", "tdd", "tool-support.md");
+    assert.ok(fs.existsSync(doc), "tool-support.md installed");
+    const s = fs.readFileSync(doc, "utf8");
+    assert.match(s, /Claude Code/); assert.match(s, /Cursor/i); assert.match(s, /self-enforce|manual/i);
+    assert.match(fs.readFileSync(path.join(d, "AGENTS.md"), "utf8"), /Tool support/);
+  } finally { fs.rmSync(d, { recursive: true, force: true }); }
+});
+
 test("0.7: install ships the tic-protocol spec + an executable tic.sh", () => {
   const d = fs.mkdtempSync(path.join(os.tmpdir(), "tdd-cli-"));
   try {

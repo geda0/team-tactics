@@ -231,7 +231,7 @@ for (const h of ["guard-edit-scope", "run-suite", "require-green-to-stop", "sess
 for (const h of ["tics", "tics-view.cjs"]) refresh(path.join(CFG, "hooks", h), path.join(".claude", "hooks", h));
 try { fs.unlinkSync(path.join(target, ".claude", "hooks", "tics-view.js")); } catch (e) {} // migrate stale .js reader -> .cjs
 try { fs.chmodSync(path.join(target, ".claude", "hooks", "tics"), 0o755); } catch (e) {}
-for (const d of ["tdd-workflow", "testing-philosophy", "conventions", "divide-and-conquer"])
+for (const d of ["tdd-workflow", "testing-philosophy", "conventions", "divide-and-conquer", "tool-support"])
   refresh(path.join(KIT, "docs", "tdd", d + ".md"), path.join("docs", "tdd", d + ".md"));
 refresh(path.join(KIT, "docs", "tics", "tic-protocol.md"), path.join("docs", "tics", "tic-protocol.md"));
 
