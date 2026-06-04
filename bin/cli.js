@@ -50,7 +50,7 @@ if (preset !== null && preset !== "full-team" && preset !== "none") {
   process.exit(2);
 }
 let cmd = "init";
-if (["init", "update", "help", "selftest", "report", "validate", "log", "inbox", "conductor", "claims"].includes(rest[0])) cmd = rest.shift();
+if (["init", "update", "help", "selftest", "report", "validate", "log", "inbox", "conductor", "claims", "sections"].includes(rest[0])) cmd = rest.shift();
 const role = cmd === "inbox" ? rest.shift() : null;
 const target = path.resolve(rest[0] || process.cwd());
 
@@ -71,6 +71,7 @@ if (cmd === "log") { process.exit(TV.ticsLog(target, scope)); }
 if (cmd === "inbox") { process.exit(TV.ticsInbox(target, role, scope)); }
 if (cmd === "conductor") { process.exit(TV.ticsConductor(target)); }
 if (cmd === "claims") { process.exit(TV.ticsClaims(target)); }
+if (cmd === "sections") { process.exit(TV.ticsSections(target)); }
 
 // ---- helpers ------------------------------------------------------------
 function ensureDir(d) { fs.mkdirSync(d, { recursive: true }); }
@@ -236,7 +237,7 @@ if (presetActive === "full-team") {
   for (const a of ["product-owner", "architect", "qa-verifier", "project-manager", "dev-ops"])
     refresh(path.join(PRESET, "agents", a + ".md"), path.join(".claude", "agents", a + ".md"));
   refresh(path.join(PRESET, "docs", "outer-loop.md"), path.join("docs", "tdd", "outer-loop.md"));
-  for (const s of ["backlog.md", "releases.md"])
+  for (const s of ["backlog.md", "releases.md", "sections.md"])
     seedOnce(path.join(PRESET, "state", s), path.join(".claude", "state", s));
 }
 

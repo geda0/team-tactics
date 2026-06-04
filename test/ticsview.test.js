@@ -155,3 +155,44 @@ test("installed JS hooks carry an eslint-disable header (don't break a host's li
     assert.match(fs.readFileSync(path.join(d, ".claude", "hooks", "tics"), "utf8"), /eslint-disable/);
   } finally { fs.rmSync(d, { recursive: true, force: true }); }
 });
+
+test("scope is hierarchical: --scope <section> matches its pairs; --scope <pair> matches its section", () => {
+  const d = freshWithTics([
+    T({ seq: 1, scope: "ranking", kind: "contract", msg: "section-level" }),
+    T({ seq: 2, scope: "ranking/S2", kind: "signal", result: "green", msg: "pair S2" }),
+    T({ seq: 3, scope: "ranking/S5", kind: "signal", result: "green", msg: "pair S5 sibling" }),
+    T({ seq: 4, scope: "narrate", kind: "signal", result: "green", msg: "other section" }),
+    T({ seq: 5, scope: "*", kind: "msg", msg: "global beacon" }),
+  ]);
+  try {
+    const sec = run(["log", "--scope", "ranking", d]);
+    for (const m of ["section-level", "pair S2", "pair S5", "global beacon"]) assert.match(sec.stdout, new RegExp(m));
+    assert.doesNotMatch(sec.stdout, /other section/);
+    const pair = run(["log", "--scope", "ranking/S2", d]);
+    for (const m of ["pair S2", "section-level", "global beacon"]) assert.match(pair.stdout, new RegExp(m));
+    assert.doesNotMatch(pair.stdout, /pair S5 sibling/);
+    assert.doesNotMatch(pair.stdout, /other section/);
+  } finally { fs.rmSync(d, { recursive: true, force: true }); }
+});
+
+test("`tics sections` summarizes activity per section (top-level scope segment)", () => {
+  const d = freshWithTics([
+    T({ seq: 1, scope: "ranking/S2", kind: "signal", result: "green", msg: "x" }),
+    T({ seq: 2, scope: "ranking", kind: "claim", ref: "backend/feed.ts", msg: "own" }),
+    T({ seq: 3, scope: "narrate/S1", kind: "signal", result: "red", msg: "y" }),
+    T({ seq: 4, scope: "*", kind: "msg", msg: "global" }),
+  ]);
+  try {
+    const r = run(["sections", d]);
+    assert.strictEqual(r.status, 0, r.stderr);
+    assert.match(r.stdout, /ranking/);
+    assert.match(r.stdout, /narrate/);
+  } finally { fs.rmSync(d, { recursive: true, force: true }); }
+});
+
+test("full-team preset seeds .claude/state/sections.md (the context map)", () => {
+  const d = fs.mkdtempSync(path.join(os.tmpdir(), "tt-sec-"));
+  run(["--preset", "full-team", d]);
+  try { assert.ok(fs.existsSync(path.join(d, ".claude", "state", "sections.md")), "sections.md seeded"); }
+  finally { fs.rmSync(d, { recursive: true, force: true }); }
+});
