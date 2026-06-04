@@ -35,3 +35,9 @@ test("preserves existing user .gitignore lines and is idempotent across update",
     assert.strictEqual((gi.match(START) || []).length, 1, "exactly one managed block (idempotent)");
   } finally { fs.rmSync(d, { recursive: true, force: true }); }
 });
+
+test("managed block ignores tics.jsonl (the transient tic log)", () => {
+  const d = fs.mkdtempSync(path.join(os.tmpdir(), "tdd-gi-"));
+  try { run([d]); assert.match(GI(d), /\.claude\/state\/tics\.jsonl/); }
+  finally { fs.rmSync(d, { recursive: true, force: true }); }
+});

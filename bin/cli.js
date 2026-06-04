@@ -138,6 +138,7 @@ function ensureGitignore(targetDir) {
     "# Transient kit artifacts - never commit (other state files ARE committed for continuity).\n" +
     ".claude/state/suite-status\n" +
     ".claude/state/telemetry.jsonl\n" +
+    ".claude/state/tics.jsonl\n" +
     ".claude/**/*.bak\n" +
     "*.team-tactics.*\n" +
     END;
@@ -197,6 +198,7 @@ ensureDir(path.join(target, ".claude", "agents"));
 ensureDir(path.join(target, ".claude", "hooks"));
 ensureDir(path.join(target, ".claude", "state"));
 ensureDir(path.join(target, "docs", "tdd"));
+ensureDir(path.join(target, "docs", "tics"));
 
 console.log((cmd === "update" ? "Updating" : "Installing") + " team-tactics kit -> " + target);
 if (cmd === "update") {
@@ -219,6 +221,7 @@ for (const h of ["guard-edit-scope", "run-suite", "require-green-to-stop", "sess
 }
 for (const d of ["tdd-workflow", "testing-philosophy", "conventions"])
   refresh(path.join(KIT, "docs", "tdd", d + ".md"), path.join("docs", "tdd", d + ".md"));
+refresh(path.join(KIT, "docs", "tics", "tic-protocol.md"), path.join("docs", "tics", "tic-protocol.md"));
 
 // 1b) Optional team preset (sticky) — outer-loop roles + method doc + state templates.
 if (presetActive === "full-team") {

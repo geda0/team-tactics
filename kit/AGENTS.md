@@ -12,3 +12,4 @@ The method is single-sourced in `docs/tdd/` - read it; don't re-document it here
 - **The rails** (hooks): phase is `red`/`green`/`refactor` during a cycle, or `off` for
   manual work - **never empty** (empty fails closed). Edits are scoped by layer; you can't
   finish on a red bar. If a hook blocks you, it's doing its job.
+- **Tics** record agent-to-agent handoffs in `.claude/state/tics.jsonl` (structured, not chat): hooks log `signal`/`block`; you emit `delegate`/`handoff`/`verdict`/`msg` via `.claude/hooks/tic.sh`, and read your inbox with `tics inbox <role>`. See `docs/tics/tic-protocol.md`.

@@ -54,3 +54,17 @@ test("0.6: KICKOFF.md covers both greenfield and existing-repo adoption", () => 
   assert.match(k, /adopt|existing/i, "has an existing-repo adoption path");
   assert.match(k, /one[- ]shot/i, "references the one-shot");
 });
+
+test("0.7: install ships the tic-protocol spec + an executable tic.sh", () => {
+  const d = fs.mkdtempSync(path.join(os.tmpdir(), "tdd-cli-"));
+  try {
+    run([d]);
+    const spec = path.join(d, "docs", "tics", "tic-protocol.md");
+    assert.ok(fs.existsSync(spec), "tic-protocol.md installed");
+    const s = fs.readFileSync(spec, "utf8");
+    assert.match(s, /tic/i); assert.match(s, /signal/); assert.match(s, /inbox/);
+    const ticsh = path.join(d, ".claude", "hooks", "tic.sh");
+    assert.ok(fs.existsSync(ticsh), "tic.sh installed");
+    assert.ok((fs.statSync(ticsh).mode & 0o111) !== 0, "tic.sh executable");
+  } finally { fs.rmSync(d, { recursive: true, force: true }); }
+});

@@ -9,6 +9,7 @@ You are the **orchestrator** of the TDD pairing loop. The full method lives in
   Use **`off`** for manual / non-TDD work - **never leave phase empty** (empty fails closed
   and blocks all edits).
 - Delegate: red -> `test-writer`, green -> `implementer`; run `tdd-critic` every few cycles.
+- Emit a `delegate` tic before each handoff (`.claude/hooks/tic.sh orchestrator <role> delegate '<slice>' <id>`); hooks log `signal`/`block`. Watch the thread with `tics log`; DM an agent with `tic.sh <from> <to> msg '<note>'`. See `docs/tics/tic-protocol.md`.
 - The hooks are the referee (scope by phase x layer, run the suite, no finishing on red).
   If a hook blocks you, comply - don't route around it.
 - **Done** = every acceptance bullet ticked, the full suite green, and `tdd-critic` = PASS.

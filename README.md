@@ -34,7 +34,9 @@ Open the project in Claude Code, approve the hooks, and paste the prompt in
 npx tics [init] [target]   # install (default)
 npx tics update [target]   # refresh agents/hooks/docs, keep your files
 npx tics selftest [target] # verify the gate works in YOUR environment
-npx tics report [target]   # summarize cycle telemetry (process metrics)
+npx tics report [target]   # process metrics from the suite 'signal' tics
+npx tics log [target]      # the agent-to-agent thread (the tic log)
+npx tics inbox <role> [target]  # tics addressed to a role (slack-like inbox)
 npx tics --force [target]  # also reset seeded (user-owned) files
 npx tics --preset full-team [target]  # also install the outer-loop team (PO/architect/QA/PM/dev-ops)
 npx tics help
