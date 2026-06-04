@@ -32,13 +32,13 @@ const CFG = path.join(KIT, "claude-config");
 const argv = process.argv.slice(2);
 let force = false;
 const rest = [];
-let preset = null, scope = null;
+let preset = null, scope = null, all = false;
 for (let i = 0; i < argv.length; i++) {
   const a = argv[i];
   if (a === "--force" || a === "-f") force = true;
   else if (a === "-h" || a === "--help") rest.push("help");
   else if (a === "--preset") preset = argv[++i] || "";
-  else if (a === "--scope") scope = argv[++i] || "";
+  else if (a === "--scope") scope = argv[++i] || ""; else if (a === "--all") all = true;
   else if (a.startsWith("--preset=")) preset = a.slice(9);
   else if (a.startsWith("-")) {
     console.error("tics: unknown option '" + a + "'. Try `team-tactics help`.");
@@ -69,11 +69,11 @@ if (!fs.existsSync(CFG)) {
 if (cmd === "selftest") { process.exit(selftest(target)); }
 if (cmd === "report") { process.exit(report(target)); }
 if (cmd === "validate") { process.exit(validateInstall(target)); }
-if (cmd === "log") { process.exit(TV.ticsLog(target, scope)); }
+if (cmd === "log") { process.exit(TV.ticsLog(target, scope, all)); }
 if (cmd === "inbox") { process.exit(TV.ticsInbox(target, role, scope)); }
-if (cmd === "conductor") { process.exit(TV.ticsConductor(target)); }
-if (cmd === "claims") { process.exit(TV.ticsClaims(target)); }
-if (cmd === "sections") { process.exit(TV.ticsSections(target)); }
+if (cmd === "conductor") { process.exit(TV.ticsConductor(target, all)); }
+if (cmd === "claims") { process.exit(TV.ticsClaims(target, all)); }
+if (cmd === "sections") { process.exit(TV.ticsSections(target, all)); }
 if (cmd === "cycle") { process.exit(TV.ticsCycle(target)); }
 if (cmd === "claim-check") { process.exit(TV.claimCheckCli(target, cfFile, cfScope)); }
 if (cmd === "install-hooks") { process.exit(installHooks(target)); }

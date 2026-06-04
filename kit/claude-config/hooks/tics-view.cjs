@@ -2,14 +2,14 @@
 "use strict";
 // tics-view.js — the tic READ layer (loadTics + views), shared by the installed reader
 // (.claude/hooks/tics) and the package CLI (bin/cli.js). Zero-dep; do NOT edit (refreshed).
-const fs = require("fs"), path = require("path");
-function storePaths(targetDir) {
+const fs = require("fs"), path = require("path"), cp = require("child_process");
+function storePaths(targetDir, ignoreEnv) {
   const dir = path.join(targetDir, ".claude", "state");
   // TICS_DIR / TICS_FILE let parallel worktree sections share ONE spool bus (see docs/tdd/sectioning.md).
-  return { jsonl: process.env.TICS_FILE || path.join(dir, "tics.jsonl"), spool: process.env.TICS_DIR || path.join(dir, "tics.d") };
+  return { jsonl: (!ignoreEnv && process.env.TICS_FILE) || path.join(dir, "tics.jsonl"), spool: (!ignoreEnv && process.env.TICS_DIR) || path.join(dir, "tics.d") };
 }
-function loadTics(targetDir) {
-  const { jsonl, spool } = storePaths(targetDir);
+function loadTics(targetDir, ignoreEnv) {
+  const { jsonl, spool } = storePaths(targetDir, ignoreEnv);
   const parse = (s) => { try { return JSON.parse(s); } catch (e) { return null; } };
   const out = [];
   try { for (const l of fs.readFileSync(jsonl, "utf8").split("\n")) if (l.trim()) { const o = parse(l); if (o) out.push(o); } } catch (e) {}
@@ -17,6 +17,22 @@ function loadTics(targetDir) {
   out.sort((a, b) => String(a.ts || "").localeCompare(String(b.ts || "")) || ((a.seq || 0) - (b.seq || 0)));
   return out;
 }
+function worktreeDirs(targetDir) {
+  try {
+    const out = cp.execFileSync("git", ["-C", targetDir, "worktree", "list", "--porcelain"], { encoding: "utf8" });
+    const dirs = out.split("\n").filter((l) => l.indexOf("worktree ") === 0).map((l) => l.slice(9).trim()).filter(Boolean);
+    return dirs.length ? dirs : [targetDir];
+  } catch (e) { return [targetDir]; }
+}
+function loadTicsAll(targetDir) {
+  const seen = new Set(), out = [];
+  const push = (arr) => { for (const x of arr) { const k = (x.ts || "") + "|" + (x.kind || "") + "|" + (x.from || "") + "|" + (x.to || "") + "|" + (x.msg || "") + "|" + (x.scope || "") + "|" + (x.ref || ""); if (!seen.has(k)) { seen.add(k); out.push(x); } } };
+  push(loadTics(targetDir));                                  // current bus (env-resolved, e.g. a shared TICS_DIR)
+  for (const root of worktreeDirs(targetDir)) push(loadTics(root, true));   // each worktree's own default bus
+  out.sort((a, b) => String(a.ts || "").localeCompare(String(b.ts || "")) || ((a.seq || 0) - (b.seq || 0)));
+  return out;
+}
+function loadFor(targetDir, all) { return all ? loadTicsAll(targetDir) : loadTics(targetDir); }
 function loadSignalEvents(targetDir) {
   const { jsonl, spool } = storePaths(targetDir);
   if (fs.existsSync(jsonl) || fs.existsSync(spool))
@@ -44,8 +60,8 @@ function collapseRunSuite(list) {
   }
   return out;
 }
-function ticsLog(targetDir, scopeFilter) {
-  let t = loadTics(targetDir);
+function ticsLog(targetDir, scopeFilter, all) {
+  let t = loadFor(targetDir, all);
   if (scopeFilter) t = t.filter((x) => scopeMatch(x.scope, scopeFilter));
   if (!t.length) { console.log("No tics yet — the agent thread is empty (.claude/state/tics.jsonl)."); return 0; }
   t = collapseRunSuite(t);
@@ -68,9 +84,9 @@ function ticsInbox(targetDir, role, scopeFilter) {
   for (const x of t) console.log("  #" + (x.seq || "?") + "  " + (x.from || "?") + " [" + (x.kind || "?") + "]  " + (x.msg || "") + (x._count > 1 ? " x" + x._count : "") + (x.result ? "  (" + x.result + ")" : ""));
   return 0;
 }
-function ticsConductor(targetDir) {
+function ticsConductor(targetDir, all) {
   const COUPLING = ["claim", "release", "contract", "need", "msg"];
-  const t = loadTics(targetDir).filter((x) => COUPLING.indexOf(x.kind) !== -1);
+  const t = loadFor(targetDir, all).filter((x) => COUPLING.indexOf(x.kind) !== -1);
   if (!t.length) { console.log("No coupling tics yet (claim/release/contract/need/msg)."); return 0; }
   console.log("Conductor view — cross-pair coupling tics:");
   for (const x of t) {
@@ -79,9 +95,9 @@ function ticsConductor(targetDir) {
   }
   return 0;
 }
-function ticsClaims(targetDir) {
+function ticsClaims(targetDir, all) {
   const active = new Map();
-  for (const x of loadTics(targetDir)) {
+  for (const x of loadFor(targetDir, all)) {
     if (x.kind === "claim" && x.ref) active.set(x.ref, x);
     else if (x.kind === "release" && x.ref) active.delete(x.ref);
   }
@@ -90,8 +106,8 @@ function ticsClaims(targetDir) {
   for (const x of active.values()) console.log("  " + x.ref + "  <-  " + (x.scope || "?") + "  (#" + (x.seq || "?") + " " + (x.from || "?") + ")");
   return 0;
 }
-function ticsSections(targetDir) {
-  const t = loadTics(targetDir);
+function ticsSections(targetDir, all) {
+  const t = loadFor(targetDir, all);
   const sec = {};
   for (const x of t) {
     const sc = x.scope || "*";
@@ -147,22 +163,22 @@ function ticsCycle(targetDir) {
   return 0;
 }
 function main(argv, defaultRoot) {
-  let scope = null; const rest = [];
-  for (let i = 0; i < argv.length; i++) { const a = argv[i]; if (a === "--scope") scope = argv[++i] || ""; else rest.push(a); }
+  let scope = null, all = false; const rest = [];
+  for (let i = 0; i < argv.length; i++) { const a = argv[i]; if (a === "--scope") scope = argv[++i] || ""; else if (a === "--all") all = true; else rest.push(a); }
   const cmd = rest.shift();
   const role = cmd === "inbox" ? rest.shift() : null;
   const cfFile = cmd === "claim-check" ? rest.shift() : null;
   const cfScope = cmd === "claim-check" ? (rest.shift() || scope || "") : null;
   const target = rest[0] ? path.resolve(rest[0]) : (defaultRoot || process.cwd());
   switch (cmd) {
-    case "log": return ticsLog(target, scope);
+    case "log": return ticsLog(target, scope, all);
     case "inbox": return ticsInbox(target, role, scope);
-    case "conductor": return ticsConductor(target);
-    case "claims": return ticsClaims(target);
-    case "sections": return ticsSections(target);
+    case "conductor": return ticsConductor(target, all);
+    case "claims": return ticsClaims(target, all);
+    case "sections": return ticsSections(target, all);
     case "cycle": return ticsCycle(target);
     case "claim-check": return claimCheckCli(target, cfFile, cfScope);
-    default: console.error("usage: tics <log [--scope S] | inbox <role> [--scope S] | conductor | claims | sections | claim-check <file> <scope>>"); return 2;
+    default: console.error("usage: tics <log [--scope S] | inbox <role> [--scope S] | conductor | claims | sections | claim-check <file> <scope>] [--all]>"); return 2;
   }
 }
 if (require.main === module) {

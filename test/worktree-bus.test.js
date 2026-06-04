@@ -84,3 +84,17 @@ test("install-hooks installs a post-commit that emits a commit tic (cross-tool b
     assert.match(log.stdout, /land a thing/, "with the commit subject");
   } finally { fs.rmSync(d, { recursive: true, force: true }); }
 });
+
+test("tics log --all merges every worktree's bus (whole picture across fragmented buses)", () => {
+  const d = gitInstall(); const wt = d + "-wtall";
+  try {
+    fs.writeFileSync(path.join(d, ".claude", "state", "tics.jsonl"), JSON.stringify({ ts: "2026-06-04T01:00:00Z", seq: 1, kind: "note", from: "main-wt", to: "*", msg: "tic in MAIN", scope: "*" }) + "\n");
+    git(d, "worktree", "add", "-q", wt, "-b", "sidewt");
+    fs.mkdirSync(path.join(wt, ".claude", "state"), { recursive: true });
+    fs.writeFileSync(path.join(wt, ".claude", "state", "tics.jsonl"), JSON.stringify({ ts: "2026-06-04T01:00:05Z", seq: 1, kind: "note", from: "side-wt", to: "*", msg: "tic in SIDE", scope: "*" }) + "\n");
+    const one = node("log", d);
+    assert.match(one.stdout, /tic in MAIN/); assert.doesNotMatch(one.stdout, /tic in SIDE/, "default = this worktree only");
+    const all = node("log", "--all", d);
+    assert.match(all.stdout, /tic in MAIN/); assert.match(all.stdout, /tic in SIDE/, "--all merges sibling worktree buses");
+  } finally { try { git(d, "worktree", "remove", "--force", wt); } catch (e) {} fs.rmSync(d, { recursive: true, force: true }); fs.rmSync(wt, { recursive: true, force: true }); }
+});
