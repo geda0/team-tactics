@@ -16,7 +16,7 @@ One JSON object per line in `.claude/state/tics.jsonl` (transient — gitignored
 | `kind` | caller | one of the kinds below |
 | `from` / `to` | caller | emitter role / addressee role (`*` = broadcast) |
 | `phase` / `layer` | auto | from `.claude/state/{phase,layer}` |
-| `scope` | auto | `.claude/state/scope` if set (e.g. `pair:S2`), else the active layer, else `*` |
+| `scope` | auto | `TICS_SCOPE` (per-call override) if set, else `.claude/state/scope` (e.g. `pair:S2`), else the active layer, else `*` |
 | `msg` | caller | one-line summary |
 | `ref` | caller | pointer to the objective artifact (slice id / file / test) |
 | `result` | caller | `green`/`red`/`pass`/`concerns`/`block`/`blocked` |
@@ -49,7 +49,7 @@ the wrapper (mechanism is `emit_tic` in `.claude/hooks/lib.sh`; gated by `TICS=1
 
 ## Scope — the signal/noise + coupling axis
 Every tic carries a `scope`, read ambiently from `.claude/state/scope` (set it per pairing
-session like phase/layer: `echo pair:S2 > .claude/state/scope`). A **pairing-tic** is scoped to
+session like phase/layer: `echo pair:S2 > .claude/state/scope`). For a **fan-out**, each branch sets `TICS_SCOPE=<task>/<branch>` per call (highest precedence) so concurrent branches self-scope onto one shared bus without touching the global file. A **pairing-tic** is scoped to
 its pair (`pair:S2`) — signal to that pair, noise to others. A **coupling-tic** uses a broader
 scope (`feature:auth`, `contract:RankedFeed`, `*`) and reaches everyone coupled to it — so a
 pairing-tic is just a tightly-scoped coupling-tic. Filtering by scope keeps a view 100% signal:

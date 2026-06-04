@@ -124,6 +124,26 @@ test("emit_tic scope: falls back to '*' only when neither scope nor layer is set
   } finally { fs.rmSync(d, { recursive: true, force: true }); }
 });
 
+test("emit_tic honors TICS_SCOPE — per-call scope override for fan-out branches", () => {
+  const d = sandbox();
+  try {
+    fs.writeFileSync(path.join(d, ".claude", "state", "scope"), "frontend\n");
+    srcLib(d, "export TICS_SCOPE='explore/ranking'; emit_tic explorer '*' note 'mapped ranking' ranking");
+    assert.strictEqual(ticsOf(d).pop().scope, "explore/ranking", "TICS_SCOPE overrides the scope file");
+    srcLib(d, "emit_tic explorer '*' note 'again' ranking");
+    assert.strictEqual(ticsOf(d).pop().scope, "frontend", "falls back to the scope file when TICS_SCOPE is unset");
+  } finally { fs.rmSync(d, { recursive: true, force: true }); }
+});
+
+test("tic.sh passes TICS_SCOPE through to the recorded tic (the fan-out idiom)", () => {
+  const d = sandbox();
+  try {
+    const r = cp.spawnSync("bash", ["-c", "TICS_SCOPE='explore/ui' '" + d + "/.claude/hooks/tic.sh' explorer '*' note 'mapped ui' ui"], { encoding: "utf8", cwd: d });
+    assert.strictEqual(r.status, 0, r.stderr);
+    assert.strictEqual(ticsOf(d).pop().scope, "explore/ui");
+  } finally { fs.rmSync(d, { recursive: true, force: true }); }
+});
+
 test("emit_tic honors TICS_DIR — a shared spool bus across roots (worktree sections)", () => {
   const d = sandbox();
   const shared = fs.mkdtempSync(path.join(os.tmpdir(), "tt-bus-"));
