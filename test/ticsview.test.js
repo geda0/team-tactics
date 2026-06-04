@@ -130,3 +130,19 @@ test("`tics claims` lists active claims (claim minus release), by scope", () => 
     assert.doesNotMatch(r.stdout, /backend\/feed\.ts/); // released by S2
   } finally { fs.rmSync(d, { recursive: true, force: true }); }
 });
+
+test("installed .claude/hooks/tics is a local reader (inbox/log) — agents read where they are", () => {
+  const d = fs.mkdtempSync(path.join(os.tmpdir(), "tt-rdr-"));
+  run([d]); // install ships .claude/hooks/tics + tics-view.js
+  try {
+    fs.writeFileSync(path.join(d, ".claude", "state", "tics.jsonl"),
+      [JSON.stringify(T({ seq: 1, kind: "msg", to: "implementer", scope: "frontend", msg: "for impl" })),
+       JSON.stringify(T({ seq: 2, kind: "signal", to: "*", scope: "frontend", result: "green", msg: "suite green" }))].join("\n") + "\n");
+    const reader = path.join(d, ".claude", "hooks", "tics");
+    const ib = cp.spawnSync("node", [reader, "inbox", "implementer"], { encoding: "utf8", cwd: d });
+    assert.strictEqual(ib.status, 0, ib.stderr);
+    assert.match(ib.stdout, /for impl/);
+    const lg = cp.spawnSync("node", [reader, "log"], { encoding: "utf8", cwd: d });
+    assert.match(lg.stdout, /suite green/);
+  } finally { fs.rmSync(d, { recursive: true, force: true }); }
+});

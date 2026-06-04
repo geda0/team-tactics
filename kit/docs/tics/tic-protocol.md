@@ -56,6 +56,7 @@ pairing-tic is just a tightly-scoped coupling-tic. Filtering by scope keeps a vi
 `tics log --scope pair:S2` shows that pair plus global (`*`) tics and hides the rest.
 
 ## Viewing
+Use the installed reader `.claude/hooks/tics <cmd>` (agents) or `npx team-tactics <cmd>` (shell); `tic.sh` only EMITS.
 - `tics log [--scope <s>]` — the thread; with --scope, just that scope + global (`*`).
 - `tics inbox <role> [--scope <s>]` — your inbox: tics where `to ∈ {<role>, *}` (and scope, if given). Read it at the start of your
   turn and address any directed `msg`.

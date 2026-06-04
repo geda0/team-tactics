@@ -132,3 +132,14 @@ test("tic.sh warns on an unknown kind but still records it (data hygiene)", () =
     assert.strictEqual(ticsOf(d).pop().kind, "frontend:green", "still recorded (never lose data)");
   } finally { fs.rmSync(d, { recursive: true, force: true }); }
 });
+
+test("tic.sh refuses a read-shaped call (no garbage emit; points to the reader)", () => {
+  const d = sandbox();
+  try {
+    const r = cp.spawnSync("bash", [path.join(d, ".claude", "hooks", "tic.sh"), "implementer", "inbox", "--scope", "frontend"], { encoding: "utf8", cwd: d });
+    assert.match(r.stderr, /\.claude\/hooks\/tics|to read/i, "points to the reader");
+    let t = [];
+    try { t = fs.readFileSync(path.join(d, ".claude", "state", "tics.jsonl"), "utf8").trim().split("\n").filter(Boolean).map(JSON.parse); } catch (e) {}
+    assert.ok(!t.some((x) => x.kind === "inbox" || x.kind === "--scope"), "no read-shaped garbage recorded");
+  } finally { fs.rmSync(d, { recursive: true, force: true }); }
+});

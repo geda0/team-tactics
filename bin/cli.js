@@ -25,6 +25,7 @@ const cp = require("child_process");
 const crypto = require("crypto");
 
 const KIT = path.join(__dirname, "..", "kit");
+const TV = require(path.join(KIT, "claude-config", "hooks", "tics-view.js"));
 const CFG = path.join(KIT, "claude-config");
 
 // ---- arg parsing --------------------------------------------------------
@@ -66,10 +67,10 @@ if (!fs.existsSync(CFG)) {
 if (cmd === "selftest") { process.exit(selftest(target)); }
 if (cmd === "report") { process.exit(report(target)); }
 if (cmd === "validate") { process.exit(validateInstall(target)); }
-if (cmd === "log") { process.exit(ticsLog(target, scope)); }
-if (cmd === "inbox") { process.exit(ticsInbox(target, role, scope)); }
-if (cmd === "conductor") { process.exit(ticsConductor(target)); }
-if (cmd === "claims") { process.exit(ticsClaims(target)); }
+if (cmd === "log") { process.exit(TV.ticsLog(target, scope)); }
+if (cmd === "inbox") { process.exit(TV.ticsInbox(target, role, scope)); }
+if (cmd === "conductor") { process.exit(TV.ticsConductor(target)); }
+if (cmd === "claims") { process.exit(TV.ticsClaims(target)); }
 
 // ---- helpers ------------------------------------------------------------
 function ensureDir(d) { fs.mkdirSync(d, { recursive: true }); }
@@ -223,6 +224,8 @@ for (const h of ["guard-edit-scope", "run-suite", "require-green-to-stop", "sess
   refresh(path.join(CFG, "hooks", h + ".sh"), rel);
   try { fs.chmodSync(path.join(target, rel), 0o755); } catch (e) { /* windows */ }
 }
+for (const h of ["tics", "tics-view.js"]) refresh(path.join(CFG, "hooks", h), path.join(".claude", "hooks", h));
+try { fs.chmodSync(path.join(target, ".claude", "hooks", "tics"), 0o755); } catch (e) {}
 for (const d of ["tdd-workflow", "testing-philosophy", "conventions"])
   refresh(path.join(KIT, "docs", "tdd", d + ".md"), path.join("docs", "tdd", d + ".md"));
 refresh(path.join(KIT, "docs", "tics", "tic-protocol.md"), path.join("docs", "tics", "tic-protocol.md"));
@@ -402,73 +405,8 @@ resolve_layer() {
 // ---- report -------------------------------------------------------------
 // Summarize the cycle telemetry so you can see how the PROCESS is performing —
 // cycles per layer, implementer retries, suite durations, pass rates.
-// ---- tic views: the agent-to-agent thread (.claude/state/tics.jsonl) ----
-function loadTics(targetDir) {
-  const dir = path.join(targetDir, ".claude", "state");
-  const parse = (s) => { try { return JSON.parse(s); } catch (e) { return null; } };
-  const out = [];
-  try { for (const l of fs.readFileSync(path.join(dir, "tics.jsonl"), "utf8").split("\n")) if (l.trim()) { const o = parse(l); if (o) out.push(o); } } catch (e) {}
-  try { for (const f of fs.readdirSync(path.join(dir, "tics.d"))) if (f.endsWith(".json")) { const o = parse(fs.readFileSync(path.join(dir, "tics.d", f), "utf8").trim()); if (o) out.push(o); } } catch (e) {}
-  out.sort((a, b) => String(a.ts || "").localeCompare(String(b.ts || "")) || ((a.seq || 0) - (b.seq || 0)));
-  return out;
-}
-function loadSignalEvents(targetDir) {
-  const _st = path.join(targetDir, ".claude", "state");
-  if (fs.existsSync(path.join(_st, "tics.jsonl")) || fs.existsSync(path.join(_st, "tics.d")))
-    return loadTics(targetDir).filter((t) => t.kind === "signal");
-  try {
-    return fs.readFileSync(path.join(targetDir, ".claude", "state", "telemetry.jsonl"), "utf8")
-      .split("\n").filter(Boolean)
-      .map((l) => { try { return JSON.parse(l); } catch (e) { return null; } })
-      .filter((e) => e && e.event === "suite");
-  } catch (e) { return []; }
-}
-function ticsLog(targetDir, scopeFilter) {
-  let t = loadTics(targetDir);
-  if (scopeFilter) t = t.filter((x) => (x.scope || "*") === scopeFilter || (x.scope || "*") === "*");
-  if (!t.length) { console.log("No tics yet — the agent thread is empty (.claude/state/tics.jsonl)."); return 0; }
-  for (const x of t) {
-    const when = (x.ts || "").slice(11, 19) || "--:--:--";
-    const arrow = ((x.from || "?") + " -> " + (x.to || "*")).padEnd(28);
-    const kind = (x.kind || "?").padEnd(9);
-    const ctx = ("[" + (x.layer || "?") + "/" + (x.phase || "?") + " " + (x.scope || "*") + "]").padEnd(22);
-    console.log(String(x.seq || "").padStart(3) + "  " + when + "  " + arrow + kind + ctx + " " + (x.msg || "") + (x.result ? "  (" + x.result + ")" : ""));
-  }
-  return 0;
-}
-function ticsInbox(targetDir, role, scopeFilter) {
-  if (!role) { console.error("usage: tics inbox <role>   (e.g. tics inbox architect)"); return 2; }
-  let t = loadTics(targetDir).filter((x) => x.to === role || x.to === "*");
-  if (scopeFilter) t = t.filter((x) => (x.scope || "*") === scopeFilter || (x.scope || "*") === "*");
-  if (!t.length) { console.log("Inbox empty for '" + role + "' (no tics addressed to it or broadcast)."); return 0; }
-  console.log("Inbox for " + role + "  (to = " + role + " or *):");
-  for (const x of t) console.log("  #" + (x.seq || "?") + "  " + (x.from || "?") + " [" + (x.kind || "?") + "]  " + (x.msg || "") + (x.result ? "  (" + x.result + ")" : ""));
-  return 0;
-}
-function ticsConductor(targetDir) {
-  const COUPLING = ["claim", "release", "contract", "need", "msg"];
-  const t = loadTics(targetDir).filter((x) => COUPLING.indexOf(x.kind) !== -1);
-  if (!t.length) { console.log("No coupling tics yet (claim/release/contract/need/msg)."); return 0; }
-  console.log("Conductor view — cross-pair coupling tics:");
-  for (const x of t) {
-    const when = (x.ts || "").slice(11, 19);
-    console.log("  #" + (x.seq || "?") + " " + when + "  " + (x.from || "?") + " -> " + (x.to || "*") + "  [" + (x.kind || "?") + " " + (x.scope || "*") + "]  " + (x.msg || "") + (x.ref ? " {" + x.ref + "}" : "") + (x.result ? " (" + x.result + ")" : ""));
-  }
-  return 0;
-}
-function ticsClaims(targetDir) {
-  const active = new Map();
-  for (const x of loadTics(targetDir)) {
-    if (x.kind === "claim" && x.ref) active.set(x.ref, x);
-    else if (x.kind === "release" && x.ref) active.delete(x.ref);
-  }
-  if (!active.size) { console.log("No active claims."); return 0; }
-  console.log("Active claims (claim minus release):");
-  for (const x of active.values()) console.log("  " + x.ref + "  <-  " + (x.scope || "?") + "  (#" + (x.seq || "?") + " " + (x.from || "?") + ")");
-  return 0;
-}
 function report(targetDir) {
-  const events = loadSignalEvents(targetDir);
+  const events = TV.loadSignalEvents(targetDir);
   if (events.length === 0) {
     console.log("No suite signals yet. Run some red->green cycles (run-suite emits a 'signal' tic), then re-run `tics report`.");
     return 0;
