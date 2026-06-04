@@ -50,7 +50,7 @@ if (preset !== null && preset !== "full-team" && preset !== "none") {
   process.exit(2);
 }
 let cmd = "init";
-if (["init", "update", "help", "selftest", "report", "validate", "log", "inbox", "conductor", "claims", "sections", "claim-check"].includes(rest[0])) cmd = rest.shift();
+if (["init", "update", "help", "selftest", "report", "validate", "log", "inbox", "conductor", "claims", "sections", "claim-check", "install-hooks"].includes(rest[0])) cmd = rest.shift();
 const role = cmd === "inbox" ? rest.shift() : null;
 const cfFile = cmd === "claim-check" ? rest.shift() : null;
 const cfScope = cmd === "claim-check" ? (rest.shift() || scope || "") : null;
@@ -75,11 +75,30 @@ if (cmd === "conductor") { process.exit(TV.ticsConductor(target)); }
 if (cmd === "claims") { process.exit(TV.ticsClaims(target)); }
 if (cmd === "sections") { process.exit(TV.ticsSections(target)); }
 if (cmd === "claim-check") { process.exit(TV.claimCheckCli(target, cfFile, cfScope)); }
+if (cmd === "install-hooks") { process.exit(installHooks(target)); }
 
 // ---- helpers ------------------------------------------------------------
 function ensureDir(d) { fs.mkdirSync(d, { recursive: true }); }
 function say(action, file) { console.log("  " + action.padEnd(9) + file); }
 function copy(src, dest) { ensureDir(path.dirname(dest)); fs.copyFileSync(src, dest); }
+function installHooks(target) {
+  let cdir;
+  try { cdir = cp.execFileSync("git", ["-C", target, "rev-parse", "--git-common-dir"], { encoding: "utf8" }).trim(); }
+  catch (e) { console.error("install-hooks: not a git repository (or git missing) — nothing to do."); return 1; }
+  const hooksDir = path.isAbsolute(cdir) ? path.join(cdir, "hooks") : path.join(target, cdir, "hooks");
+  ensureDir(hooksDir);
+  const dest = path.join(hooksDir, "pre-commit");
+  if (fs.existsSync(dest) && fs.readFileSync(dest, "utf8").indexOf("team-tactics pre-commit") === -1) {
+    console.error("install-hooks: a non-team-tactics pre-commit already exists at\n  " + dest + "\nNot clobbering. Merge the green-bar gate into it yourself, or point core.hooksPath at a shared dir.");
+    return 1;
+  }
+  fs.copyFileSync(path.join(KIT, "githooks", "pre-commit"), dest);
+  try { fs.chmodSync(dest, 0o755); } catch (e) { /* windows */ }
+  console.log("install-hooks: portable green-bar pre-commit installed at\n  " + dest);
+  console.log("  Runs the suite before every commit (all worktrees of this repo, ANY tool).");
+  console.log("  Bypass once: git commit --no-verify.  Disable: PRECOMMIT_GATE=0 in .claude/tdd.config.");
+  return 0;
+}
 
 // ---- manifest (P0-3): track kit-owned files so updates never silently clobber ----
 const PKG = require("../package.json");

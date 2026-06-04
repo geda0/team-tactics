@@ -1,0 +1,174 @@
+{
+  "kit": "team-tactics",
+  "kitVersion": "0.9.3",
+  "configSchema": 2,
+  "preset": null,
+  "updatedAt": "2026-06-04T12:00:43.542Z",
+  "files": {
+    ".claude/agents/test-writer.md": {
+      "class": "mechanism",
+      "version": "0.9.3",
+      "sha256": "e804b36d42c0be6e38640253adcbe6bdb8058d8c2e2351e2d74ac23f74e80df2"
+    },
+    ".claude/agents/implementer.md": {
+      "class": "mechanism",
+      "version": "0.9.3",
+      "sha256": "7a9789626d30eae11fb503eba901bf73e2fd7144daa286032862958c0f4c5042"
+    },
+    ".claude/agents/tdd-critic.md": {
+      "class": "mechanism",
+      "version": "0.9.3",
+      "sha256": "eb788015ed523c2695059acaf43b2f2cde2f14669e899f7bbcd7344721c1c75e"
+    },
+    ".claude/agents/planner.md": {
+      "class": "mechanism",
+      "version": "0.9.3",
+      "sha256": "a0ca363712c03ca3896cd0ad6d0d4f30ec8dd87a1ec38026b684c61dacf7a276"
+    },
+    ".claude/hooks/lib.sh": {
+      "class": "mechanism",
+      "version": "0.9.3",
+      "sha256": "f878bd5721f5f6533843b9a5d0dedcf834a0b2a3377fd713e9276f8b3ef3f855"
+    },
+    ".claude/hooks/guard-edit-scope.sh": {
+      "class": "mechanism",
+      "version": "0.9.3",
+      "sha256": "6cb1a95a50ed59d2e75857595e3369ff3c3366cff479209fab69675aa4dce5f9"
+    },
+    ".claude/hooks/run-suite.sh": {
+      "class": "mechanism",
+      "version": "0.9.3",
+      "sha256": "143a02fa464febbce0774c89dc7e66be3bef79e540c97858a4ec607f78f11edb"
+    },
+    ".claude/hooks/require-green-to-stop.sh": {
+      "class": "mechanism",
+      "version": "0.9.3",
+      "sha256": "94c6a1e87d0a05747ffe6e522c9a69a74d3d77a470b1b5acee7866c5098c89bf"
+    },
+    ".claude/hooks/session-green-check.sh": {
+      "class": "mechanism",
+      "version": "0.9.3",
+      "sha256": "2da7d63d6e2a8a965885ccae2a6296fdd44f1006fa9235767b9765479c33cdcc"
+    },
+    ".claude/hooks/tic.sh": {
+      "class": "mechanism",
+      "version": "0.9.3",
+      "sha256": "8ec2a4363c5454ea5ef33c23a5ae06ce2a02b12a644dfa139f2c76ad223ae9c8"
+    },
+    ".claude/hooks/subagent-handoff.sh": {
+      "class": "mechanism",
+      "version": "0.9.3",
+      "sha256": "26c5a178e6bf6aea63985256fa67b05dfac14e35ae216874bec5d8378fa8b7b8"
+    },
+    ".claude/hooks/tics": {
+      "class": "mechanism",
+      "version": "0.9.3",
+      "sha256": "1639fd5f4e327abdddc659dec8b0fce65168ca54b4c946b57813260db26d8ce3"
+    },
+    ".claude/hooks/tics-view.cjs": {
+      "class": "mechanism",
+      "version": "0.9.3",
+      "sha256": "bda3aa4152eee5625a3d460c1806a9c7c666490519e557af473b5322f1ceb641"
+    },
+    "docs/tdd/tdd-workflow.md": {
+      "class": "mechanism",
+      "version": "0.9.3",
+      "sha256": "474e3cffeba6c58df48cdd934853a5c380108b9780453df46091ce9545b02064"
+    },
+    "docs/tdd/testing-philosophy.md": {
+      "class": "mechanism",
+      "version": "0.9.3",
+      "sha256": "15b9304efdf0d25067e357d5d28d1825c5d9853877d3cabd5a86927db25768fe"
+    },
+    "docs/tdd/conventions.md": {
+      "class": "mechanism",
+      "version": "0.9.3",
+      "sha256": "f5f5cc9468baa443c56e02f1319dc3e7456f557ee3e178197f4a3859e804da79"
+    },
+    "docs/tdd/divide-and-conquer.md": {
+      "class": "mechanism",
+      "version": "0.9.3",
+      "sha256": "d1e0581792fd3e9df8fe1ffc6273860dbe4fbf89c7130481ec0c017cfceef1a7"
+    },
+    "docs/tdd/tool-support.md": {
+      "class": "mechanism",
+      "version": "0.9.3",
+      "sha256": "2edf3dbdf8ba2cff4ea6d982e59baebf627f60a804404d756870b1b570529606"
+    },
+    "docs/tics/tic-protocol.md": {
+      "class": "mechanism",
+      "version": "0.9.3",
+      "sha256": "00a6509fe86e165162ba6893d9735b525d359505fdf15ba41e341945eeaf21ed"
+    },
+    ".claude/tdd.config": {
+      "class": "data",
+      "version": "0.9.3",
+      "sha256": "03b7ce126e13065c41cf93b368bb7695450fc7f8a5c5d673258257b606f563cb"
+    },
+    ".claude/hooks/local.d/README.md": {
+      "class": "data",
+      "version": "0.9.3",
+      "sha256": "b0d26db93c45484c8b4a220bff93704b35c4bbffd3f44897aadf43c92a478396"
+    },
+    ".claude/state/design-notes.md": {
+      "class": "data",
+      "version": "0.9.3",
+      "sha256": "4a98cbe036af822995246d3760440419875e6eda8d205f1a13c282a593cf704a"
+    },
+    ".claude/state/progress.md": {
+      "class": "data",
+      "version": "0.9.3",
+      "sha256": "a4f4f6b54eaa94ce71f57367e2a5bd254328f0c1c17c4a2d7e0dd28b9669b6ea"
+    },
+    ".claude/state/plan.md": {
+      "class": "data",
+      "version": "0.9.3",
+      "sha256": "7f3ca93110ec38fd49a31fecf4c6860f8651dbad7dedf69ebd77a67ba9a0e548"
+    },
+    ".claude/state/phase": {
+      "class": "data",
+      "version": "0.9.3",
+      "sha256": "b470b84cf0cd3189e10615bffea7d5cbd9f61134ba1c2cfd513ddd45b776a5f6"
+    },
+    ".claude/state/layer": {
+      "class": "data",
+      "version": "0.9.3",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    ".claude/state/.gitkeep": {
+      "class": "data",
+      "version": "0.9.3",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "docs/tdd/project-invariants.md": {
+      "class": "data",
+      "version": "0.9.3",
+      "sha256": "329b91a38723e08b4c211fe55221dd0aac12e2b72be96b02d73bff99eae0607e"
+    },
+    ".github/workflows/tdd-verify.yml": {
+      "class": "data",
+      "version": "0.9.3",
+      "sha256": "0ff11d00593a251a58324735b7b5c3d50e939e71bf1c1c173868be09716ba551"
+    },
+    ".claude/settings.json": {
+      "class": "entry",
+      "version": "0.9.3",
+      "sha256": "194599d067016f518cbe18974709671429928c0931c6280d829f99046b472903"
+    },
+    "AGENTS.md": {
+      "class": "entry",
+      "version": "0.9.3",
+      "sha256": "f77b6e1a1a4d69185b3509cac0a12d1c366dc5bd70308c1d0d705f1442e5b064"
+    },
+    "CLAUDE.md": {
+      "class": "entry",
+      "version": "0.9.3",
+      "sha256": "b7ae54ec67eca2634abd70ed40bb5a01dbc3dc9fd5045c392442eb8f50da0b4e"
+    },
+    "KICKOFF.md": {
+      "class": "entry",
+      "version": "0.9.3",
+      "sha256": "34bda634966c3820c3541db5e6d1cc364f65e0f80fd122d75ae01a8be218c41a"
+    }
+  }
+}

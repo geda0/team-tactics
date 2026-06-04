@@ -35,9 +35,6 @@ equivalent). So **nothing fires automatically — the gate fails *open*.** What 
       worktree and the conductor can't see across them.
 
 ## Making it more automatic elsewhere
-- **The portable referee (any tool):** CI (`.github/workflows/tdd-verify.yml`, seeded) runs the
-  suite on every push/PR — the always-on gate. For local enforcement run **`npx tics install-hooks`**:
-  it installs a **pre-commit green-bar gate** into the repo's git hooks, so a red suite blocks the
-  commit no matter which agent made it (covers every worktree). Bypass once with `git commit
-  --no-verify`; disable with `PRECOMMIT_GATE=0`.
+- A **pre-commit / CI gate** can enforce the green bar + phase discipline regardless of tool —
+  the portable referee. CI running the suite on every push is the minimum.
 - If your tool has its own hook/rules system, wire it to the same scripts.

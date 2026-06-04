@@ -1,0 +1,16 @@
+#!/bin/sh
+# team-tactics pre-commit — portable green-bar referee. git runs this regardless of which agent
+# made the edits (Claude Code, Cursor, CLI, ...), so it gates the suite for ALL tools. Installed
+# by `npx tics install-hooks`. Bypass once: git commit --no-verify. Disable: PRECOMMIT_GATE=0.
+[ "${PRECOMMIT_GATE:-1}" = "1" ] || exit 0
+root=$(git rev-parse --show-toplevel 2>/dev/null) || exit 0
+[ -f "$root/.claude/tdd.config" ] && . "$root/.claude/tdd.config"
+cmd="${BASELINE_CMD:-${ALL_TEST_CMD:-true}}"
+printf '[team-tactics] pre-commit green-bar gate: %s\n' "$cmd" >&2
+out=$(cd "$root" && eval "$cmd" 2>&1); code=$?
+if [ "$code" -ne 0 ]; then
+  printf '[team-tactics] COMMIT BLOCKED — suite RED (exit %s). Fix it green, or bypass: git commit --no-verify\n' "$code" >&2
+  printf '%s\n' "$out" | tail -n 20 >&2
+  exit 1
+fi
+exit 0

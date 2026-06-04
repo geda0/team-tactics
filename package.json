@@ -1,6 +1,6 @@
 {
   "name": "team-tactics",
-  "version": "0.9.3",
+  "version": "0.9.4",
   "description": "Bootstrap the team-tactics kit (test-driven agent pairing for Claude Code) into any project.",
   "bin": {
     "tics": "bin/cli.js"
