@@ -25,7 +25,7 @@ const cp = require("child_process");
 const crypto = require("crypto");
 
 const KIT = path.join(__dirname, "..", "kit");
-const TV = require(path.join(KIT, "claude-config", "hooks", "tics-view.js"));
+const TV = require(path.join(KIT, "claude-config", "hooks", "tics-view.cjs"));
 const CFG = path.join(KIT, "claude-config");
 
 // ---- arg parsing --------------------------------------------------------
@@ -225,7 +225,8 @@ for (const h of ["guard-edit-scope", "run-suite", "require-green-to-stop", "sess
   refresh(path.join(CFG, "hooks", h + ".sh"), rel);
   try { fs.chmodSync(path.join(target, rel), 0o755); } catch (e) { /* windows */ }
 }
-for (const h of ["tics", "tics-view.js"]) refresh(path.join(CFG, "hooks", h), path.join(".claude", "hooks", h));
+for (const h of ["tics", "tics-view.cjs"]) refresh(path.join(CFG, "hooks", h), path.join(".claude", "hooks", h));
+try { fs.unlinkSync(path.join(target, ".claude", "hooks", "tics-view.js")); } catch (e) {} // migrate stale .js reader -> .cjs
 try { fs.chmodSync(path.join(target, ".claude", "hooks", "tics"), 0o755); } catch (e) {}
 for (const d of ["tdd-workflow", "testing-philosophy", "conventions"])
   refresh(path.join(KIT, "docs", "tdd", d + ".md"), path.join("docs", "tdd", d + ".md"));

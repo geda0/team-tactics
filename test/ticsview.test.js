@@ -131,18 +131,19 @@ test("`tics claims` lists active claims (claim minus release), by scope", () => 
   } finally { fs.rmSync(d, { recursive: true, force: true }); }
 });
 
-test("installed .claude/hooks/tics is a local reader (inbox/log) — agents read where they are", () => {
+test("installed .claude/hooks/tics is a local reader (inbox/log) — agents read where they are, even in a type:module repo", () => {
   const d = fs.mkdtempSync(path.join(os.tmpdir(), "tt-rdr-"));
-  run([d]); // install ships .claude/hooks/tics + tics-view.js
+  run([d]); // install ships .claude/hooks/tics (shell wrapper) + tics-view.cjs
+    fs.writeFileSync(path.join(d, "package.json"), JSON.stringify({ name: "host", type: "module" })); // ESM host: reader must still work
   try {
     fs.writeFileSync(path.join(d, ".claude", "state", "tics.jsonl"),
       [JSON.stringify(T({ seq: 1, kind: "msg", to: "implementer", scope: "frontend", msg: "for impl" })),
        JSON.stringify(T({ seq: 2, kind: "signal", to: "*", scope: "frontend", result: "green", msg: "suite green" }))].join("\n") + "\n");
     const reader = path.join(d, ".claude", "hooks", "tics");
-    const ib = cp.spawnSync("node", [reader, "inbox", "implementer"], { encoding: "utf8", cwd: d });
+    const ib = cp.spawnSync(reader, ["inbox", "implementer"], { encoding: "utf8", cwd: d });
     assert.strictEqual(ib.status, 0, ib.stderr);
     assert.match(ib.stdout, /for impl/);
-    const lg = cp.spawnSync("node", [reader, "log"], { encoding: "utf8", cwd: d });
+    const lg = cp.spawnSync(reader, ["log"], { encoding: "utf8", cwd: d });
     assert.match(lg.stdout, /suite green/);
   } finally { fs.rmSync(d, { recursive: true, force: true }); }
 });
@@ -151,8 +152,20 @@ test("installed JS hooks carry an eslint-disable header (don't break a host's li
   const d = fs.mkdtempSync(path.join(os.tmpdir(), "tt-lint-"));
   run([d]);
   try {
-    assert.match(fs.readFileSync(path.join(d, ".claude", "hooks", "tics-view.js"), "utf8"), /eslint-disable/);
-    assert.match(fs.readFileSync(path.join(d, ".claude", "hooks", "tics"), "utf8"), /eslint-disable/);
+    assert.match(fs.readFileSync(path.join(d, ".claude", "hooks", "tics-view.cjs"), "utf8"), /eslint-disable/);
+    const _w = fs.readFileSync(path.join(d, ".claude", "hooks", "tics"), "utf8");
+    assert.match(_w, /^#!\/bin\/sh/); assert.match(_w, /tics-view\.cjs/);
+  } finally { fs.rmSync(d, { recursive: true, force: true }); }
+});
+
+test("update migrates the stale tics-view.js reader to .cjs", () => {
+  const d = fs.mkdtempSync(path.join(os.tmpdir(), "tt-mig-"));
+  run([d]);
+  fs.writeFileSync(path.join(d, ".claude", "hooks", "tics-view.js"), "// stale CJS-as-.js\n");
+  try {
+    run([d]); // update
+    assert.ok(!fs.existsSync(path.join(d, ".claude", "hooks", "tics-view.js")), "stale .js removed");
+    assert.ok(fs.existsSync(path.join(d, ".claude", "hooks", "tics-view.cjs")), ".cjs present");
   } finally { fs.rmSync(d, { recursive: true, force: true }); }
 });
 

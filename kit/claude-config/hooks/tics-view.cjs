@@ -110,4 +110,7 @@ function main(argv, defaultRoot) {
     default: console.error("usage: tics <log [--scope S] | inbox <role> [--scope S] | conductor | claims>"); return 2;
   }
 }
+if (require.main === module) {
+  process.exit(main(process.argv.slice(2), path.join(__dirname, "..", "..")) || 0);
+}
 module.exports = { loadTics, loadSignalEvents, ticsLog, ticsInbox, ticsConductor, ticsClaims, ticsSections, main };
