@@ -6,6 +6,7 @@ node_modules/
 # Transient kit artifacts - never commit (other state files ARE committed for continuity).
 .claude/state/suite-status
 .claude/state/telemetry.jsonl
+.claude/state/tics.jsonl
 .claude/**/*.bak
 *.team-tactics.*
 # <<< team-tactics (managed) <<<
@@ -24,3 +25,4 @@ node_modules/
 /AGENTS.md
 /CLAUDE.md
 /KICKOFF.md
+/docs/tics/tic-protocol.md
