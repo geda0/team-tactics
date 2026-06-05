@@ -53,6 +53,19 @@ test("B1: the guard gates Bash write-redirections into guarded paths, but NEVER 
   } finally { fs.rmSync(d, { recursive: true, force: true }); }
 });
 
+test("the gate NEVER blocks the loop's control plane (.claude/state/) — writing phase drives the gate (gvp 0.27 quirk)", () => {
+  const d = inst();
+  try {
+    ph(d, "red");
+    // transitioning phase is how you LEAVE red — it must not be gated (else red->green is unreachable)
+    assert.strictEqual(fire(d, "guard-edit-scope.sh", edit(".claude/state/phase")).status, 0, "Edit .claude/state/phase allowed in red");
+    assert.strictEqual(fire(d, "guard-edit-scope.sh", JSON.stringify({ tool_name: "Bash", tool_input: { command: "echo green > .claude/state/phase" } })).status, 0, "Bash phase transition allowed in red");
+    assert.strictEqual(fire(d, "guard-edit-scope.sh", JSON.stringify({ tool_name: "Bash", tool_input: { command: "echo orders/S2 > .claude/state/scope" } })).status, 0, "setting scope/session is control, not source");
+    // real project source is still gated in red
+    assert.strictEqual(fire(d, "guard-edit-scope.sh", edit("src/x.js")).status, 2, "real source still gated in red");
+  } finally { fs.rmSync(d, { recursive: true, force: true }); }
+});
+
 test("MS2: under MULTI_SESSION=1 the guard refuses an UNSCOPED edit (forces a scope so claims coordinate)", () => {
   const d = inst();
   try {

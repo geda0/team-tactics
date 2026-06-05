@@ -36,6 +36,10 @@ is_test() { printf '%s' "$1" | grep -qE "$TEST_GLOB"; }
 is_doc() { printf '%s' "$1" | grep -qE '\.(md|mdx|markdown)$|(^|/)docs/'; }
 # An ADR (architecture decision record) is a published seam — see auto-contract below.
 is_adr() { printf '%s' "$1" | grep -qE '(^|/)docs/decisions/'; }
+# The loop's own control plane (.claude/state/phase|layer|scope|session, progress/backlog, the bus).
+# Writing it is how the orchestrator DRIVES the gate — never project code-under-test — so the phase
+# gate must not block it (else you can't leave red: writing phase=green is itself refused in red).
+is_control() { printf '%s' "$1" | grep -qE '(^|/)\.claude/state/'; }
 
 # P1: enforced claims — block an edit to a path held by ANOTHER scope, and AUTO-CLAIM a
 # still-unclaimed path for the editing scope, so disjoint-write fan-out is collision-safe
@@ -90,6 +94,9 @@ extract_write_targets() {
 # a Bash redirect into source is gated exactly like a Write to it.
 gate_path() {
   P="$1"
+  # The loop's control plane is exempt from the phase gate (writing it operates the gate). This must
+  # come FIRST — otherwise transitioning red->green by writing .claude/state/phase is itself blocked.
+  if is_control "$P"; then return 0; fi
   # Docs/ADRs are never code-under-test → not blocked in ANY phase (claims still apply). An ADR is
   # a published seam: auto-emit a `contract` when one is first CREATED (once; not on later edits).
   if is_doc "$P"; then
