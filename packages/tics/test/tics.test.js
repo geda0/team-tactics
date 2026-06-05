@@ -235,6 +235,22 @@ test("MS1: `tics sessions` lists live sessions + their scopes + claims (who's ac
   } finally { fs.rmSync(d, { recursive: true, force: true }); }
 });
 
+test("MS5: a STALE session's claim expires (no tic within CLAIMS_TTL) — a dead session's lane frees", () => {
+  const d = inst();
+  try {
+    fs.appendFileSync(path.join(d, ".claude", "tdd.config"), "\nCLAIMS_TTL=60\n");   // 60s liveness window
+    const now = Date.now();
+    const stale = new Date(now - 3600 * 1000).toISOString();   // 1h ago -> dead
+    const live = new Date(now - 5 * 1000).toISOString();        // 5s ago -> alive
+    fs.writeFileSync(path.join(d, ".claude", "state", "tics.jsonl"),
+      JSON.stringify({ ts: stale, seq: 1, kind: "claim", from: "a", to: "*", scope: "dead/S1", session: "sessDead", ref: "old.ts", msg: "old.ts" }) + "\n" +
+      JSON.stringify({ ts: live, seq: 2, kind: "claim", from: "b", to: "*", scope: "live/S2", session: "sessLive", ref: "new.ts", msg: "new.ts" }) + "\n");
+    const claims = read(d, "claims").stdout;
+    assert.doesNotMatch(claims, /old\.ts/, "a stale (dead) session's claim is released");
+    assert.match(claims, /new\.ts/, "a live session's claim is kept");
+  } finally { fs.rmSync(d, { recursive: true, force: true }); }
+});
+
 test("C1: a `session close` auto-releases that session's claims (a leaving worker frees its lane)", () => {
   const d = inst();
   try {
