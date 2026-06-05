@@ -238,6 +238,14 @@ function ticsCycle(targetDir) {
   for (let i = t.length - 1; i >= 0; i--) { if (t[i].kind === "verdict") break; if (t[i].kind === "signal" || t[i].kind === "handoff") since++; }
   console.log("Cycle: phase=" + phase + " layer=" + layer + " scope=" + scope);
   console.log("  last suite: " + (lastSig ? (lastSig.result || "?") : "(none yet)"));
+  const streak = parseInt(rd("red-streak") || "0", 10);
+  if (streak > 0) {
+    const cfg = (() => { try { return fs.readFileSync(path.join(targetDir, ".claude", "tdd.config"), "utf8"); } catch (e) { return ""; } })();
+    const m = cfg.match(/RED_STREAK_LIMIT\s*=\s*(\d+)/);
+    const lim = m ? parseInt(m[1], 10) : 5;
+    if (streak >= lim) console.log("  red-streak: " + streak + " reds in a row — suspected OVER-CONSTRAINED/CONTRADICTORY test; reconsider it (route to test-writer) or escalate, don't grind.");
+    else console.log("  red-streak: " + streak);
+  }
   if (since > 5) console.log("  " + since + " cycles since the last tdd-critic verdict — consider a critic pass (rule: every ~3-5 cycles).");
   else console.log("  " + since + " cycles since the last critic verdict.");
   return 0;

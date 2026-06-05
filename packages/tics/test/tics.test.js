@@ -92,6 +92,16 @@ test("tics claim-owner <file>: reports the owning scope, empty when unclaimed (f
   } finally { fs.rmSync(d, { recursive: true, force: true }); }
 });
 
+test("tics cycle surfaces the red-streak and flags a suspected red-storm", () => {
+  const d = inst();
+  try {
+    fs.writeFileSync(path.join(d, ".claude", "state", "red-streak"), "6\n");
+    const c = read(d, "cycle").stdout;
+    assert.match(c, /red-streak.*6|6 reds/i, "shows the current streak");
+    assert.match(c, /over-constrained|contradictory|reconsider|red-storm/i, "flags a high streak as a suspected red-storm");
+  } finally { fs.rmSync(d, { recursive: true, force: true }); }
+});
+
 test("tics fan-out <spec> plans a disjoint partition: one scope per section, safe to fan out", () => {
   const d = inst();
   try {

@@ -97,6 +97,13 @@ seq race). Default `TIC_STORE=jsonl` (one append-only file) suits a single sessi
 merge either store transparently. SQLite is intentionally avoided — it would break the zero-dep
 / Node>=16 / bash-hook portability invariants for wins not needed at session scale.
 
+## Red-storm breaker
+A long run of red suites usually means the failing TEST is over-constrained or contradictory,
+not that the code is wrong. `run-suite` counts consecutive reds (reset on green); at
+`RED_STREAK_LIMIT` (default 5) it emits a `stuck` tic, `tics cycle` flags the streak, and the Stop
+hook escalates from "keep going" to "reconsider the test (route to test-writer) or ask the
+navigator." Stops the loop grinding on an impossible test instead of surfacing the suspicion.
+
 ## Why it stays faithful to "never through chat"
 - `signal`/`block` are produced by the hooks — agents cannot forge an objective fact.
 - Every handoff is still gated by the RED/GREEN suite; tics **record** the handoff, they do not

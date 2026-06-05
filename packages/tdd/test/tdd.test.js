@@ -67,6 +67,36 @@ test("honest green: run-suite auto-detects the project's typecheck; a tsc-red fa
     assert.strictEqual(fs.readFileSync(path.join(d, ".claude", "state", "suite-status"), "utf8").trim(), "red", "tests pass but typecheck fails -> honest RED (auto-detected, no TYPECHECK_CMD set)");
   } finally { fs.rmSync(d, { recursive: true, force: true }); }
 });
+test("red-storm breaker: run-suite counts consecutive reds and emits a `stuck` tic at the limit (resets on green)", () => {
+  const d = inst();
+  fs.writeFileSync(path.join(d, ".claude", "tdd.config"), 'LAYERS="app"\nRED_STREAK_LIMIT=3\nALL_TEST_CMD="sh -c \'exit ${SUITE_FAIL:-0}\'"\nTEST_CMD_app="sh -c \'exit ${SUITE_FAIL:-0}\'"\n');
+  const busOf = () => { const f = path.join(d, ".claude", "state", "tics.jsonl"); return fs.existsSync(f) ? fs.readFileSync(f, "utf8").trim().split("\n").map((l) => { try { return JSON.parse(l); } catch (e) { return {}; } }) : []; };
+  const stucks = () => busOf().filter((x) => x.kind === "stuck");
+  const streak = () => { const f = path.join(d, ".claude", "state", "red-streak"); return fs.existsSync(f) ? fs.readFileSync(f, "utf8").trim() : "0"; };
+  const run = (env) => cp.spawnSync("bash", [path.join(d, ".claude", "hooks", "run-suite.sh")], { input: "", cwd: d, encoding: "utf8", env: { ...process.env, ...env } });
+  try {
+    ph(d, "green");
+    run({ SUITE_FAIL: "1" }); run({ SUITE_FAIL: "1" });        // 2 reds — under the limit
+    assert.strictEqual(stucks().length, 0, "no stuck warning under the limit");
+    assert.strictEqual(streak(), "2", "streak counts consecutive reds");
+    run({ SUITE_FAIL: "1" });                                  // 3rd red — hits RED_STREAK_LIMIT
+    assert.strictEqual(stucks().length, 1, "a stuck tic is emitted at the limit");
+    run({ SUITE_FAIL: "0" });                                  // a green run
+    assert.strictEqual(streak(), "0", "green clears the red streak");
+  } finally { fs.rmSync(d, { recursive: true, force: true }); }
+});
+test("red-storm breaker: the Stop hook escalates to 'suspected contradictory test' when the streak is high", () => {
+  const d = inst();
+  fs.writeFileSync(path.join(d, ".claude", "tdd.config"), 'LAYERS="app"\nRED_STREAK_LIMIT=3\nALL_TEST_CMD="false"\nTEST_CMD_app="false"\n');
+  try {
+    ph(d, "green");
+    fs.writeFileSync(path.join(d, ".claude", "state", "suite-status"), "red\n");
+    fs.writeFileSync(path.join(d, ".claude", "state", "red-streak"), "5\n");      // a long red run
+    const r = fire(d, "require-green-to-stop.sh", "");
+    assert.strictEqual(r.status, 2, "still blocks on a red bar");
+    assert.match(r.stderr, /over-constrained|contradictory/i, "escalates: the test itself may be the problem, don't grind");
+  } finally { fs.rmSync(d, { recursive: true, force: true }); }
+});
 test("run-suite records status + emits a signal tic (composed with tics)", () => {
   const d = inst();
   try {

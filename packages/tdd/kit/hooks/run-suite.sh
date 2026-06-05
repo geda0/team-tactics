@@ -57,6 +57,19 @@ else
   printf '%s\n' "$OUT" | tail -n "${TAIL_LINES:-40}"
 fi
 
+# Red-storm breaker: track consecutive reds (reset on green). When the streak hits the limit,
+# emit a `stuck` tic — a long red run usually means the failing TEST is over-constrained or
+# contradictory, not that the code is wrong. Surfaces the suspicion instead of grinding.
+STREAK="$ROOT/.claude/state/red-streak"
+if [ "$RESULT" = "green" ]; then
+  echo 0 > "$STREAK"
+else
+  _rs=$(( $(cat "$STREAK" 2>/dev/null || echo 0) + 1 )); echo "$_rs" > "$STREAK"
+  if [ "$_rs" -eq "${RED_STREAK_LIMIT:-5}" ]; then
+    emit_tic run-suite orchestrator stuck "$_rs reds in a row on [$LAYER] — suspected over-constrained or contradictory test; reconsider the failing test (route to test-writer) or ask the navigator, don't keep grinding" "${EDITED:-}" "$_rs"
+  fi
+fi
+
 # Tic: record the suite SIGNAL (subsumes the old telemetry event) — one per run, hook-emitted
 # (agents cannot forge a signal). 'tics report' aggregates these; 'tics log' shows the thread.
 emit_tic run-suite "*" signal "[$LAYER] suite $RESULT" "${EDITED:-}" "$RESULT" ",\"exit\":$CODE,\"durationSec\":$DUR"
