@@ -98,3 +98,36 @@ test("tics log merges every worktree's bus BY DEFAULT (whole picture); --here re
     assert.match(all.stdout, /tic in MAIN/); assert.match(all.stdout, /tic in SIDE/, "default merges sibling worktree buses");
   } finally { try { git(d, "worktree", "remove", "--force", wt); } catch (e) {} fs.rmSync(d, { recursive: true, force: true }); fs.rmSync(wt, { recursive: true, force: true }); }
 });
+
+// --- MS3/MS4 (ADR 0002): the pre-commit is the cross-session choke-point ---
+const emitAs = (d, sid, scope, args) => cp.spawnSync("bash", ["-c", `. "${d}/.claude/hooks/tics-lib.sh"; export TICS_SESSION='${sid}' TICS_SCOPE='${scope}'; emit_tic ${args}`], { cwd: d, env: ENV });
+
+test("MS3: pre-commit blocks committing a file CLAIMED BY ANOTHER live session; own claim is fine", () => {
+  const d = gitInstall();
+  try {
+    assert.strictEqual(node("install-hooks", d).status, 0);
+    fs.writeFileSync(path.join(d, ".claude", "state", "session"), "sessA\n");   // I am sessA
+    emitAs(d, "sessB", "ui/S2", "b '*' claim app.js app.js");                    // sessB owns app.js
+    fs.writeFileSync(path.join(d, "app.js"), "// edit\n"); git(d, "add", "app.js");
+    const blocked = git(d, "commit", "-m", "touch app.js");
+    assert.notStrictEqual(blocked.status, 0, "blocked: app.js held by sessB");
+    assert.match(blocked.stdout + blocked.stderr, /sessB|another session/i, "names the holding session");
+    git(d, "reset", "-q");
+    emitAs(d, "sessA", "auth/S1", "a '*' claim mine.js mine.js");                // I own mine.js
+    fs.writeFileSync(path.join(d, "mine.js"), "// mine\n"); git(d, "add", "mine.js");
+    assert.strictEqual(git(d, "commit", "-m", "my file").status, 0, "my own claim doesn't block me");
+  } finally { fs.rmSync(d, { recursive: true, force: true }); }
+});
+
+test("MS4: pre-commit honors the RELEASE lock — another session's RELEASE blocks a release commit", () => {
+  const d = gitInstall();
+  try {
+    assert.strictEqual(node("install-hooks", d).status, 0);
+    fs.writeFileSync(path.join(d, ".claude", "state", "session"), "sessA\n");
+    emitAs(d, "sessB", "*", "b '*' claim RELEASE RELEASE");                       // sessB holds the release lock
+    fs.writeFileSync(path.join(d, "package.json"), '{"name":"x","version":"9.9.9"}\n'); git(d, "add", "package.json");
+    const blocked = git(d, "commit", "-m", "bump");
+    assert.notStrictEqual(blocked.status, 0, "release-shaped commit blocked while sessB holds RELEASE");
+    assert.match(blocked.stdout + blocked.stderr, /RELEASE|sessB/i, "names the lock/holder");
+  } finally { fs.rmSync(d, { recursive: true, force: true }); }
+});

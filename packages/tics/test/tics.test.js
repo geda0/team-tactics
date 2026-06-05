@@ -235,6 +235,18 @@ test("MS1: `tics sessions` lists live sessions + their scopes + claims (who's ac
   } finally { fs.rmSync(d, { recursive: true, force: true }); }
 });
 
+test("MS3: tics claim-session <file> reports the SESSION holding an active claim (empty if free)", () => {
+  const d = inst();
+  try {
+    srcLib(d, "export TICS_SESSION='sessA'; export TICS_SCOPE='auth/S1'; emit_tic a '*' claim login.ts login.ts");
+    assert.match(read(d, "claim-session", "login.ts").stdout, /sessA/, "names the holding session");
+    assert.strictEqual(read(d, "claim-session", "free.ts").stdout.trim(), "", "unclaimed -> empty");
+    assert.strictEqual(read(d, "claim-session", "RELEASE").stdout.trim(), "", "RELEASE lock free -> empty");
+    srcLib(d, "export TICS_SESSION='sessA'; emit_tic a '*' release login.ts login.ts");
+    assert.strictEqual(read(d, "claim-session", "login.ts").stdout.trim(), "", "released -> empty");
+  } finally { fs.rmSync(d, { recursive: true, force: true }); }
+});
+
 test("selftest passes (emit + read round-trip)", () => {
   assert.strictEqual(node("selftest").status, 0);
 });
