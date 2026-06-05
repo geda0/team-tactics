@@ -1,0 +1,41 @@
+{
+  "name": "team-tactics",
+  "version": "0.11.1",
+  "description": "Bootstrap the team-tactics kit (test-driven agent pairing for Claude Code) into any project.",
+  "bin": {
+    "tics": "bin/cli.js"
+  },
+  "type": "commonjs",
+  "engines": {
+    "node": ">=16"
+  },
+  "files": [
+    "bin/",
+    "kit/",
+    "README.md"
+  ],
+  "keywords": [
+    "team-tactics",
+    "claude-code",
+    "tdd",
+    "agents",
+    "pairing",
+    "scaffold",
+    "hooks"
+  ],
+  "license": "UNLICENSED",
+  "private": true,
+  "scripts": {
+    "test": "node --test",
+    "prepublishOnly": "node --test"
+  },
+  "author": "geda0",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/geda0/team-tactics.git"
+  },
+  "homepage": "https://github.com/geda0/team-tactics#readme",
+  "bugs": {
+    "url": "https://github.com/geda0/team-tactics/issues"
+  }
+}
