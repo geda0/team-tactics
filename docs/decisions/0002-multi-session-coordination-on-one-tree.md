@@ -1,6 +1,11 @@
 # 0002 — Multi-session coordination on one working tree (concurrent sessions, one repo)
 
-- Status: Proposed
+- Status: Proposed — **superseded in part by ADR 0003.** The safety substrate (§1
+  session identity, §2 release lock + pre-commit claim-check, §3 release-on-stop +
+  TTL, §4 fail-closed) STANDS and is the floor 0003 builds on. The **worktree-per-session
+  recommendation** (§Boundary, §Alternatives, and the MS6 doc) is **REVERSED** by 0003:
+  the recommended model is now N sessions COOPERATING on ONE shared tree (combine power),
+  not isolated worktrees. See `0003-multi-session-cooperation-on-one-tree.md`.
 - Date: 2026-06-05
 - Feature: (backlog) multi-session mode — see slice breakdown at the foot of this ADR
 - Deciders: architect (seam), product-owner (scope)
