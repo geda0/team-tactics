@@ -28,6 +28,8 @@ is_test() { printf '%s' "$1" | grep -qE "$TEST_GLOB"; }
 # Docs/ADRs aren't code-under-test — there's no failing test to write first, so the phase gate
 # must not block them (esp. in red). Markdown anywhere, or anything under a docs/ tree.
 is_doc() { printf '%s' "$1" | grep -qE '\.(md|mdx|markdown)$|(^|/)docs/'; }
+# An ADR (architecture decision record) is a published seam — see auto-contract below.
+is_adr() { printf '%s' "$1" | grep -qE '(^|/)docs/decisions/'; }
 
 # P1: enforced claims — block an edit to a path held by ANOTHER scope, and AUTO-CLAIM a
 # still-unclaimed path for the editing scope, so disjoint-write fan-out is collision-safe
@@ -58,7 +60,15 @@ claim_guard() {
 # Docs/ADRs are never code-under-test, so the TDD phase gate must not block them in ANY phase
 # (red especially — there's no failing test to write first). Claims still apply (parallel doc
 # edits can collide). This is the single source of the docs exemption.
-if is_doc "$P"; then claim_guard "$P"; exit 0; fi
+if is_doc "$P"; then
+  # An ADR is a published seam: auto-emit a `contract` when one is first CREATED (the file doesn't
+  # exist yet), so the coupling view reflects decisions even in solo/serial work — no scope or
+  # parallelism needed. Once only — a later edit of an existing ADR doesn't re-publish.
+  if is_adr "$P" && ! { [ -f "$P" ] || [ -f "$ROOT/$P" ]; }; then
+    emit_tic architect "*" contract "ADR: $(basename "$P")" "$P"
+  fi
+  claim_guard "$P"; exit 0
+fi
 
 case "$PHASE" in
   red)
