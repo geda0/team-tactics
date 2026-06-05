@@ -45,6 +45,7 @@ for (let i = 0; i < argv.length; i++) {
   const a = argv[i];
   if (a === "--force" || a === "-f") force = true;
   else if (a === "-h" || a === "--help") rest.push("help");
+  else if (a === "-v" || a === "--version") rest.push("version");
   else if (a === "--preset") preset = argv[++i] || "";
   else if (a === "--scope") scope = argv[++i] || ""; else if (a === "--all") all = true; else if (a === "--here") all = false;
   else if (a.startsWith("--preset=")) preset = a.slice(9);
@@ -58,12 +59,16 @@ if (preset !== null && preset !== "full-team" && preset !== "none") {
   process.exit(2);
 }
 let cmd = "init";
-if (["init", "update", "help", "selftest", "report", "validate", "log", "inbox", "conductor", "claims", "sections", "claim-check", "install-hooks", "cycle", "gate"].includes(rest[0])) cmd = rest.shift();
+if (["init", "update", "help", "version", "selftest", "report", "validate", "log", "inbox", "conductor", "claims", "sections", "claim-check", "install-hooks", "cycle", "gate"].includes(rest[0])) cmd = rest.shift();
 const role = cmd === "inbox" ? rest.shift() : null;
 const cfFile = cmd === "claim-check" ? rest.shift() : null;
 const cfScope = cmd === "claim-check" ? (rest.shift() || scope || "") : null;
 const target = path.resolve(rest[0] || process.cwd());
 
+if (cmd === "version") {            // the single authoritative kit version (matches the manifest's kitVersion)
+  console.log(require("../package.json").version);
+  process.exit(0);
+}
 if (cmd === "help") {
   console.log(fs.readFileSync(path.join(__dirname, "..", "README.md"), "utf8").split("\n").slice(0, 40).join("\n"));
   process.exit(0);

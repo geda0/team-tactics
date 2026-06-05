@@ -29,3 +29,32 @@ test("re-running update at the same version prints no BREAKING block", () => {
     assert.doesNotMatch(r.stdout + r.stderr, /BREAKING/i, "no breaking notes when already current");
   } finally { fs.rmSync(d, { recursive: true, force: true }); }
 });
+
+// --- B2: version single-source-of-truth + publish-readiness ---
+const REPO = path.join(__dirname, "..", "..", "..");
+
+test("B2: the four package.json versions are in lockstep (no version drift)", () => {
+  const vers = ["package.json", "packages/tics/package.json", "packages/tdd/package.json", "packages/team-tactics/package.json"]
+    .map((p) => JSON.parse(fs.readFileSync(path.join(REPO, p), "utf8")).version);
+  assert.strictEqual(new Set(vers).size, 1, "root + tics + tdd + team-tactics must share ONE version; got: " + vers.join(", "));
+});
+
+test("B2: `tics --version` prints the authoritative kit version, matching the manifest", () => {
+  const pkgV = require("../package.json").version;
+  const r = run(["--version"]);
+  assert.strictEqual(r.status, 0, r.stderr);
+  assert.strictEqual(r.stdout.trim(), pkgV, "prints the package version (single source of truth)");
+  const d = install();
+  try {
+    assert.strictEqual(JSON.parse(fs.readFileSync(MAN(d), "utf8")).kitVersion, pkgV, "the install records the SAME version in the manifest");
+  } finally { fs.rmSync(d, { recursive: true, force: true }); }
+});
+
+test("B2: each package ships its LICENSE in the npm tarball (publish preflight — terms travel)", () => {
+  for (const name of ["tics", "tdd", "team-tactics"]) {
+    const r = cp.spawnSync("npm", ["pack", "--dry-run", "--json"], { cwd: path.join(REPO, "packages", name), encoding: "utf8" });
+    assert.strictEqual(r.status, 0, name + ": npm pack --dry-run failed: " + r.stderr);
+    const files = (JSON.parse(r.stdout)[0].files || []).map((f) => f.path);
+    assert.ok(files.some((f) => /(^|\/)LICENSE$/.test(f)), name + ": tarball must include LICENSE; got " + files.join(", "));
+  }
+});
