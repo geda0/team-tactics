@@ -11,6 +11,10 @@ process) build on. Agents coordinate *through the bus and the files*, never thro
 npx @ttics/tics .          # lay the kit into ./ (init | install | update are aliases)
 ```
 
+> Not yet on npm — today the protocol ships inside the full kit:
+> `npx github:geda0/team-tactics`. The à-la-carte `npx @ttics/tics` form lands when
+> the packages are published. (`tics` on npm is an unrelated package — don't run it.)
+
 This writes the mechanism into the target's `.claude/`:
 
 - `.claude/hooks/tics-lib.sh` — the `emit_tic` function + the store.

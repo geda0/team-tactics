@@ -15,9 +15,8 @@ red bar). Works for a single package or a multi-layer monorepo.
 >
 > The dependency DAG is `team-tactics → { @ttics/tdd → @ttics/tics, @ttics/tics }`
 > (team-tactics depends on the protocol directly too — you can run the bus without the
-> gate). Want just one layer? Adopt them à la carte: `npx @ttics/tics` (protocol only)
-> or `npx @ttics/tdd` (gate, which pulls in the protocol). `npx tics` here gives you
-> both, wired together, plus the presets below.
+> gate). `@ttics/tics` and `@ttics/tdd` are the composable layers; installing
+> team-tactics gives you both, wired together, plus the presets below.
 
 ## Quick start
 
@@ -25,7 +24,7 @@ red bar). Works for a single package or a multi-layer monorepo.
 In Claude Code / Cursor / etc., paste this one message — the agent installs team-tactics
 **and** bootstraps the repo in a single shot:
 
-> Install and bootstrap team-tactics in this repo. Run `npx tics .`, then read
+> Install and bootstrap team-tactics in this repo. Run `npx github:geda0/team-tactics .`, then read
 > `AGENTS.md` and `CLAUDE.md`, detect the stack and set `LAYERS` + the test
 > command(s) in `.claude/tdd.config`, and draft `docs/tdd/project-invariants.md` from
 > the code for me to confirm. If this is an existing codebase, **adopt it and bring it
@@ -34,29 +33,32 @@ In Claude Code / Cursor / etc., paste this one message — the agent installs te
 
 ### From a terminal? (two steps)
 ```bash
-npx tics            # install into your project (or: npx tics ./my-app)
+npx github:geda0/team-tactics            # install into your project (or: … ./my-app)
 ```
 Open the project in Claude Code, approve the hooks, and paste the prompt in
 `KICKOFF.md` — it does the setup, so there are no config files to hand-edit.
 
-> **Adopting an existing repo?** Install with `npx tics --preset full-team` so the
-> product-owner / architect / qa-verifier are on hand to characterize and upgrade it.
+> **Adopting an existing repo?** Install with `npx github:geda0/team-tactics --preset full-team`
+> so the product-owner / architect / qa-verifier are on hand to characterize and upgrade it.
 
 ## Commands
+Install / maintain — run from anywhere (fetches the kit from the repo):
 ```bash
-npx tics [init] [target]   # install (default)
-npx tics update [target]   # refresh agents/hooks/docs, keep your files
-npx tics selftest [target] # verify the gate works in YOUR environment
-npx tics report [target]   # process metrics from the suite 'signal' tics
-npx tics log [target]      # the agent-to-agent thread (the tic log)
-npx tics inbox <role> [target]  # tics addressed to a role (slack-like inbox)
-npx tics conductor [target]     # live grouping + coupling view (sections + active claims)
-npx tics sections [target]      # the open/done sections (work groups)
-npx tics claims [target]        # files currently claimed (coupling), and by whom
-npx tics fan-out <spec> [target]  # plan-time disjointness gate before fanning out parallel pairs
-npx tics --force [target]  # also reset seeded (user-owned) files
-npx tics --preset full-team [target]  # also install the outer-loop team (PO/architect/QA/PM/dev-ops)
-npx tics help
+npx github:geda0/team-tactics [init] [target]   # install (default)
+npx github:geda0/team-tactics update [target]    # refresh agents/hooks/docs, keep your files
+npx github:geda0/team-tactics selftest [target]  # verify the gate works in YOUR environment
+npx github:geda0/team-tactics --force [target]   # also reset seeded (user-owned) files
+npx github:geda0/team-tactics --preset full-team [target]  # also install the outer-loop team (PO/architect/QA/PM/dev-ops)
+```
+Read the bus — after install, the kit ships a local reader (no fetch, no target):
+```bash
+.claude/hooks/tics report          # process metrics from the suite 'signal' tics
+.claude/hooks/tics log             # the agent-to-agent thread (merges every worktree's bus; --here for local)
+.claude/hooks/tics inbox <role>    # tics addressed to a role (slack-like inbox)
+.claude/hooks/tics conductor       # live grouping + coupling view (sections + active claims)
+.claude/hooks/tics sections        # the open/done sections (work groups)
+.claude/hooks/tics claims          # files currently claimed (coupling), and by whom
+.claude/hooks/tics fan-out <spec>  # plan-time disjointness gate before fanning out parallel pairs
 ```
 
 `selftest` fires synthetic PreToolUse/PostToolUse/Stop payloads at the installed
@@ -86,8 +88,8 @@ construction). You watch and plan it with:
   sections would touch the same file — catching collisions *before* any pair starts,
   not just at runtime.
 
-These ship with the installed kit (run them via `npx tics <cmd>` or the installed
-`.claude/hooks/tics`). For the full model — sections, the shared spool bus across
+These ship with the installed kit (run them via the installed `.claude/hooks/tics <cmd>`).
+For the full model — sections, the shared spool bus across
 worktrees, and divide-and-conquer fan-out — see the kit's own docs at
 `docs/tics/tic-protocol.md` and `docs/tdd/divide-and-conquer.md`.
 
@@ -103,9 +105,12 @@ Re-run anytime to pull updates; `--force` resets the seeded files.
 
 ## Other ways to run
 ```bash
-npx github:<owner>/team-tactics        # straight from a git repo
-npx ./team-tactics-0.5.0.tgz           # from a local tarball (offline)
+npx github:geda0/team-tactics#v0.22.0   # pin a specific released version (a git tag) — reproducible
+npx ./team-tactics-<version>.tgz        # from a local tarball (offline)
 ```
+> Heads-up: bare `npx tics` / `npx team-tactics` is **not** this tool (those names
+> aren't published to npm — `tics` is an unrelated package). Always install via
+> `npx github:geda0/team-tactics`, then run bus commands with `.claude/hooks/tics`.
 
 ## What gets installed
 ```

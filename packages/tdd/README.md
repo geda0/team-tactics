@@ -17,6 +17,10 @@ Progressive adoption — run it in your project root:
 npx @ttics/tdd init        # or: npx @ttics/tdd .
 ```
 
+> Not yet on npm — today the gate ships inside the full kit:
+> `npx github:geda0/team-tactics`. The à-la-carte `npx @ttics/tdd` form lands when
+> the packages are published.
+
 This composes @ttics/tics, then lays the gate hooks, the pair roles, the tdd docs
 (`docs/tdd/`), `settings.json`, and a seeded `.claude/tdd.config`. Re-run with `update`
 to refresh the mechanism (your `tdd.config` and `state/` are seeded once, never clobbered).
