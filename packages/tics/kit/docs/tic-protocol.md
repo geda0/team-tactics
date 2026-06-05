@@ -97,6 +97,22 @@ seq race). Default `TIC_STORE=jsonl` (one append-only file) suits a single sessi
 merge either store transparently. SQLite is intentionally avoided — it would break the zero-dep
 / Node>=16 / bash-hook portability invariants for wins not needed at session scale.
 
+## Multiple sessions on one repo (ADR 0002)
+Two agent sessions can work the same tree at once — they already share `.claude/state/tics.jsonl`,
+so the bus coordinates them. The discipline:
+1. **Identify + scope each session.** `echo <id> > .claude/state/session` (or `TICS_SESSION`) and a
+   distinct `echo <id>/<area> > .claude/state/scope`. Now every tic carries the session; edits
+   auto-claim under the scope; `tics sessions` shows who's active where.
+2. **Turn on fail-closed mode:** `MULTI_SESSION=1` — the guard refuses an *unscoped* edit (an
+   unscoped edit is how two sessions silently collide; scoping makes claims engage).
+3. **The bus enforces it.** File-level: a rival session's claim blocks your edit (`claim-check`).
+   Git-level (the choke-point the edit-guard can't see — programmatic writes, staging): the
+   **pre-commit** refuses to commit a staged file claimed by another live session, or a release
+   while another session holds the **`RELEASE` lock** (`tic.sh <id> '*' claim RELEASE RELEASE`).
+4. **Share the bus across worktrees:** `TIC_STORE=spool` (+ `TICS_DIR`) so `tics … --all` (the
+   default) sees every worktree. **Recommended:** one git **worktree per session** — it removes the
+   shared-index race at the OS level; the bus then adds presence + release serialization on top.
+
 ## Red-storm breaker
 A long run of red suites usually means the failing TEST is over-constrained or contradictory,
 not that the code is wrong. `run-suite` counts consecutive reds (reset on green); at
