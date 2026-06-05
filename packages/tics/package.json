@@ -1,6 +1,6 @@
 {
   "name": "@ttics/tics",
-  "version": "0.22.0",
+  "version": "0.23.0",
   "description": "The tic protocol — structured agent-to-agent coordination (bus + emit + reader). The team-tactics foundation.",
   "bin": {
     "tics": "bin/tics.js"
@@ -13,6 +13,7 @@
   "scripts": {
     "test": "node --test"
   },
-  "license": "MIT",
-  "main": "index.js"
+  "license": "SEE LICENSE IN LICENSE",
+  "main": "index.js",
+  "author": "geda0 <geda071@gmail.com>"
 }

@@ -1,14 +1,18 @@
 {
   "name": "ttics",
-  "version": "0.0.0",
+  "version": "0.23.0",
   "private": true,
   "description": "team-tactics monorepo — @ttics/tics (protocol) + @ttics/tdd (pairing) + team-tactics (product)",
-  "workspaces": ["packages/*"],
+  "workspaces": [
+    "packages/*"
+  ],
   "bin": {
     "ttics": "packages/team-tactics/bin/cli.js",
     "tics": "packages/team-tactics/bin/cli.js"
   },
   "scripts": {
     "test": "npm test --workspaces --if-present"
-  }
+  },
+  "license": "SEE LICENSE IN LICENSE",
+  "author": "geda0 <geda071@gmail.com>"
 }
