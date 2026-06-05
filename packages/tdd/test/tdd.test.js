@@ -27,6 +27,28 @@ test("the gate enforces phase×layer", () => {
     assert.strictEqual(fire(d, "guard-edit-scope.sh", edit("src/x.js")).status, 0);
   } finally { fs.rmSync(d, { recursive: true, force: true }); }
 });
+test("the gate lets docs/ADRs be edited in red (they have no failing test to write first)", () => {
+  const d = inst();
+  try {
+    ph(d, "red");
+    assert.strictEqual(fire(d, "guard-edit-scope.sh", edit("docs/decisions/0005-foo.md")).status, 0, "an ADR is editable in red");
+    assert.strictEqual(fire(d, "guard-edit-scope.sh", edit("README.md")).status, 0, "a markdown doc is editable in red");
+    assert.strictEqual(fire(d, "guard-edit-scope.sh", edit("src/x.js")).status, 2, "real source is still gated in red");
+  } finally { fs.rmSync(d, { recursive: true, force: true }); }
+});
+test("honest green: run-suite auto-detects the project's typecheck; a tsc-red fails a tests-green signal", () => {
+  const d = inst();   // tdd.config has a passing suite (TEST_CMD_app="true") and NO TYPECHECK_CMD
+  try {
+    // a project that declares its own typecheck script — controllable via TC_FAIL
+    fs.writeFileSync(path.join(d, "package.json"), JSON.stringify({ name: "x", scripts: { typecheck: "sh -c 'exit ${TC_FAIL:-0}'" } }));
+    fs.writeFileSync(path.join(d, ".claude", "state", "phase"), "green\n");
+    const runEnv = (env) => cp.spawnSync("bash", [path.join(d, ".claude", "hooks", "run-suite.sh")], { input: "", cwd: d, encoding: "utf8", env: { ...process.env, ...env } });
+    runEnv({ TC_FAIL: "0" });
+    assert.strictEqual(fs.readFileSync(path.join(d, ".claude", "state", "suite-status"), "utf8").trim(), "green", "tests + typecheck both pass -> green");
+    runEnv({ TC_FAIL: "1" });
+    assert.strictEqual(fs.readFileSync(path.join(d, ".claude", "state", "suite-status"), "utf8").trim(), "red", "tests pass but typecheck fails -> honest RED (auto-detected, no TYPECHECK_CMD set)");
+  } finally { fs.rmSync(d, { recursive: true, force: true }); }
+});
 test("run-suite records status + emits a signal tic (composed with tics)", () => {
   const d = inst();
   try {

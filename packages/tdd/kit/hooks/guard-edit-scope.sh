@@ -25,6 +25,9 @@ fi
 [ -z "${P:-}" ] && exit 0
 
 is_test() { printf '%s' "$1" | grep -qE "$TEST_GLOB"; }
+# Docs/ADRs aren't code-under-test — there's no failing test to write first, so the phase gate
+# must not block them (esp. in red). Markdown anywhere, or anything under a docs/ tree.
+is_doc() { printf '%s' "$1" | grep -qE '\.(md|mdx|markdown)$|(^|/)docs/'; }
 
 # P1: enforced claims — block an edit to a path held by ANOTHER scope, and AUTO-CLAIM a
 # still-unclaimed path for the editing scope, so disjoint-write fan-out is collision-safe
@@ -51,6 +54,11 @@ claim_guard() {
   [ -n "$_own" ] || emit_tic guard "*" claim "auto-claim on edit" "$1" ""
   return 0
 }
+
+# Docs/ADRs are never code-under-test, so the TDD phase gate must not block them in ANY phase
+# (red especially — there's no failing test to write first). Claims still apply (parallel doc
+# edits can collide). This is the single source of the docs exemption.
+if is_doc "$P"; then claim_guard "$P"; exit 0; fi
 
 case "$PHASE" in
   red)

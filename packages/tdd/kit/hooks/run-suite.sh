@@ -27,8 +27,20 @@ fi
 
 START="$(date +%s)"
 OUT="$(cd "$ROOT" && eval "$TEST_CMD" 2>&1)"; CODE=$?
-# Green means GREEN: on a passing suite, also run the optional type-check so a vitest-green /
-# tsc-red cycle (e.g. noUncheckedIndexedAccess) can't pass the signal. Opt-in: TYPECHECK_CMD.
+# Honest green by default: if no TYPECHECK_CMD is configured, auto-detect one so a green signal
+# is trustworthy (the suite alone misses type errors — e.g. noUncheckedIndexedAccess slipping past
+# vitest). Prefer the project's own `typecheck` script; else `tsc --noEmit` for a TS project.
+# Opt out with TYPECHECK_AUTO=0 (or set TYPECHECK_CMD explicitly).
+if [ -z "${TYPECHECK_CMD:-}" ] && [ "${TYPECHECK_AUTO:-1}" = "1" ]; then
+  _pm=npm; [ -f "$ROOT/pnpm-lock.yaml" ] && _pm=pnpm; [ -f "$ROOT/yarn.lock" ] && _pm=yarn
+  if [ -f "$ROOT/package.json" ] && grep -q '"typecheck"[[:space:]]*:' "$ROOT/package.json" 2>/dev/null; then
+    TYPECHECK_CMD="$_pm run typecheck"
+  elif [ -f "$ROOT/tsconfig.json" ]; then
+    if [ "$_pm" = npm ]; then TYPECHECK_CMD="npx tsc --noEmit"; else TYPECHECK_CMD="$_pm exec tsc --noEmit"; fi
+  fi
+fi
+# Green means GREEN: on a passing suite, also run the type-check so a tests-green / tsc-red
+# cycle can't pass the signal.
 if [ "$CODE" -eq 0 ] && [ -n "${TYPECHECK_CMD:-}" ]; then
   TCOUT="$(cd "$ROOT" && eval "$TYPECHECK_CMD" 2>&1)"; TC=$?
   if [ "$TC" -ne 0 ]; then CODE=$TC; OUT="[typecheck RED] ($TYPECHECK_CMD)
