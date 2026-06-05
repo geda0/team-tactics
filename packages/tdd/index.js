@@ -2,7 +2,9 @@
 "use strict";
 // @ttics/tdd — test-driven agent pairing. Composes @ttics/tics (the protocol) + lays the gate.
 const fs = require("fs"), path = require("path");
-const tics = require("@ttics/tics");
+// @ttics/tics resolves via workspace symlink in dev; under `npx` (monorepo copied without
+// symlinks) fall back to the sibling package on disk, else a composed install can't load.
+const tics = (() => { try { return require("@ttics/tics"); } catch (e) { if (e.code === "MODULE_NOT_FOUND") return require("../tics"); throw e; } })();
 const KIT = path.join(__dirname, "kit");
 const PKG = require("./package.json");
 

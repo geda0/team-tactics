@@ -25,9 +25,14 @@ const cp = require("child_process");
 const crypto = require("crypto");
 
 const KIT = path.join(__dirname, "..", "kit");
-const tics = require("@ttics/tics");
+// Resolve the composed @ttics packages. In dev they resolve via npm-workspace symlinks; under
+// `npx github:geda0/team-tactics` the monorepo is copied into node_modules/ttics with NO
+// workspace symlinks, so fall back to the sibling package on disk. Without this, adopter npx
+// installs fail with "Cannot find module '@ttics/tics'".
+const reqSib = (p, rel) => { try { return require(p); } catch (e) { if (e.code === "MODULE_NOT_FOUND") return require(rel); throw e; } };
+const tics = reqSib("@ttics/tics", "../../tics");
 const TV = tics.TV;
-const tdd = require("@ttics/tdd");
+const tdd = reqSib("@ttics/tdd", "../../tdd");
 const TDD = tdd.KIT;
 const CFG = path.join(KIT, "claude-config");
 

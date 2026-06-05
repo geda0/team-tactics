@@ -6,6 +6,22 @@ const fs = require("fs"), os = require("os"), path = require("path"), cp = requi
 const CLI = path.join(__dirname, "..", "bin", "cli.js");
 function run(args, cwd) { return cp.spawnSync("node", [CLI, ...args], { encoding: "utf8", cwd: cwd || os.tmpdir() }); }
 
+test("npx layout: the bin resolves @ttics/* siblings WITHOUT workspace symlinks (adopter install)", () => {
+  // Real `npx github:geda0/team-tactics` installs the monorepo into node_modules/ttics, where the
+  // @ttics/* workspaces are NOT symlinked. So the bin's require("@ttics/tics") must fall back to the
+  // sibling package on disk. Reproduce that exact layout: copy packages/ with NO node_modules.
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "npx-layout-"));
+  try {
+    fs.cpSync(path.join(__dirname, "..", ".."), path.join(tmp, "packages"),
+      { recursive: true, filter: (s) => !s.includes("node_modules") });
+    const bin = path.join(tmp, "packages", "team-tactics", "bin", "cli.js");
+    const target = path.join(tmp, "target"); fs.mkdirSync(target);
+    const r = cp.spawnSync("node", [bin, "init", target], { encoding: "utf8" });
+    assert.strictEqual(r.status, 0, "bin must resolve siblings in the npx layout (no symlinks): " + r.stderr);
+    assert.ok(fs.existsSync(path.join(target, ".claude", "hooks", "tics-lib.sh")), "the kit was laid down");
+  } finally { fs.rmSync(tmp, { recursive: true, force: true }); }
+});
+
 test("P2-11: --help prints help and does NOT install into ./--help", () => {
   const d = fs.mkdtempSync(path.join(os.tmpdir(), "tdd-cli-"));
   try {
