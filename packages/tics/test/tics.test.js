@@ -221,6 +221,22 @@ test("MS1: emit_tic stamps a `session` field (TICS_SESSION / state/session) — 
   } finally { fs.rmSync(d, { recursive: true, force: true }); }
 });
 
+test("C2/C3: `tics todo <session>` shows your OPEN assignments + the joint-forces pool", () => {
+  const d = inst();
+  try {
+    srcLib(d, "emit_tic lead sessW delegate 'build the ranker' task1");          // assigned to me, open
+    srcLib(d, "emit_tic lead sessW delegate 'wire the app' task2");              // assigned to me...
+    srcLib(d, "emit_tic sessW lead handoff 'app wired' task2 green");             // ...but handed off (done)
+    srcLib(d, "emit_tic lead '*' delegate 'docs pass' task3");                    // offered to the pool
+    srcLib(d, "emit_tic peer architect need 'need the StockLevel contract'");     // help wanted
+    const out = read(d, "todo", "sessW").stdout;
+    assert.match(out, /build the ranker|task1/, "shows my open assignment");
+    assert.doesNotMatch(out, /wire the app/, "hides a handed-off (done) assignment");
+    assert.match(out, /docs pass|task3/, "shows pooled work to grab");
+    assert.match(out, /StockLevel|need/i, "shows open help requests");
+  } finally { fs.rmSync(d, { recursive: true, force: true }); }
+});
+
 test("MS1: `tics sessions` lists live sessions + their scopes + claims (who's active, where)", () => {
   const d = inst();
   try {

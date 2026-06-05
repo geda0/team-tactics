@@ -59,10 +59,11 @@ if (preset !== null && preset !== "full-team" && preset !== "none") {
   process.exit(2);
 }
 let cmd = "init";
-if (["init", "update", "help", "version", "selftest", "report", "validate", "log", "inbox", "conductor", "claims", "sections", "sessions", "claim-check", "install-hooks", "cycle", "gate"].includes(rest[0])) cmd = rest.shift();
+if (["init", "update", "help", "version", "selftest", "report", "validate", "log", "inbox", "conductor", "claims", "sections", "sessions", "todo", "claim-check", "install-hooks", "cycle", "gate"].includes(rest[0])) cmd = rest.shift();
 const role = cmd === "inbox" ? rest.shift() : null;
 const cfFile = cmd === "claim-check" ? rest.shift() : null;
 const cfScope = cmd === "claim-check" ? (rest.shift() || scope || "") : null;
+const tdSession = cmd === "todo" ? rest.shift() : null;
 const target = path.resolve(rest[0] || process.cwd());
 
 if (cmd === "version") {            // the single authoritative kit version (matches the manifest's kitVersion)
@@ -88,6 +89,7 @@ if (cmd === "conductor") { process.exit(TV.ticsConductor(target, all)); }
 if (cmd === "claims") { process.exit(TV.ticsClaims(target, all)); }
 if (cmd === "sections") { process.exit(TV.ticsSections(target, all)); }
 if (cmd === "sessions") { process.exit(TV.ticsSessions(target, all)); }
+if (cmd === "todo") { process.exit(TV.ticsTodo(target, tdSession)); }
 if (cmd === "cycle") { process.exit(TV.ticsCycle(target)); }
 if (cmd === "gate") { process.exit(TV.ticsGate(target, all)); }
 if (cmd === "claim-check") { process.exit(TV.claimCheckCli(target, cfFile, cfScope)); }

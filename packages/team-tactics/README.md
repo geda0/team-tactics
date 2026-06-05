@@ -58,6 +58,8 @@ Read the bus — after install, the kit ships a local reader (no fetch, no targe
 .claude/hooks/tics conductor       # live grouping + coupling view (sections + active claims)
 .claude/hooks/tics sections        # the open/done sections (work groups)
 .claude/hooks/tics claims          # files currently claimed (coupling), and by whom
+.claude/hooks/tics sessions        # who's active on this repo (multi-session cooperation)
+.claude/hooks/tics todo [<id>]     # your open assignments + the pool to grab (worker/peer view)
 .claude/hooks/tics fan-out <spec>  # plan-time disjointness gate before fanning out parallel pairs
 ```
 
