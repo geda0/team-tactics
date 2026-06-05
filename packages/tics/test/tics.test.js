@@ -92,6 +92,23 @@ test("tics claim-owner <file>: reports the owning scope, empty when unclaimed (f
   } finally { fs.rmSync(d, { recursive: true, force: true }); }
 });
 
+test("tics conductor shows a per-scope summary: section status + active claims + freed-on-done", () => {
+  const d = inst();
+  try {
+    srcLib(d, "export TICS_SCOPE='ranking/S1'; emit_tic lead '*' section open ranking open");
+    srcLib(d, "export TICS_SCOPE='ranking/S1'; emit_tic p '*' claim ranker.ts ranker.ts");
+    srcLib(d, "export TICS_SCOPE='ranking/S1'; emit_tic p '*' claim types.ts types.ts");
+    srcLib(d, "export TICS_SCOPE='narrate/S2'; emit_tic p '*' claim line.ts line.ts");
+    srcLib(d, "export TICS_SCOPE='narrate/S2'; emit_tic lead '*' section done narrate done");
+    const c = read(d, "conductor").stdout;
+    const line = (s) => c.split("\n").find((l) => l.includes(s)) || "";
+    assert.match(line("ranking/S1"), /\[open\]/, "open section's status shows");
+    assert.match(line("ranking/S1"), /ranker\.ts.*types\.ts/, "lists its active claims");
+    assert.match(line("narrate/S2"), /\[done\]/, "done section shows done");
+    assert.match(line("narrate/S2"), /freed/, "a done section's claims read freed");
+  } finally { fs.rmSync(d, { recursive: true, force: true }); }
+});
+
 test("a done section auto-releases its claims (release-on-done): claims/owner/check all free up", () => {
   const d = inst();
   try {

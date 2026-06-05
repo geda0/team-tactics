@@ -85,10 +85,48 @@ function ticsInbox(targetDir, role, scopeFilter) {
   return 0;
 }
 function ticsConductor(targetDir, all) {
-  const COUPLING = ["claim", "release", "contract", "need", "msg"];
-  const t = loadFor(targetDir, all).filter((x) => COUPLING.indexOf(x.kind) !== -1);
-  if (!t.length) { console.log("No coupling tics yet (claim/release/contract/need/msg)."); return 0; }
-  console.log("Conductor view — cross-pair coupling tics:");
+  const COUPLING = ["claim", "release", "contract", "need", "section", "msg"];
+  const tics = loadFor(targetDir, all);
+  const t = tics.filter((x) => COUPLING.indexOf(x.kind) !== -1);
+  if (!t.length) { console.log("No coupling tics yet (claim/release/contract/need/section/msg)."); return 0; }
+
+  // Per-scope summary: each working unit's section status + active claims + needs/contracts.
+  // One place the orchestrator sees grouping (sections) + coupling (claims) + who-owns-what.
+  const active = activeClaims(tics);
+  const secStatus = new Map();
+  for (const x of tics) if (x.kind === "section" && x.ref && x.result) secStatus.set(x.ref, x.result);
+  const scopes = new Map();
+  const claimsByScope = new Map();
+  for (const x of t) {
+    const sc = x.scope || "*";
+    if (sc === "*") continue;
+    let e = scopes.get(sc);
+    if (!e) { e = { needs: [], contracts: [], hadClaim: false }; scopes.set(sc, e); }
+    if (x.kind === "claim") e.hadClaim = true;
+    if (x.kind === "need") e.needs.push(x.msg || x.ref || "?");
+    if (x.kind === "contract") e.contracts.push(x.msg || x.ref || "?");
+  }
+  for (const x of active.values()) {
+    const sc = x.scope || "*"; if (sc === "*") continue;
+    let r = claimsByScope.get(sc); if (!r) { r = []; claimsByScope.set(sc, r); }
+    r.push(x.ref);
+  }
+  if (scopes.size) {
+    console.log("Conductor view — sections & coupling:");
+    for (const sc of [...scopes.keys()].sort()) {
+      const e = scopes.get(sc);
+      const status = secStatus.get(sc.split("/")[0]) || "active";
+      const refs = claimsByScope.get(sc) || [];
+      const claimsStr = refs.length ? refs.join(", ") : (status === "done" && e.hadClaim ? "(freed)" : "-");
+      let line = "  " + sc.padEnd(14) + ("[" + status + "]").padEnd(9) + "claims: " + claimsStr;
+      if (e.needs.length) line += "   needs: " + e.needs.join(", ");
+      if (e.contracts.length) line += "   contract: " + e.contracts.join(", ");
+      console.log(line);
+    }
+    console.log("");
+  }
+
+  console.log("Cross-pair coupling tics:");
   for (const x of t) {
     const when = (x.ts || "").slice(11, 19);
     console.log("  #" + (x.seq || "?") + " " + when + "  " + (x.from || "?") + " -> " + (x.to || "*") + "  [" + (x.kind || "?") + " " + (x.scope || "*") + "]  " + (x.msg || "") + (x.ref ? " {" + x.ref + "}" : "") + (x.result ? " (" + x.result + ")" : ""));

@@ -75,8 +75,10 @@ Run independent slices as **parallel pairs**, coordinated by coupling-tics:
 - `contract` — the architect publishes a seam (a coupling-tic) that unblocks dependent pairs.
 - `need` — a pair signals a dependency ("need contract C").
 
-The **conductor** (orchestrator) watches `tics conductor` — only the cross-pair coupling tics,
-with each pair's high-frequency pairing-tics filtered out as noise — and assigns conflict-free
+The **conductor** (orchestrator) watches `tics conductor` — a per-scope summary (each working
+unit's section `[open|active|done]` status, its active claims, needs, and contracts — claims read
+`(freed)` once the section is done) over the cross-pair coupling thread, with each pair's
+high-frequency pairing-tics filtered out as noise — and assigns conflict-free
 scopes. Each pair works in its scope (`echo pair:S2 > .claude/state/scope`) and reads its own
 thread via `tics log --scope pair:S2`.
 
