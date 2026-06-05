@@ -393,6 +393,7 @@ resolve_layer() {
     cp.spawnSync("bash", [path.join(SH, hook + ".sh")],
       { input: stdin, env: Object.assign({}, process.env, env), encoding: "utf8" }).status;
   const edit = (p) => JSON.stringify({ tool_input: { file_path: p } });
+  const bash = (cmd) => JSON.stringify({ tool_name: "Bash", tool_input: { command: cmd } });
 
   let pass = 0, fail = 0;
   const check = (name, actual, expected) => {
@@ -409,6 +410,8 @@ resolve_layer() {
                               check("green allows source edit",      run("guard-edit-scope", { stdin: edit("src/x.js") }), 0);
   setState("phase", "red");   check("red blocks source edit",        run("guard-edit-scope", { stdin: edit("src/x.js") }), 2);
                               check("red allows test edit",          run("guard-edit-scope", { stdin: edit("tests/x.test.js") }), 0);
+                              check("red blocks a Bash WRITE into source", run("guard-edit-scope", { stdin: bash("cat > src/x.js <<'EOF'\\nx\\nEOF") }), 2);
+                              check("read-only Bash is always allowed",    run("guard-edit-scope", { stdin: bash("grep foo src/x.js") }), 0);
   setState("phase", "off");   check("off (disarmed) allows any edit", run("guard-edit-scope", { stdin: edit("src/x.js") }), 0);
   setState("phase", "bogus"); check("unknown phase fails CLOSED",    run("guard-edit-scope", { stdin: edit("src/x.js") }), 2);
 

@@ -27,6 +27,32 @@ test("the gate enforces phase×layer", () => {
     assert.strictEqual(fire(d, "guard-edit-scope.sh", edit("src/x.js")).status, 0);
   } finally { fs.rmSync(d, { recursive: true, force: true }); }
 });
+test("B1: the guard gates Bash write-redirections into guarded paths, but NEVER blocks reads", () => {
+  const d = inst();
+  const bash = (cmd) => JSON.stringify({ tool_name: "Bash", tool_input: { command: cmd } });
+  const g = (payload) => fire(d, "guard-edit-scope.sh", payload).status;
+  try {
+    ph(d, "red");
+    // BLOCK — writing source via a Bash redirect (the observed live bypass):
+    assert.strictEqual(g(bash("cat > src/x.ts <<'EOF'\nhi\nEOF")), 2, "red: heredoc redirect into src is blocked");
+    assert.strictEqual(g(bash("echo x >> src/x.ts")), 2, "red: append redirect into src is blocked");
+    // ALLOW — reads must NEVER be blocked (allow-by-default for Bash):
+    assert.strictEqual(g(bash("git status")), 0, "read-only Bash allowed");
+    assert.strictEqual(g(bash("grep foo src/x.ts")), 0, "grep (no redirect) allowed");
+    assert.strictEqual(g(bash("cat src/x.ts")), 0, "bare cat (no redirect) allowed");
+    assert.strictEqual(g(bash("pnpm test 2>&1 | tail")), 0, "fd-dup 2>&1 is not a write target");
+    assert.strictEqual(g(bash('echo x > "$OUT"')), 0, "unresolved $var target -> allow (false-negative bias)");
+    assert.strictEqual(g(bash("echo note > docs/x.md")), 0, "redirect into a doc allowed in any phase");
+    // symmetric in green: a Bash-written TEST is blocked; a Bash-written source is fine
+    ph(d, "green");
+    assert.strictEqual(g(bash("cat > x.test.js <<'EOF'\nt\nEOF")), 2, "green: writing a TEST via Bash is blocked (tests frozen)");
+    assert.strictEqual(g(bash("tee src/y.ts")), 0, "green: writing SOURCE via Bash is allowed");
+    // off disarms
+    ph(d, "off");
+    assert.strictEqual(g(bash("cat > src/x.ts")), 0, "off: Bash write allowed");
+  } finally { fs.rmSync(d, { recursive: true, force: true }); }
+});
+
 test("the gate lets docs/ADRs be edited in red (they have no failing test to write first)", () => {
   const d = inst();
   try {

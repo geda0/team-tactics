@@ -21,6 +21,20 @@ test("install wires all kit hook events; no sidecar", () => {
   } finally { fs.rmSync(d, { recursive: true, force: true }); }
 });
 
+test("PreToolUse gates Bash too (not just Edit/Write) — wired to the guard, separate from run-suite", () => {
+  const d = install();
+  try {
+    const pre = S(d).hooks.PreToolUse;
+    const bash = pre.filter((g) => /(^|\|)Bash(\||$)/.test(g.matcher || ""));
+    assert.ok(bash.length, "a PreToolUse group matches Bash");
+    assert.ok(bash.some((g) => (g.hooks || []).some((h) => /guard-edit-scope\.sh/.test(h.command || ""))),
+      "the Bash matcher is wired to guard-edit-scope.sh (closes the cat>src bypass)");
+    // must NOT run the suite after a Bash command (e.g. `ls`): run-suite stays Edit|Write only
+    const post = S(d).hooks.PostToolUse;
+    assert.ok(!post.some((g) => /Bash/.test(g.matcher || "")), "run-suite does NOT fire on Bash");
+  } finally { fs.rmSync(d, { recursive: true, force: true }); }
+});
+
 test("merge preserves user keys + user hooks, idempotently", () => {
   const d = fs.mkdtempSync(path.join(os.tmpdir(), "tdd-settings-"));
   try {
@@ -35,7 +49,7 @@ test("merge preserves user keys + user hooks, idempotently", () => {
     const pre = s.hooks.PreToolUse;
     assert.ok(pre.some((g) => g.hooks.some((h) => h.command === "echo user-hook")), "user hook preserved");
     const kitGroups = pre.filter((g) => g.hooks.some((h) => String(h.command).includes(".claude/hooks/")));
-    assert.strictEqual(kitGroups.length, 1, "exactly one kit guard group (idempotent)");
+    assert.strictEqual(kitGroups.length, 2, "exactly two kit guard groups — Edit|Write|MultiEdit + Bash — not duplicated on re-run (idempotent)");
     assert.ok(s.hooks.SessionStart, "kit SessionStart added");
   } finally { fs.rmSync(d, { recursive: true, force: true }); }
 });
