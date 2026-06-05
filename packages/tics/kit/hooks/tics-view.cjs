@@ -200,14 +200,17 @@ function ticsSessions(targetDir, all) {
 // reassignment (release-on-done). The single source of truth for every claim consumer.
 function activeClaims(tics) {
   const active = new Map();
-  const status = new Map();   // section name -> latest lifecycle status (open|done)
+  const status = new Map();       // section name -> latest lifecycle status (open|done)
+  const sessClosed = new Set();   // sessions that have closed -> their claims free (a leaving worker frees its lane)
   for (const x of tics) {
     if (x.kind === "section" && x.ref && x.result) status.set(x.ref, x.result);
+    if (x.kind === "session" && x.session) { if (x.result === "close" || x.result === "closed") sessClosed.add(x.session); else sessClosed.delete(x.session); }
     if (x.kind === "claim" && x.ref) active.set(x.ref, x);
     else if (x.kind === "release" && x.ref) active.delete(x.ref);
   }
   for (const [ref, x] of active) {
-    if (status.get((x.scope || "").split("/")[0]) === "done") active.delete(ref);
+    if (status.get((x.scope || "").split("/")[0]) === "done") active.delete(ref);   // release-on-section-done
+    else if (x.session && sessClosed.has(x.session)) active.delete(ref);             // release-on-session-close (ADR 0003)
   }
   return active;
 }

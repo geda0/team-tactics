@@ -235,6 +235,17 @@ test("MS1: `tics sessions` lists live sessions + their scopes + claims (who's ac
   } finally { fs.rmSync(d, { recursive: true, force: true }); }
 });
 
+test("C1: a `session close` auto-releases that session's claims (a leaving worker frees its lane)", () => {
+  const d = inst();
+  try {
+    srcLib(d, "export TICS_SESSION='sessA' TICS_SCOPE='auth/S1'; emit_tic a '*' claim login.ts login.ts");
+    assert.match(read(d, "claims").stdout, /login\.ts/, "claimed while the session is live");
+    srcLib(d, "export TICS_SESSION='sessA'; emit_tic a '*' session leaving '' close");
+    assert.doesNotMatch(read(d, "claims").stdout, /login\.ts/, "the session close frees its claim");
+    assert.strictEqual(read(d, "claim-session", "login.ts").stdout.trim(), "", "claim-session clears -> a peer may take the lane");
+  } finally { fs.rmSync(d, { recursive: true, force: true }); }
+});
+
 test("MS3: tics claim-session <file> reports the SESSION holding an active claim (empty if free)", () => {
   const d = inst();
   try {
