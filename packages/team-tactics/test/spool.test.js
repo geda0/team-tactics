@@ -12,6 +12,7 @@ function sandbox(store) {
   const sh = path.join(d, ".claude", "hooks"), st = path.join(d, ".claude", "state");
   fs.mkdirSync(sh, { recursive: true }); fs.mkdirSync(st, { recursive: true });
   fs.copyFileSync(path.join(KIT_HOOKS, "lib.sh"), path.join(sh, "lib.sh"));
+  fs.copyFileSync(path.join(require("@ttics/tics").KIT, "hooks", "tics-lib.sh"), path.join(sh, "tics-lib.sh"));
   fs.writeFileSync(path.join(d, ".claude", "tdd.config"), `LAYERS="app"\nALL_TEST_CMD="true"\nTEST_CMD_app="true"\nTIC_STORE="${store}"\n`);
   fs.writeFileSync(path.join(st, "phase"), "green\n"); fs.writeFileSync(path.join(st, "layer"), "app\n");
   return d;

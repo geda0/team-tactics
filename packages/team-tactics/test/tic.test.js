@@ -10,10 +10,12 @@ function sandbox(testCmd) {
   const d = fs.mkdtempSync(path.join(os.tmpdir(), "tt-tic-"));
   const sh = path.join(d, ".claude", "hooks"), st = path.join(d, ".claude", "state");
   fs.mkdirSync(sh, { recursive: true }); fs.mkdirSync(st, { recursive: true });
-  for (const h of ["lib.sh", "tic.sh", "run-suite.sh", "guard-edit-scope.sh", "subagent-handoff.sh"]) {
+  for (const h of ["lib.sh", "run-suite.sh", "guard-edit-scope.sh", "subagent-handoff.sh"]) {
     const src = path.join(KIT_HOOKS, h);
     if (fs.existsSync(src)) fs.copyFileSync(src, path.join(sh, h));
   }
+  const TICS_HOOKS = path.join(require("@ttics/tics").KIT, "hooks");
+  for (const h of ["tic.sh", "tics-lib.sh"]) fs.copyFileSync(path.join(TICS_HOOKS, h), path.join(sh, h));
   fs.writeFileSync(path.join(d, ".claude", "tdd.config"),
     `LAYERS="app"\nALL_TEST_CMD=${JSON.stringify(testCmd || "true")}\nTEST_CMD_app="$ALL_TEST_CMD"\n`);
   fs.writeFileSync(path.join(st, "phase"), "green\n");

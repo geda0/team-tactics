@@ -25,7 +25,8 @@ const cp = require("child_process");
 const crypto = require("crypto");
 
 const KIT = path.join(__dirname, "..", "kit");
-const TV = require(path.join(KIT, "claude-config", "hooks", "tics-view.cjs"));
+const tics = require("@ttics/tics");
+const TV = tics.TV;
 const CFG = path.join(KIT, "claude-config");
 
 // ---- arg parsing --------------------------------------------------------
@@ -96,7 +97,7 @@ function installHooks(target) {
       console.error("install-hooks: a non-team-tactics " + name + " already exists at\n  " + dest + "\nNot clobbering it (merge it yourself, or point core.hooksPath at a shared dir).");
       skipped++; continue;
     }
-    fs.copyFileSync(path.join(KIT, "githooks", name), dest);
+    fs.copyFileSync(name === "post-commit" ? tics.postCommitHook : path.join(KIT, "githooks", name), dest);
     try { fs.chmodSync(dest, 0o755); } catch (e) { /* windows */ }
     installed++;
   }
@@ -250,17 +251,19 @@ for (const a of ["test-writer", "implementer", "tdd-critic", "planner"])
   refresh(path.join(CFG, "agents", a + ".md"), path.join(".claude", "agents", a + ".md"));
 // Shared hook library (resolver + defaults), sourced by the hooks below.
 refresh(path.join(CFG, "hooks", "lib.sh"), path.join(".claude", "hooks", "lib.sh"));
-for (const h of ["guard-edit-scope", "run-suite", "require-green-to-stop", "session-green-check", "tic", "subagent-handoff"]) {
+for (const h of ["guard-edit-scope", "run-suite", "require-green-to-stop", "session-green-check", "subagent-handoff"]) {
   const rel = path.join(".claude", "hooks", h + ".sh");
   refresh(path.join(CFG, "hooks", h + ".sh"), rel);
   try { fs.chmodSync(path.join(target, rel), 0o755); } catch (e) { /* windows */ }
 }
-for (const h of ["tics", "tics-view.cjs"]) refresh(path.join(CFG, "hooks", h), path.join(".claude", "hooks", h));
+// @ttics/tics — protocol files sourced from the tics package (composite); team-tactics' refresh
+// keeps the non-destructive backup + manifest, just pointing the source at @ttics/tics' kit.
+for (const h of ["tics-lib.sh", "tic.sh", "tics", "tics-view.cjs"]) refresh(path.join(tics.KIT, "hooks", h), path.join(".claude", "hooks", h));
+for (const h of ["tics-lib.sh", "tic.sh", "tics"]) { try { fs.chmodSync(path.join(target, ".claude", "hooks", h), 0o755); } catch (e) {} }
 try { fs.unlinkSync(path.join(target, ".claude", "hooks", "tics-view.js")); } catch (e) {} // migrate stale .js reader -> .cjs
-try { fs.chmodSync(path.join(target, ".claude", "hooks", "tics"), 0o755); } catch (e) {}
 for (const d of ["tdd-workflow", "testing-philosophy", "conventions", "divide-and-conquer", "tool-support"])
   refresh(path.join(KIT, "docs", "tdd", d + ".md"), path.join("docs", "tdd", d + ".md"));
-refresh(path.join(KIT, "docs", "tics", "tic-protocol.md"), path.join("docs", "tics", "tic-protocol.md"));
+refresh(path.join(tics.KIT, "docs", "tic-protocol.md"), path.join("docs", "tics", "tic-protocol.md"));
 
 // 1b) Optional team preset (sticky) — outer-loop roles + method doc + state templates.
 if (presetActive === "full-team") {
@@ -354,7 +357,7 @@ function selftest(targetDir) {
   const ST = path.join(S, ".claude", "state");
   fs.mkdirSync(SH, { recursive: true });
   fs.mkdirSync(ST, { recursive: true });
-  for (const h of ["lib", "guard-edit-scope", "run-suite", "require-green-to-stop"])
+  for (const h of ["tics-lib", "lib", "guard-edit-scope", "run-suite", "require-green-to-stop"])
     fs.copyFileSync(path.join(hooksDir, h + ".sh"), path.join(SH, h + ".sh"));
 
   // Minimal known config with a controllable test command (env TDD_SELFTEST_FAIL).
