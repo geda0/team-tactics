@@ -273,6 +273,44 @@ function ticsGate(targetDir, all) {
   console.error("  Release only when PO-accept + tdd-critic PASS are on the bus (see docs/tdd/outer-loop.md).");
   return 1;
 }
+// fan-out: the plan-time disjointness gate. Reads a partition spec (one section per line:
+// "<section> <file>..."), assigns each a scope (<section>/S<n>), and refuses to greenlight a
+// fan-out where two sections claim the same file — auto-claim catches collisions at RUNTIME;
+// this catches them before any pair starts. Read-only; the orchestrator sets scopes + delegates.
+function fanOut(targetDir, specPath) {
+  if (!specPath) { console.error("usage: tics fan-out <partition-spec-file>  (lines: '<section> <file>...')"); return 2; }
+  let text;
+  try { text = fs.readFileSync(specPath, "utf8"); }
+  catch (e) { console.error("fan-out: cannot read spec '" + specPath + "'"); return 2; }
+  const sections = [];
+  for (const raw of text.split("\n")) {
+    const line = raw.replace(/#.*/, "").trim();
+    if (!line) continue;
+    const parts = line.split(/\s+/);
+    const name = parts.shift();
+    sections.push({ name: name, files: parts });
+  }
+  if (!sections.length) { console.log("fan-out: no sections in spec."); return 0; }
+  const owners = new Map();   // file -> [section names]
+  for (const s of sections) for (const f of s.files) {
+    let o = owners.get(f); if (!o) { o = []; owners.set(f, o); }
+    if (o.indexOf(s.name) === -1) o.push(s.name);
+  }
+  const overlaps = [...owners.entries()].filter(function (e) { return e[1].length > 1; });
+  console.log("Fan-out plan (" + sections.length + " sections):");
+  sections.forEach(function (s, i) {
+    const scope = s.name + "/S" + (i + 1);
+    const dup = s.files.some(function (f) { return owners.get(f).length > 1; });
+    console.log("  " + s.name.padEnd(12) + (s.files.length + " files").padEnd(9) + " -> scope " + scope.padEnd(16) + (dup ? "[OVERLAP]" : "[disjoint ✓]"));
+  });
+  if (overlaps.length) {
+    for (const e of overlaps) console.log("  ⚠ overlap: " + e[0] + " in " + e[1].join(" + ") + " — serialize, or split the file (fix the seam).");
+    console.log("Not safe to fan out as-is — resolve the overlaps above.");
+    return 1;
+  }
+  console.log("All partitions disjoint — safe to fan out. Set each pair's scope and delegate.");
+  return 0;
+}
 function main(argv, defaultRoot) {
   let scope = null, all = false; const rest = [];
   for (let i = 0; i < argv.length; i++) { const a = argv[i]; if (a === "--scope") scope = argv[++i] || ""; else if (a === "--all") all = true; else rest.push(a); }
@@ -282,6 +320,7 @@ function main(argv, defaultRoot) {
   const cfScope = cmd === "claim-check" ? (rest.shift() || scope || "") : null;
   const coFile = cmd === "claim-owner" ? rest.shift() : null;
   const soName = cmd === "section-status" ? rest.shift() : null;
+  const foSpec = cmd === "fan-out" ? rest.shift() : null;
   const target = rest[0] ? path.resolve(rest[0]) : (defaultRoot || process.cwd());
   switch (cmd) {
     case "log": return ticsLog(target, scope, all);
@@ -294,10 +333,11 @@ function main(argv, defaultRoot) {
     case "claim-check": return claimCheckCli(target, cfFile, cfScope);
     case "claim-owner": return claimOwnerCli(target, coFile);
     case "section-status": return sectionStatusCli(target, soName);
-    default: console.error("usage: tics <log [--scope S] | inbox <role> [--scope S] | conductor | claims | sections | claim-check <file> <scope> | claim-owner <file> | section-status <name>] [--all]>"); return 2;
+    case "fan-out": return fanOut(target, foSpec);
+    default: console.error("usage: tics <log [--scope S] | inbox <role> [--scope S] | conductor | claims | sections | claim-check <file> <scope> | claim-owner <file> | section-status <name> | fan-out <spec>] [--all]>"); return 2;
   }
 }
 if (require.main === module) {
   process.exit(main(process.argv.slice(2), path.join(__dirname, "..", "..")) || 0);
 }
-module.exports = { loadTics, loadSignalEvents, ticsLog, ticsInbox, ticsConductor, ticsClaims, ticsSections, ticsCycle, ticsGate, claimCheck, claimCheckCli, claimOwner, claimOwnerCli, sectionStatus, sectionStatusCli, main };
+module.exports = { loadTics, loadSignalEvents, ticsLog, ticsInbox, ticsConductor, ticsClaims, ticsSections, ticsCycle, ticsGate, claimCheck, claimCheckCli, claimOwner, claimOwnerCli, sectionStatus, sectionStatusCli, fanOut, main };

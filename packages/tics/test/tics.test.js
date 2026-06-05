@@ -92,6 +92,32 @@ test("tics claim-owner <file>: reports the owning scope, empty when unclaimed (f
   } finally { fs.rmSync(d, { recursive: true, force: true }); }
 });
 
+test("tics fan-out <spec> plans a disjoint partition: one scope per section, safe to fan out", () => {
+  const d = inst();
+  try {
+    const spec = path.join(d, "partition.txt");
+    fs.writeFileSync(spec, "# my partition\nranking ranker.ts types.ts\nnarrate host.ts line.ts\n");
+    const r = read(d, "fan-out", spec);
+    assert.strictEqual(r.status, 0, "a disjoint partition is safe: " + r.stderr);
+    assert.match(r.stdout, /ranking.*ranking\/S1/, "assigns a scope per section");
+    assert.match(r.stdout, /narrate.*narrate\/S2/);
+    assert.match(r.stdout, /disjoint|safe/i, "reports it's safe to fan out");
+  } finally { fs.rmSync(d, { recursive: true, force: true }); }
+});
+
+test("tics fan-out flags overlapping files: names the file + sections, not safe to fan out", () => {
+  const d = inst();
+  try {
+    const spec = path.join(d, "partition.txt");
+    fs.writeFileSync(spec, "ranking ranker.ts kernel.ts\npayments charge.ts kernel.ts\n");
+    const r = read(d, "fan-out", spec);
+    assert.notStrictEqual(r.status, 0, "overlap is NOT safe to fan out");
+    assert.match(r.stdout, /kernel\.ts/, "names the overlapping file");
+    assert.match(r.stdout, /ranking/);
+    assert.match(r.stdout, /payments/);
+  } finally { fs.rmSync(d, { recursive: true, force: true }); }
+});
+
 test("tics conductor shows a per-scope summary: section status + active claims + freed-on-done", () => {
   const d = inst();
   try {
