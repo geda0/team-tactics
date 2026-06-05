@@ -92,6 +92,33 @@ test("tics claim-owner <file>: reports the owning scope, empty when unclaimed (f
   } finally { fs.rmSync(d, { recursive: true, force: true }); }
 });
 
+test("tics section-status <name>: reports the latest status, empty when unopened (feeds auto-section)", () => {
+  const d = inst();
+  try {
+    srcLib(d, "export TICS_SCOPE='orders/S2'; emit_tic lead '*' section open orders open");
+    assert.match(read(d, "section-status", "orders").stdout, /open/, "reports an opened section");
+    assert.strictEqual(read(d, "section-status", "ghost").stdout.trim(), "", "unopened section has no status");
+    srcLib(d, "export TICS_SCOPE='orders/S2'; emit_tic lead '*' section done orders done");
+    assert.match(read(d, "section-status", "orders").stdout, /done/, "latest status wins");
+  } finally { fs.rmSync(d, { recursive: true, force: true }); }
+});
+
+test("tics sections shows per-section lifecycle status (active vs done) from section tics", () => {
+  const d = inst();
+  try {
+    // 'orders' opened + worked (still active); 'payments' opened, worked, then closed
+    srcLib(d, "export TICS_SCOPE='orders/S2'; emit_tic lead '*' section 'kick off' orders open");
+    srcLib(d, "export TICS_SCOPE='orders/S2'; emit_tic o tw delegate slice s");
+    srcLib(d, "export TICS_SCOPE='payments/S3'; emit_tic lead '*' section 'kick off' payments open");
+    srcLib(d, "export TICS_SCOPE='payments/S3'; emit_tic lead '*' section shipped payments done");
+    const s = read(d, "sections").stdout;
+    const line = (name) => s.split("\n").find((l) => l.includes(name)) || "";
+    assert.match(line("payments"), /done/i, "a closed section reads done");
+    assert.match(line("orders"), /active|open/i, "an open/worked section is not done");
+    assert.doesNotMatch(line("orders"), /done/i, "orders is not done");
+  } finally { fs.rmSync(d, { recursive: true, force: true }); }
+});
+
 test("tics log --all merges sibling worktree buses", () => {
   const d = inst(); const wt = d + "-wt";
   try {

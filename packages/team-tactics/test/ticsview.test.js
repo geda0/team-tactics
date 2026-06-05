@@ -229,6 +229,26 @@ test("tics claim-check: blocks a path held by another scope, allows own/released
   } finally { fs.rmSync(d, { recursive: true, force: true }); }
 });
 
+test("guard-edit-scope auto-opens a section on first scoped edit, idempotently (P1)", () => {
+  const d = freshWithTics([]);                         // empty bus: section 'orders' not yet opened
+  try {
+    fs.writeFileSync(path.join(d, ".claude", "state", "phase"), "refactor\n");
+    fs.writeFileSync(path.join(d, ".claude", "state", "layer"), "app\n");
+    fs.writeFileSync(path.join(d, ".claude", "state", "scope"), "orders/S2\n");
+    const guard = path.join(d, ".claude", "hooks", "guard-edit-scope.sh");
+    const reader = path.join(d, ".claude", "hooks", "tics");
+    const edit = (f) => cp.spawnSync("bash", [guard], { input: JSON.stringify({ tool_input: { file_path: f } }), encoding: "utf8", cwd: d });
+    edit("src/cart.ts");
+    assert.match(cp.spawnSync(reader, ["section-status", "orders"], { encoding: "utf8", cwd: d }).stdout, /open/, "the section auto-opened");
+    assert.match(cp.spawnSync(reader, ["sections"], { encoding: "utf8", cwd: d }).stdout, /orders/, "the partition map shows it");
+    edit("src/other.ts");                              // a second, different file in the same section
+    const opens = fs.readFileSync(path.join(d, ".claude", "state", "tics.jsonl"), "utf8").trim().split("\n")
+      .map((l) => { try { return JSON.parse(l); } catch (e) { return {}; } })
+      .filter((x) => x.kind === "section" && x.ref === "orders");
+    assert.strictEqual(opens.length, 1, "the section opens once, not on every edit");
+  } finally { fs.rmSync(d, { recursive: true, force: true }); }
+});
+
 test("guard-edit-scope auto-claims an unclaimed file on edit when scoped, idempotently (P1)", () => {
   const d = freshWithTics([]);                          // empty bus: src/kernel.ts starts unclaimed
   try {

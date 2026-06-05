@@ -40,7 +40,12 @@ claim_guard() {
     emit_tic guard "*" need "claim conflict on $1 (held by: $_hold)" "$1" blocked
     exit 2
   fi
-  # No conflict. Auto-claim only if still unclaimed — skip if already held (by us) so we
+  # No conflict. Auto-open the section (scope's first component) on first scoped activity,
+  # so the partition map (`tics sections`) populates itself — once, never re-opened.
+  _sec="${_ms%%/*}"
+  _sst="$("$ROOT/.claude/hooks/tics" section-status "$_sec" 2>/dev/null)"
+  [ -n "$_sst" ] || emit_tic guard "*" section "auto-open on first edit" "$_sec" open
+  # Auto-claim only if still unclaimed — skip if already held (by us) so we
   # don't re-claim on every edit and spam the bus (the telemetry must stay meaningful).
   _own="$("$ROOT/.claude/hooks/tics" claim-owner "$1" 2>/dev/null)"
   [ -n "$_own" ] || emit_tic guard "*" claim "auto-claim on edit" "$1" ""

@@ -113,12 +113,13 @@ function ticsSections(targetDir, all) {
     const sc = x.scope || "*";
     if (sc === "*") continue;
     const name = sc.split("/")[0];
-    const e = sec[name] || (sec[name] = { tics: 0, claims: 0, contracts: 0, needs: 0, last: "" });
+    const e = sec[name] || (sec[name] = { tics: 0, claims: 0, contracts: 0, needs: 0, last: "", status: "" });
     e.tics++;
     if (x.kind === "claim") e.claims++;
     if (x.kind === "release") e.claims--;
     if (x.kind === "contract") e.contracts++;
     if (x.kind === "need") e.needs++;
+    if (x.kind === "section" && x.result) e.status = x.result;   // open|done — append order, latest wins
     if ((x.ts || "") > e.last) e.last = x.ts || "";
   }
   const names = Object.keys(sec).sort();
@@ -126,7 +127,8 @@ function ticsSections(targetDir, all) {
   console.log("Sections (live, from the tic log):");
   for (const n of names) {
     const e = sec[n];
-    console.log("  " + n.padEnd(16) + e.tics + " tics | claims " + Math.max(0, e.claims) + " | contracts " + e.contracts + " | needs " + e.needs + "  (last " + (e.last || "").slice(11, 19) + ")");
+    const st = e.status || "active";   // present in the log but never explicitly opened/closed => active
+    console.log("  " + n.padEnd(16) + ("[" + st + "]").padEnd(9) + e.tics + " tics | claims " + Math.max(0, e.claims) + " | contracts " + e.contracts + " | needs " + e.needs + "  (last " + (e.last || "").slice(11, 19) + ")");
   }
   return 0;
 }
@@ -167,6 +169,21 @@ function claimOwner(targetDir, file) {
 function claimOwnerCli(targetDir, file) {
   const o = claimOwner(targetDir, file);
   if (o) console.log(o);
+  return 0;
+}
+// sectionStatus: the latest lifecycle status of a section (open|done), empty if never opened.
+// Lets the guard auto-open a section once on first scoped activity without re-opening it.
+function sectionStatus(targetDir, name) {
+  if (!name) return "";
+  let st = "";
+  for (const x of loadTics(targetDir)) {
+    if (x.kind === "section" && x.ref === name && x.result) st = x.result;
+  }
+  return st;
+}
+function sectionStatusCli(targetDir, name) {
+  const s = sectionStatus(targetDir, name);
+  if (s) console.log(s);
   return 0;
 }
 function ticsCycle(targetDir) {
@@ -222,6 +239,7 @@ function main(argv, defaultRoot) {
   const cfFile = cmd === "claim-check" ? rest.shift() : null;
   const cfScope = cmd === "claim-check" ? (rest.shift() || scope || "") : null;
   const coFile = cmd === "claim-owner" ? rest.shift() : null;
+  const soName = cmd === "section-status" ? rest.shift() : null;
   const target = rest[0] ? path.resolve(rest[0]) : (defaultRoot || process.cwd());
   switch (cmd) {
     case "log": return ticsLog(target, scope, all);
@@ -233,10 +251,11 @@ function main(argv, defaultRoot) {
     case "gate": return ticsGate(target, all);
     case "claim-check": return claimCheckCli(target, cfFile, cfScope);
     case "claim-owner": return claimOwnerCli(target, coFile);
-    default: console.error("usage: tics <log [--scope S] | inbox <role> [--scope S] | conductor | claims | sections | claim-check <file> <scope> | claim-owner <file>] [--all]>"); return 2;
+    case "section-status": return sectionStatusCli(target, soName);
+    default: console.error("usage: tics <log [--scope S] | inbox <role> [--scope S] | conductor | claims | sections | claim-check <file> <scope> | claim-owner <file> | section-status <name>] [--all]>"); return 2;
   }
 }
 if (require.main === module) {
   process.exit(main(process.argv.slice(2), path.join(__dirname, "..", "..")) || 0);
 }
-module.exports = { loadTics, loadSignalEvents, ticsLog, ticsInbox, ticsConductor, ticsClaims, ticsSections, ticsCycle, ticsGate, claimCheck, claimCheckCli, claimOwner, claimOwnerCli, main };
+module.exports = { loadTics, loadSignalEvents, ticsLog, ticsInbox, ticsConductor, ticsClaims, ticsSections, ticsCycle, ticsGate, claimCheck, claimCheckCli, claimOwner, claimOwnerCli, sectionStatus, sectionStatusCli, main };
