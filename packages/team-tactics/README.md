@@ -6,6 +6,19 @@ and an `implementer` ping-pong red→green while Claude Code hooks enforce the
 discipline (no source edits in red, no test edits in green, no finishing on a
 red bar). Works for a single package or a multi-layer monorepo.
 
+> **team-tactics is the composition root of the `ttics` monorepo.** It composes two
+> layers and installs both into your project:
+> - **`@ttics/tics`** — the protocol: the agent-to-agent tic bus + grouping/coupling
+>   (sections, claims, the conductor view).
+> - **`@ttics/tdd`** — the pairing gate: the test-writer/implementer agents + the
+>   fail-closed hooks that enforce red→green.
+>
+> The dependency DAG is `team-tactics → { @ttics/tdd → @ttics/tics, @ttics/tics }`
+> (team-tactics depends on the protocol directly too — you can run the bus without the
+> gate). Want just one layer? Adopt them à la carte: `npx @ttics/tics` (protocol only)
+> or `npx @ttics/tdd` (gate, which pulls in the protocol). `npx tics` here gives you
+> both, wired together, plus the presets below.
+
 ## Quick start
 
 ### Already in a coding agent? (one-shot)
@@ -37,6 +50,10 @@ npx tics selftest [target] # verify the gate works in YOUR environment
 npx tics report [target]   # process metrics from the suite 'signal' tics
 npx tics log [target]      # the agent-to-agent thread (the tic log)
 npx tics inbox <role> [target]  # tics addressed to a role (slack-like inbox)
+npx tics conductor [target]     # live grouping + coupling view (sections + active claims)
+npx tics sections [target]      # the open/done sections (work groups)
+npx tics claims [target]        # files currently claimed (coupling), and by whom
+npx tics fan-out <spec> [target]  # plan-time disjointness gate before fanning out parallel pairs
 npx tics --force [target]  # also reset seeded (user-owned) files
 npx tics --preset full-team [target]  # also install the outer-loop team (PO/architect/QA/PM/dev-ops)
 npx tics help
@@ -52,6 +69,27 @@ one-behavior slices to `.claude/state/plan.md`; the loop executes them one per
 cycle. Every suite run logs a telemetry event, and `report` turns that into
 process metrics (cycles, retries per layer, durations) so you can see — and
 improve — how the loop is performing.
+
+## Parallel pairs: grouping & coupling
+
+The composed kit makes it safe to run more than one pair at once. From the
+**`@ttics/tics`** protocol layer, scoped edits **auto-claim** the files they touch and
+**open a section** for the working unit, so two parallel pairs can't silently edit the
+same file (the gate blocks a claimed path for a foreign scope — collision-safe by
+construction). You watch and plan it with:
+
+- **`tics conductor`** — one live view of grouping (sections) + coupling (active
+  claims): who owns what, what's open vs done.
+- **`tics sections`** / **`tics claims`** — the work groups and the file claims on their own.
+- **`tics fan-out <spec>`** — a *plan-time* disjointness gate: feed it a partition
+  spec (one section per line, `<section> <file>...`) and it refuses to fan out if two
+  sections would touch the same file — catching collisions *before* any pair starts,
+  not just at runtime.
+
+These ship with the installed kit (run them via `npx tics <cmd>` or the installed
+`.claude/hooks/tics`). For the full model — sections, the shared spool bus across
+worktrees, and divide-and-conquer fan-out — see the kit's own docs at
+`docs/tics/tic-protocol.md` and `docs/tdd/divide-and-conquer.md`.
 
 ## Non-destructive by design
 - **Mechanism** (agents, hooks, method docs) is refreshed on every run.
