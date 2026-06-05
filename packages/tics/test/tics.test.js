@@ -210,6 +210,31 @@ test("tic.sh rejects malformed args (flag in FROM/TO, garbled kind) — records 
   } finally { fs.rmSync(d, { recursive: true, force: true }); }
 });
 
+test("MS1: emit_tic stamps a `session` field (TICS_SESSION / state/session) — every tic is attributable", () => {
+  const d = inst();
+  try {
+    srcLib(d, "export TICS_SESSION='sessA'; emit_tic o '*' note hi");
+    assert.strictEqual(ticsOf(d).pop().session, "sessA", "TICS_SESSION stamps the session field");
+    fs.writeFileSync(path.join(d, ".claude", "state", "session"), "sessB\n");
+    srcLib(d, "emit_tic o '*' note hi2");
+    assert.strictEqual(ticsOf(d).pop().session, "sessB", "state/session stamps it when no env override");
+  } finally { fs.rmSync(d, { recursive: true, force: true }); }
+});
+
+test("MS1: `tics sessions` lists live sessions + their scopes + claims (who's active, where)", () => {
+  const d = inst();
+  try {
+    srcLib(d, "export TICS_SESSION='sessA'; export TICS_SCOPE='auth/S1'; emit_tic a '*' claim login.ts login.ts");
+    srcLib(d, "export TICS_SESSION='sessA'; emit_tic a '*' session open started");
+    srcLib(d, "export TICS_SESSION='sessB'; export TICS_SCOPE='ui/S2'; emit_tic b '*' note hi");
+    const s = read(d, "sessions").stdout;
+    const line = (id) => s.split("\n").find((l) => l.includes(id)) || "";
+    assert.match(line("sessA"), /auth\/S1/, "sessA shows its scope");
+    assert.match(line("sessA"), /open|active/i, "sessA shows a live status");
+    assert.match(line("sessB"), /ui\/S2/, "sessB shows its scope");
+  } finally { fs.rmSync(d, { recursive: true, force: true }); }
+});
+
 test("selftest passes (emit + read round-trip)", () => {
   assert.strictEqual(node("selftest").status, 0);
 });
