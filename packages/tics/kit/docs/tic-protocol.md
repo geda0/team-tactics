@@ -57,7 +57,7 @@ pairing-tic is just a tightly-scoped coupling-tic. Filtering by scope keeps a vi
 
 ## Viewing
 Use the installed reader `.claude/hooks/tics <cmd>` (agents) or `npx team-tactics <cmd>` (shell); `tic.sh` only EMITS.
-- `tics log [--scope <s>]` — the thread; with --scope, just that scope + global (`*`); with `--all`, merged across every git worktree's bus (whole picture).
+- `tics log [--scope <s>]` — the thread. **Merges every git worktree's bus BY DEFAULT** (whole picture — a detached worktree's tics aren't invisible from the main checkout); pass `--here` to restrict to the local bus. With `--scope`, just that scope + global (`*`). (Same default for `conductor`/`claims`/`sections`/`gate`.)
 - `tics inbox <role> [--scope <s>]` — your inbox: tics where `to ∈ {<role>, *}` (and scope, if given). Read it at the start of your
   turn and address any directed `msg`.
 - `tics report` — process metrics aggregated from the `signal` tics.

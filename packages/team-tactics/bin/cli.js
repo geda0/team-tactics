@@ -40,13 +40,13 @@ const CFG = path.join(KIT, "claude-config");
 const argv = process.argv.slice(2);
 let force = false;
 const rest = [];
-let preset = null, scope = null, all = false;
+let preset = null, scope = null, all = true;   // whole-picture by default; --here restricts to the local bus
 for (let i = 0; i < argv.length; i++) {
   const a = argv[i];
   if (a === "--force" || a === "-f") force = true;
   else if (a === "-h" || a === "--help") rest.push("help");
   else if (a === "--preset") preset = argv[++i] || "";
-  else if (a === "--scope") scope = argv[++i] || ""; else if (a === "--all") all = true;
+  else if (a === "--scope") scope = argv[++i] || ""; else if (a === "--all") all = true; else if (a === "--here") all = false;
   else if (a.startsWith("--preset=")) preset = a.slice(9);
   else if (a.startsWith("-")) {
     console.error("tics: unknown option '" + a + "'. Try `team-tactics help`.");

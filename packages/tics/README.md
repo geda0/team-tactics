@@ -110,8 +110,9 @@ file, catching collisions before any pair starts (auto-claim catches them at run
 ### Flags
 
 - `--scope <s>` — filter `log` / `inbox` to a scope (matches the scope and its `<scope>/…` children).
-- `--all` — merge every git worktree's bus (whole-picture telemetry); honored by
-  `log`, `conductor`, `claims`, `sections`, `gate`.
+- `--all` / `--here` — `log`/`conductor`/`claims`/`sections`/`gate` **merge every git worktree's
+  bus BY DEFAULT** (whole-picture telemetry, deduped); `--here` restricts to the local bus. `--all`
+  is the explicit form of the default.
 
 ### npx surface
 

@@ -184,7 +184,7 @@ test("tics sections shows per-section lifecycle status (active vs done) from sec
   } finally { fs.rmSync(d, { recursive: true, force: true }); }
 });
 
-test("tics log --all merges sibling worktree buses", () => {
+test("tics log merges every worktree's bus BY DEFAULT (whole picture); --here restricts to local", () => {
   const d = inst(); const wt = d + "-wt";
   try {
     git(d, "init", "-q"); git(d, "add", "-A"); git(d, "commit", "-qm", "init");
@@ -192,9 +192,22 @@ test("tics log --all merges sibling worktree buses", () => {
     git(d, "worktree", "add", "-q", wt, "-b", "side");
     fs.mkdirSync(path.join(wt, ".claude", "state"), { recursive: true });
     fs.writeFileSync(path.join(wt, ".claude", "state", "tics.jsonl"), JSON.stringify({ ts: "2026-06-04T01:00:05Z", seq: 1, kind: "note", from: "s", to: "*", msg: "in SIDE", scope: "*" }) + "\n");
-    assert.doesNotMatch(node("log", d).stdout, /in SIDE/);
-    assert.match(node("log", "--all", d).stdout, /in SIDE/);
+    assert.match(node("log", d).stdout, /in SIDE/, "default view merges sibling worktree buses — no flag needed");
+    assert.doesNotMatch(node("log", "--here", d).stdout, /in SIDE/, "--here restricts to the local bus");
+    assert.match(node("log", "--all", d).stdout, /in SIDE/, "--all is the explicit form of the default");
   } finally { try { git(d, "worktree", "remove", "--force", wt); } catch (e) {} fs.rmSync(d, { recursive: true, force: true }); fs.rmSync(wt, { recursive: true, force: true }); }
+});
+
+test("tic.sh rejects malformed args (flag in FROM/TO, garbled kind) — records nothing", () => {
+  const d = inst();
+  const bus = () => { try { return fs.readFileSync(path.join(d, ".claude", "state", "tics.jsonl"), "utf8"); } catch (e) { return ""; } };
+  const tic = (...a) => cp.spawnSync(path.join(d, ".claude", "hooks", "tic.sh"), a, { cwd: d, encoding: "utf8" });
+  try {
+    assert.notStrictEqual(tic("--scope", "frontend", "note", "hi").status, 0, "a flag in the FROM slot is rejected");
+    assert.notStrictEqual(tic("impl", "-x", "note", "hi").status, 0, "a flag in the TO slot is rejected");
+    assert.notStrictEqual(tic("impl", "inbox", "frontend:green", "x").status, 0, "a garbled <layer>:<result> kind is rejected");
+    assert.doesNotMatch(bus(), /frontend:green|"from":"--scope"|"to":"-x"/, "no malformed tic reached the bus");
+  } finally { fs.rmSync(d, { recursive: true, force: true }); }
 });
 
 test("selftest passes (emit + read round-trip)", () => {

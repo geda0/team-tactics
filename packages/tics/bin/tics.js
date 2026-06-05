@@ -5,8 +5,8 @@ const fs = require("fs"), path = require("path"), os = require("os"), cp = requi
 const { TV, PKG, installTics } = require("../index.js");
 
 const argv = process.argv.slice(2);
-let scope = null, all = false; const rest = [];
-for (let i = 0; i < argv.length; i++) { const a = argv[i]; if (a === "--scope") scope = argv[++i] || ""; else if (a === "--all") all = true; else rest.push(a); }
+let scope = null, all = true; const rest = [];   // whole-picture by default (merge every worktree's bus); --here restricts to the local bus
+for (let i = 0; i < argv.length; i++) { const a = argv[i]; if (a === "--scope") scope = argv[++i] || ""; else if (a === "--all") all = true; else if (a === "--here") all = false; else rest.push(a); }
 const KNOWN = ["log", "inbox", "conductor", "claims", "sections", "cycle", "gate", "claim-check", "init", "install", "update", "selftest", "help"];
 const cmd = KNOWN.indexOf(rest[0]) !== -1 ? rest.shift() : "help";
 const role = cmd === "inbox" ? rest.shift() : null;

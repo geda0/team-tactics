@@ -26,7 +26,10 @@ function worktreeDirs(targetDir) {
 }
 function loadTicsAll(targetDir) {
   const seen = new Set(), out = [];
-  const push = (arr) => { for (const x of arr) { const k = (x.ts || "") + "|" + (x.kind || "") + "|" + (x.from || "") + "|" + (x.to || "") + "|" + (x.msg || "") + "|" + (x.scope || "") + "|" + (x.ref || ""); if (!seen.has(k)) { seen.add(k); out.push(x); } } };
+  // Dedup key INCLUDES seq: an inherited worktree bus is a byte-copy (same seq+ts+content) and
+  // collapses, but two legitimately-distinct tics that merely share a ts (e.g. rapid run-suite
+  // signals, or test fixtures) keep their distinct seq and are preserved.
+  const push = (arr) => { for (const x of arr) { const k = (x.seq || "") + "|" + (x.ts || "") + "|" + (x.kind || "") + "|" + (x.from || "") + "|" + (x.to || "") + "|" + (x.msg || "") + "|" + (x.scope || "") + "|" + (x.ref || ""); if (!seen.has(k)) { seen.add(k); out.push(x); } } };
   push(loadTics(targetDir));                                  // current bus (env-resolved, e.g. a shared TICS_DIR)
   for (const root of worktreeDirs(targetDir)) push(loadTics(root, true));   // each worktree's own default bus
   out.sort((a, b) => String(a.ts || "").localeCompare(String(b.ts || "")) || ((a.seq || 0) - (b.seq || 0)));
@@ -320,8 +323,8 @@ function fanOut(targetDir, specPath) {
   return 0;
 }
 function main(argv, defaultRoot) {
-  let scope = null, all = false; const rest = [];
-  for (let i = 0; i < argv.length; i++) { const a = argv[i]; if (a === "--scope") scope = argv[++i] || ""; else if (a === "--all") all = true; else rest.push(a); }
+  let scope = null, all = true; const rest = [];   // whole-picture by default (merge every worktree's bus); --here restricts to the local bus
+  for (let i = 0; i < argv.length; i++) { const a = argv[i]; if (a === "--scope") scope = argv[++i] || ""; else if (a === "--all") all = true; else if (a === "--here") all = false; else rest.push(a); }
   const cmd = rest.shift();
   const role = cmd === "inbox" ? rest.shift() : null;
   const cfFile = cmd === "claim-check" ? rest.shift() : null;

@@ -7,6 +7,10 @@ set -uo pipefail
 HERE="$(cd "$(dirname "$0")" && pwd)"; ROOT="$(cd "$HERE/../.." && pwd)"
 # shellcheck disable=SC1091
 . "$ROOT/.claude/hooks/tics-lib.sh"
+# Arg hardening: FROM/TO are positional role names, never flags. A leading '-' means a flag bled
+# into a positional slot (shifted args) — reject so garbled junk never reaches the append-only bus.
+case "${1:-}" in -*) echo "tic.sh: FROM ('$1') looks like a flag — usage: tic.sh FROM TO KIND MSG [REF] [RESULT]. Nothing recorded." >&2; exit 2 ;; esac
+case "${2:-}" in -*) echo "tic.sh: TO ('$2') looks like a flag — usage: tic.sh FROM TO KIND MSG [REF] [RESULT]. Nothing recorded." >&2; exit 2 ;; esac
 case "${3:-}" in
   delegate|handoff|signal|block|stuck|verdict|msg|note|claim|release|contract|need|section|commit)
     emit_tic "$@" ;;
