@@ -10,7 +10,7 @@ const os = require("os");
 const path = require("path");
 const cp = require("child_process");
 
-const KIT_LIB = path.join(__dirname, "..", "kit", "claude-config", "hooks", "lib.sh");
+const KIT_LIB = path.join(require("@ttics/tdd").KIT, "hooks", "lib.sh");
 
 // Build a throwaway project (<tmp>/.claude/hooks/lib.sh + <tmp>/.claude/tdd.config),
 // source the SHIPPED lib.sh in bash, call resolve_layer, return the resolved vars.

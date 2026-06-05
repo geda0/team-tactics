@@ -4,7 +4,7 @@
 const { test } = require("node:test");
 const assert = require("node:assert");
 const fs = require("fs"), os = require("os"), path = require("path"), cp = require("child_process");
-const KIT_HOOKS = path.join(__dirname, "..", "kit", "claude-config", "hooks");
+const KIT_HOOKS = path.join(require("@ttics/tdd").KIT, "hooks");
 const CLI = path.join(__dirname, "..", "bin", "cli.js");
 
 function sandbox(store) {

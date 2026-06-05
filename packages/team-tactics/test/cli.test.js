@@ -28,7 +28,7 @@ test("P2-11: an unknown -flag errors instead of installing into a dir named afte
 });
 
 test("P2-12: seeded tdd-verify.yml has no active 'version:' pin (derives pnpm from packageManager)", () => {
-  const yml = fs.readFileSync(path.join(__dirname, "..", "kit", "ci", "tdd-verify.yml"), "utf8");
+  const yml = fs.readFileSync(path.join(require("@ttics/tdd").KIT, "ci", "tdd-verify.yml"), "utf8");
   const active = yml.split("\n").filter((l) => !l.trim().startsWith("#")).join("\n");
   assert.doesNotMatch(active, /version:\s*9/, "no active pnpm version pin (the deploy-staging first-run bug)");
 });

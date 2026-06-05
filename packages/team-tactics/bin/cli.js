@@ -27,6 +27,8 @@ const crypto = require("crypto");
 const KIT = path.join(__dirname, "..", "kit");
 const tics = require("@ttics/tics");
 const TV = tics.TV;
+const tdd = require("@ttics/tdd");
+const TDD = tdd.KIT;
 const CFG = path.join(KIT, "claude-config");
 
 // ---- arg parsing --------------------------------------------------------
@@ -62,7 +64,7 @@ if (cmd === "help") {
   process.exit(0);
 }
 
-if (!fs.existsSync(CFG)) {
+if (!fs.existsSync(TDD)) {
   console.error("error: kit payload not found (expected at " + KIT + ")");
   process.exit(1);
 }
@@ -97,7 +99,7 @@ function installHooks(target) {
       console.error("install-hooks: a non-team-tactics " + name + " already exists at\n  " + dest + "\nNot clobbering it (merge it yourself, or point core.hooksPath at a shared dir).");
       skipped++; continue;
     }
-    fs.copyFileSync(name === "post-commit" ? tics.postCommitHook : path.join(KIT, "githooks", name), dest);
+    fs.copyFileSync(name === "post-commit" ? tics.postCommitHook : tdd.preCommitHook, dest);
     try { fs.chmodSync(dest, 0o755); } catch (e) { /* windows */ }
     installed++;
   }
@@ -192,7 +194,7 @@ function ensureGitignore(targetDir) {
 
 function mergeSettings(targetDir) {
   const dest = path.join(targetDir, ".claude", "settings.json");
-  const kitSettings = JSON.parse(fs.readFileSync(path.join(CFG, "settings.json"), "utf8"));
+  const kitSettings = JSON.parse(fs.readFileSync(path.join(TDD, "settings.json"), "utf8"));
   let existing = {};
   if (fs.existsSync(dest)) {
     try { existing = JSON.parse(fs.readFileSync(dest, "utf8")); }
@@ -248,12 +250,12 @@ if (cmd === "update") {
 
 // 1) Mechanism — refreshed every run.
 for (const a of ["test-writer", "implementer", "tdd-critic", "planner"])
-  refresh(path.join(CFG, "agents", a + ".md"), path.join(".claude", "agents", a + ".md"));
+  refresh(path.join(TDD, "agents", a + ".md"), path.join(".claude", "agents", a + ".md"));
 // Shared hook library (resolver + defaults), sourced by the hooks below.
-refresh(path.join(CFG, "hooks", "lib.sh"), path.join(".claude", "hooks", "lib.sh"));
+refresh(path.join(TDD, "hooks", "lib.sh"), path.join(".claude", "hooks", "lib.sh"));
 for (const h of ["guard-edit-scope", "run-suite", "require-green-to-stop", "session-green-check", "subagent-handoff"]) {
   const rel = path.join(".claude", "hooks", h + ".sh");
-  refresh(path.join(CFG, "hooks", h + ".sh"), rel);
+  refresh(path.join(TDD, "hooks", h + ".sh"), rel);
   try { fs.chmodSync(path.join(target, rel), 0o755); } catch (e) { /* windows */ }
 }
 // @ttics/tics — protocol files sourced from the tics package (composite); team-tactics' refresh
@@ -262,7 +264,7 @@ for (const h of ["tics-lib.sh", "tic.sh", "tics", "tics-view.cjs"]) refresh(path
 for (const h of ["tics-lib.sh", "tic.sh", "tics"]) { try { fs.chmodSync(path.join(target, ".claude", "hooks", h), 0o755); } catch (e) {} }
 try { fs.unlinkSync(path.join(target, ".claude", "hooks", "tics-view.js")); } catch (e) {} // migrate stale .js reader -> .cjs
 for (const d of ["tdd-workflow", "testing-philosophy", "conventions", "divide-and-conquer", "tool-support"])
-  refresh(path.join(KIT, "docs", "tdd", d + ".md"), path.join("docs", "tdd", d + ".md"));
+  refresh(path.join(TDD, "docs", d + ".md"), path.join("docs", "tdd", d + ".md"));
 refresh(path.join(tics.KIT, "docs", "tic-protocol.md"), path.join("docs", "tics", "tic-protocol.md"));
 
 // 1b) Optional team preset (sticky) — outer-loop roles + method doc + state templates.
@@ -277,13 +279,13 @@ if (presetActive === "full-team") {
 }
 
 // 2) Seeded — written once, never clobbered.
-seedOnce(path.join(CFG, "tdd.config"), path.join(".claude", "tdd.config"), "yours");
-seedOnce(path.join(CFG, "hooks", "local.d", "README.md"), path.join(".claude", "hooks", "local.d", "README.md"));
+seedOnce(path.join(TDD, "tdd.config"), path.join(".claude", "tdd.config"), "yours");
+seedOnce(path.join(TDD, "hooks", "local.d", "README.md"), path.join(".claude", "hooks", "local.d", "README.md"));
 for (const s of ["design-notes.md", "progress.md", "plan.md", "phase", "layer", ".gitkeep"])
-  seedOnce(path.join(CFG, "state", s), path.join(".claude", "state", s));
-seedOnce(path.join(KIT, "docs", "tdd", "project-invariants.template.md"),
+  seedOnce(path.join(TDD, "state", s), path.join(".claude", "state", s));
+seedOnce(path.join(TDD, "docs", "project-invariants.template.md"),
          path.join("docs", "tdd", "project-invariants.md"), "yours");
-seedOnce(path.join(KIT, "ci", "tdd-verify.yml"),
+seedOnce(path.join(TDD, "ci", "tdd-verify.yml"),
          path.join(".github", "workflows", "tdd-verify.yml"));
 
 // 3) settings.json — content-aware merge (kit hooks added, your keys preserved).
@@ -291,7 +293,7 @@ mergeSettings(target);  // P1-7: merge kit hooks into settings.json, preserve us
 
 // 4) Entry docs - thin managed block + your overlay (method lives in docs/tdd/; no sidecar).
 for (const f of ["AGENTS.md", "CLAUDE.md", "KICKOFF.md"])
-  mergeEntryDoc(path.join(KIT, f), f);
+  mergeEntryDoc(path.join(f === "KICKOFF.md" ? KIT : TDD, f), f);
 
 // Manifest (P0-3): record kit-owned files + content hashes, for clobber-safe updates.
 ensureDir(path.join(target, ".claude", ".team-tactics"));

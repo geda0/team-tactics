@@ -6,7 +6,7 @@ const assert = require("node:assert");
 const fs = require("fs"), os = require("os"), path = require("path"), cp = require("child_process");
 
 const CLI = path.join(__dirname, "..", "bin", "cli.js");
-const KITHOOK = path.join(__dirname, "..", "kit", "claude-config", "hooks", "run-suite.sh");
+const KITHOOK = path.join(require("@ttics/tdd").KIT, "hooks", "run-suite.sh");
 function run(args, cwd) { return cp.spawnSync("node", [CLI, ...args], { encoding: "utf8", cwd: cwd || os.tmpdir() }); }
 function install() { const d = fs.mkdtempSync(path.join(os.tmpdir(), "tdd-manifest-")); run([d]); return d; }
 const MAN = (d) => path.join(d, ".claude", ".team-tactics", "manifest.json");
