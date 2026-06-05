@@ -96,11 +96,7 @@ function ticsConductor(targetDir, all) {
   return 0;
 }
 function ticsClaims(targetDir, all) {
-  const active = new Map();
-  for (const x of loadFor(targetDir, all)) {
-    if (x.kind === "claim" && x.ref) active.set(x.ref, x);
-    else if (x.kind === "release" && x.ref) active.delete(x.ref);
-  }
+  const active = activeClaims(loadFor(targetDir, all));
   if (!active.size) { console.log("No active claims."); return 0; }
   console.log("Active claims (claim minus release):");
   for (const x of active.values()) console.log("  " + x.ref + "  <-  " + (x.scope || "?") + "  (#" + (x.seq || "?") + " " + (x.from || "?") + ")");
@@ -132,13 +128,25 @@ function ticsSections(targetDir, all) {
   }
   return 0;
 }
-function claimCheck(targetDir, file, myScope) {
-  if (!file || !myScope) return null;            // unscoped editor or no path -> no enforcement
+// Active claims = claim minus release, MINUS any whose section (scope's first component) is
+// marked `done` — a closed section auto-releases its claims so the partition frees up for
+// reassignment (release-on-done). The single source of truth for every claim consumer.
+function activeClaims(tics) {
   const active = new Map();
-  for (const x of loadTics(targetDir)) {
+  const status = new Map();   // section name -> latest lifecycle status (open|done)
+  for (const x of tics) {
+    if (x.kind === "section" && x.ref && x.result) status.set(x.ref, x.result);
     if (x.kind === "claim" && x.ref) active.set(x.ref, x);
     else if (x.kind === "release" && x.ref) active.delete(x.ref);
   }
+  for (const [ref, x] of active) {
+    if (status.get((x.scope || "").split("/")[0]) === "done") active.delete(ref);
+  }
+  return active;
+}
+function claimCheck(targetDir, file, myScope) {
+  if (!file || !myScope) return null;            // unscoped editor or no path -> no enforcement
+  const active = activeClaims(loadTics(targetDir));
   for (const x of active.values()) {
     const hit = [x.ref, x.msg].filter(Boolean).some((t) => file === t || file.indexOf(t) !== -1 || t.indexOf(file) !== -1);
     if (hit && !scopeMatch(x.scope || "*", myScope)) return { token: x.ref, scope: x.scope || "*", seq: x.seq, from: x.from };
@@ -155,11 +163,7 @@ function claimCheckCli(targetDir, file, myScope) {
 // the guard can tell "unclaimed" (auto-claim it) from "already mine" (skip — no re-claim spam).
 function claimOwner(targetDir, file) {
   if (!file) return "";
-  const active = new Map();
-  for (const x of loadTics(targetDir)) {
-    if (x.kind === "claim" && x.ref) active.set(x.ref, x);
-    else if (x.kind === "release" && x.ref) active.delete(x.ref);
-  }
+  const active = activeClaims(loadTics(targetDir));
   for (const x of active.values()) {
     const hit = [x.ref, x.msg].filter(Boolean).some((t) => file === t || file.indexOf(t) !== -1 || t.indexOf(file) !== -1);
     if (hit) return x.scope || "*";

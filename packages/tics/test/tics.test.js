@@ -92,6 +92,18 @@ test("tics claim-owner <file>: reports the owning scope, empty when unclaimed (f
   } finally { fs.rmSync(d, { recursive: true, force: true }); }
 });
 
+test("a done section auto-releases its claims (release-on-done): claims/owner/check all free up", () => {
+  const d = inst();
+  try {
+    srcLib(d, "export TICS_SCOPE='orders/S2'; emit_tic o '*' claim cart.ts cart.ts");
+    assert.match(read(d, "claims").stdout, /cart\.ts/, "claimed while the section is open");
+    srcLib(d, "export TICS_SCOPE='orders/S2'; emit_tic lead '*' section shipped orders done");
+    assert.doesNotMatch(read(d, "claims").stdout, /cart\.ts/, "the claim frees up when the section is done");
+    assert.strictEqual(read(d, "claim-owner", "cart.ts").stdout.trim(), "", "owner clears on done");
+    assert.strictEqual(node("claim-check", "cart.ts", "rival/S9", d).status, 0, "a rival may now take it");
+  } finally { fs.rmSync(d, { recursive: true, force: true }); }
+});
+
 test("tics section-status <name>: reports the latest status, empty when unopened (feeds auto-section)", () => {
   const d = inst();
   try {

@@ -1,6 +1,6 @@
 {
   "name": "@ttics/tics",
-  "version": "0.15.0",
+  "version": "0.16.0",
   "description": "The tic protocol — structured agent-to-agent coordination (bus + emit + reader). The team-tactics foundation.",
   "bin": {
     "tics": "bin/tics.js"
