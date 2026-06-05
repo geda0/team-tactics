@@ -26,17 +26,25 @@ fi
 
 is_test() { printf '%s' "$1" | grep -qE "$TEST_GLOB"; }
 
-# P1: enforced claims — block an edit to a path held by ANOTHER scope (disjoint-write fan-out).
+# P1: enforced claims — block an edit to a path held by ANOTHER scope, and AUTO-CLAIM a
+# still-unclaimed path for the editing scope, so disjoint-write fan-out is collision-safe
+# with zero manual bookkeeping (the first toucher owns it; rivals are then blocked).
 claim_guard() {
   [ "${CLAIMS_ENFORCE:-1}" = "1" ] || return 0
   [ -x "$ROOT/.claude/hooks/tics" ] || return 0          # no reader -> fail-open
   _ms="$(cat "$ROOT/.claude/state/scope" 2>/dev/null)"
   [ -n "$_ms" ] || return 0                               # unscoped editor -> not partitioned, no enforcement
   _hold="$("$ROOT/.claude/hooks/tics" claim-check "$1" "$_ms" 2>/dev/null)"; _rc=$?
-  [ "$_rc" = "3" ] || return 0                            # only exit 3 = genuine cross-scope conflict
-  echo "BLOCKED (claim): $1 is held by $_hold. Release it, coordinate via a need tic, or set CLAIMS_ENFORCE=0 to disarm." >&2
-  emit_tic guard "*" need "claim conflict on $1 (held by: $_hold)" "$1" blocked
-  exit 2
+  if [ "$_rc" = "3" ]; then                              # genuine cross-scope conflict -> block
+    echo "BLOCKED (claim): $1 is held by $_hold. Release it, coordinate via a need tic, or set CLAIMS_ENFORCE=0 to disarm." >&2
+    emit_tic guard "*" need "claim conflict on $1 (held by: $_hold)" "$1" blocked
+    exit 2
+  fi
+  # No conflict. Auto-claim only if still unclaimed — skip if already held (by us) so we
+  # don't re-claim on every edit and spam the bus (the telemetry must stay meaningful).
+  _own="$("$ROOT/.claude/hooks/tics" claim-owner "$1" 2>/dev/null)"
+  [ -n "$_own" ] || emit_tic guard "*" claim "auto-claim on edit" "$1" ""
+  return 0
 }
 
 case "$PHASE" in

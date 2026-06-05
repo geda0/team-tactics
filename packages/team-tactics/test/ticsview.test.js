@@ -229,6 +229,27 @@ test("tics claim-check: blocks a path held by another scope, allows own/released
   } finally { fs.rmSync(d, { recursive: true, force: true }); }
 });
 
+test("guard-edit-scope auto-claims an unclaimed file on edit when scoped, idempotently (P1)", () => {
+  const d = freshWithTics([]);                          // empty bus: src/kernel.ts starts unclaimed
+  try {
+    fs.writeFileSync(path.join(d, ".claude", "state", "phase"), "refactor\n");
+    fs.writeFileSync(path.join(d, ".claude", "state", "layer"), "app\n");
+    fs.writeFileSync(path.join(d, ".claude", "state", "scope"), "orders/S2\n");
+    const guard = path.join(d, ".claude", "hooks", "guard-edit-scope.sh");
+    const reader = path.join(d, ".claude", "hooks", "tics");
+    const payload = JSON.stringify({ tool_input: { file_path: "src/kernel.ts" } });
+    const r1 = cp.spawnSync("bash", [guard], { input: payload, encoding: "utf8", cwd: d });
+    assert.strictEqual(r1.status, 0, "editing an unclaimed file is allowed");
+    const owner = cp.spawnSync(reader, ["claim-owner", "src/kernel.ts"], { encoding: "utf8", cwd: d });
+    assert.match(owner.stdout, /orders\/S2/, "the guard auto-claimed the file for the editing scope");
+    cp.spawnSync("bash", [guard], { input: payload, encoding: "utf8", cwd: d });   // edit again, same scope
+    const claims = fs.readFileSync(path.join(d, ".claude", "state", "tics.jsonl"), "utf8").trim().split("\n")
+      .map((l) => { try { return JSON.parse(l); } catch (e) { return {}; } })
+      .filter((x) => x.kind === "claim" && x.ref === "src/kernel.ts");
+    assert.strictEqual(claims.length, 1, "auto-claim fires once, not on every edit (no telemetry spam)");
+  } finally { fs.rmSync(d, { recursive: true, force: true }); }
+});
+
 test("guard-edit-scope enforces claims: blocks an edit to a file held by another scope (P1)", () => {
   const d = freshWithTics([
     T({ seq: 1, kind: "claim", from: "inv-pair", to: "*", scope: "inventory/S1", ref: "src/kernel.ts", msg: "src/kernel.ts" }),

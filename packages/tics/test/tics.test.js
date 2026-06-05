@@ -77,6 +77,21 @@ test("coupling views: conductor, claims, claim-check, gate, cycle", () => {
   } finally { fs.rmSync(d, { recursive: true, force: true }); }
 });
 
+test("tics claim-owner <file>: reports the owning scope, empty when unclaimed (feeds auto-claim)", () => {
+  const d = inst();
+  try {
+    srcLib(d, "export TICS_SCOPE='inv/S1'; emit_tic inv '*' claim kernel.ts kernel.ts");
+    const owned = read(d, "claim-owner", "kernel.ts");
+    assert.strictEqual(owned.status, 0, "lookup succeeds");
+    assert.match(owned.stdout, /inv\/S1/, "names the owning scope");
+    const free = read(d, "claim-owner", "free.ts");
+    assert.strictEqual(free.status, 0, "unclaimed lookup still succeeds");
+    assert.strictEqual(free.stdout.trim(), "", "unclaimed file has no owner");
+    srcLib(d, "export TICS_SCOPE='inv/S1'; emit_tic inv '*' release kernel.ts kernel.ts");
+    assert.strictEqual(read(d, "claim-owner", "kernel.ts").stdout.trim(), "", "released file has no owner");
+  } finally { fs.rmSync(d, { recursive: true, force: true }); }
+});
+
 test("tics log --all merges sibling worktree buses", () => {
   const d = inst(); const wt = d + "-wt";
   try {

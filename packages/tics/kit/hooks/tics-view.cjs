@@ -148,6 +148,27 @@ function claimCheckCli(targetDir, file, myScope) {
   if (c) { console.log(c.scope + " (#" + (c.seq || "?") + " " + (c.from || "?") + ", claim:" + c.token + ")"); return 3; }
   return 0;
 }
+// claimOwner: which scope (if any) actively holds a path — empty when unclaimed. Unlike
+// claim-check (a yes/no guard relative to MY scope), this is a plain ownership lookup, so
+// the guard can tell "unclaimed" (auto-claim it) from "already mine" (skip — no re-claim spam).
+function claimOwner(targetDir, file) {
+  if (!file) return "";
+  const active = new Map();
+  for (const x of loadTics(targetDir)) {
+    if (x.kind === "claim" && x.ref) active.set(x.ref, x);
+    else if (x.kind === "release" && x.ref) active.delete(x.ref);
+  }
+  for (const x of active.values()) {
+    const hit = [x.ref, x.msg].filter(Boolean).some((t) => file === t || file.indexOf(t) !== -1 || t.indexOf(file) !== -1);
+    if (hit) return x.scope || "*";
+  }
+  return "";
+}
+function claimOwnerCli(targetDir, file) {
+  const o = claimOwner(targetDir, file);
+  if (o) console.log(o);
+  return 0;
+}
 function ticsCycle(targetDir) {
   const st = path.join(targetDir, ".claude", "state");
   const rd = (f) => { try { return fs.readFileSync(path.join(st, f), "utf8").trim(); } catch (e) { return ""; } };
@@ -200,6 +221,7 @@ function main(argv, defaultRoot) {
   const role = cmd === "inbox" ? rest.shift() : null;
   const cfFile = cmd === "claim-check" ? rest.shift() : null;
   const cfScope = cmd === "claim-check" ? (rest.shift() || scope || "") : null;
+  const coFile = cmd === "claim-owner" ? rest.shift() : null;
   const target = rest[0] ? path.resolve(rest[0]) : (defaultRoot || process.cwd());
   switch (cmd) {
     case "log": return ticsLog(target, scope, all);
@@ -210,10 +232,11 @@ function main(argv, defaultRoot) {
     case "cycle": return ticsCycle(target);
     case "gate": return ticsGate(target, all);
     case "claim-check": return claimCheckCli(target, cfFile, cfScope);
-    default: console.error("usage: tics <log [--scope S] | inbox <role> [--scope S] | conductor | claims | sections | claim-check <file> <scope>] [--all]>"); return 2;
+    case "claim-owner": return claimOwnerCli(target, coFile);
+    default: console.error("usage: tics <log [--scope S] | inbox <role> [--scope S] | conductor | claims | sections | claim-check <file> <scope> | claim-owner <file>] [--all]>"); return 2;
   }
 }
 if (require.main === module) {
   process.exit(main(process.argv.slice(2), path.join(__dirname, "..", "..")) || 0);
 }
-module.exports = { loadTics, loadSignalEvents, ticsLog, ticsInbox, ticsConductor, ticsClaims, ticsSections, ticsCycle, ticsGate, claimCheck, claimCheckCli, main };
+module.exports = { loadTics, loadSignalEvents, ticsLog, ticsInbox, ticsConductor, ticsClaims, ticsSections, ticsCycle, ticsGate, claimCheck, claimCheckCli, claimOwner, claimOwnerCli, main };
