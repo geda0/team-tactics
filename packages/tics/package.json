@@ -1,0 +1,9 @@
+{
+  "name": "@ttics/tics",
+  "version": "0.11.1",
+  "description": "The tic protocol — structured agent-to-agent coordination (bus + emit + reader). The team-tactics foundation.",
+  "bin": { "tics": "bin/tics.js" },
+  "files": ["bin/", "kit/", "README.md"],
+  "scripts": { "test": "node --test" },
+  "license": "MIT"
+}
