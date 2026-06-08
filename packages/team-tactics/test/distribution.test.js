@@ -40,3 +40,16 @@ test("infra/release-tarball.sh exists and release:tarball is wired", () => {
   assert.ok(require(path.join(ROOT, "package.json")).scripts["release:tarball"], "npm run release:tarball");
   assert.ok(fs.existsSync(path.join(ROOT, ".github", "workflows", "release-tarball.yml")), "CI workflow on v* tags");
 });
+
+test("release-tarball.sh rejects a pushed tag that does not match package.json (clear error)", () => {
+  const sh = path.join(ROOT, "infra", "release-tarball.sh");
+  const r = cp.spawnSync("bash", [sh], {
+    cwd: ROOT,
+    encoding: "utf8",
+    env: { ...process.env, REQUIRE_TAG: "1", TAG_NAME: "v9.9.9" },
+  });
+  assert.notStrictEqual(r.status, 0);
+  const out = (r.stdout || "") + (r.stderr || "");
+  assert.match(out, /pushed tag v9\.9\.9 but package\.json version is/, "names both sides of the mismatch");
+  assert.match(out, /bump all four package\.json/, "tells the operator how to fix it");
+});

@@ -10,10 +10,11 @@ control (email, Drive, 1:1). See `FOR-TESTERS.md` for recipient instructions.
 ### Local (after tag + green suite)
 
 ```bash
-# 1. Version bump (all four package.json lockstep) + commit
-# 2. Tag the accepted commit
-git tag -a v0.32.0 -m "v0.32.0"
-git push origin v0.32.0
+# 1. Version bump (all four package.json lockstep) + commit + push main
+#    Tag MUST match version: package.json "0.33.0" → tag v0.33.0 (not the other way around)
+# 2. Tag the accepted commit (the one that already contains the bump)
+git tag -a v0.33.0 -m "v0.33.0"
+git push origin v0.33.0
 
 # 3. Build locally (optional — CI does the same on tag push)
 REQUIRE_TAG=1 ./infra/release-tarball.sh
@@ -32,6 +33,18 @@ On `git push origin v*`:
 4. Attach `ttics-<version>.tgz` to the **GitHub Release** for that tag
 
 **Download (maintainer):** GitHub → Releases → pick tag → Assets, or Actions → workflow run → Artifacts.
+
+### Wrong tag (CI: tag v0.33.0 but package.json still 0.32.0)
+
+Delete the tag pointing at the wrong commit, bump + push main, then re-tag:
+
+```bash
+git tag -d v0.33.0
+git push origin :refs/tags/v0.33.0
+# after version bump is on main:
+git tag -a v0.33.0 -m "v0.33.0"
+git push origin v0.33.0
+```
 
 **Tester access:** Do **not** grant repo access for eval unless you intend full source read.
 Prefer downloading the release asset and sending it privately.

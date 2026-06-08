@@ -13,7 +13,8 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          fetch-depth: 1
+          fetch-depth: 0
+          fetch-tags: true
 
       - uses: actions/setup-node@v4
         with:
@@ -21,6 +22,15 @@ jobs:
           cache: npm
 
       - run: npm ci
+
+      - name: Preflight tag ↔ package.json lockstep
+        run: |
+          VERSION="$(node -p "require('./package.json').version")"
+          TAG="${{ github.ref_name }}"
+          if [ "$TAG" != "v${VERSION}" ]; then
+            echo "::error::Tag ${TAG} does not match package.json ${VERSION}. Bump all four package.json to ${TAG#v}, commit to main, delete the bad tag, and re-push."
+            exit 1
+          fi
 
       - name: Build and verify private tarball
         env:

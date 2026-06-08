@@ -18,12 +18,19 @@ REQUIRE_TAG="${REQUIRE_TAG:-0}"
 TAG_NAME="${TAG_NAME:-}"
 
 if [ "$REQUIRE_TAG" = "1" ]; then
-  if ! git rev-parse --verify --quiet "v${VERSION}" >/dev/null; then
-    echo "release-tarball: missing git tag v${VERSION} (cut tag after version bump)" >&2
+  EXPECTED="v${VERSION}"
+  # CI sets TAG_NAME=github.ref_name — check mismatch FIRST (common failure: tag v0.33.0
+  # pushed before package.json was bumped to 0.33.0).
+  if [ -n "$TAG_NAME" ] && [ "$TAG_NAME" != "$EXPECTED" ]; then
+    echo "release-tarball: pushed tag ${TAG_NAME} but package.json version is ${VERSION}" >&2
+    echo "release-tarball: fix: bump all four package.json to ${TAG_NAME#v}, commit, then re-tag:" >&2
+    echo "release-tarball:   git tag -d ${TAG_NAME}; git push origin :refs/tags/${TAG_NAME}" >&2
+    echo "release-tarball:   git tag -a ${TAG_NAME} -m \"${TAG_NAME#v}\"; git push origin ${TAG_NAME}" >&2
     exit 1
   fi
-  if [ -n "$TAG_NAME" ] && [ "$TAG_NAME" != "v${VERSION}" ]; then
-    echo "release-tarball: tag ${TAG_NAME} does not match package.json version ${VERSION}" >&2
+  REF="${TAG_NAME:-$EXPECTED}"
+  if ! git rev-parse --verify --quiet "${REF}" >/dev/null; then
+    echo "release-tarball: missing git tag ${REF} — bump version, commit, then: git tag -a ${REF}" >&2
     exit 1
   fi
 fi
