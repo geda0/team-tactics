@@ -1,0 +1,46 @@
+# Private peer tarball — runs on version tags only. Full suite + pack + GitHub Release asset.
+# The repo stays private; release assets are visible only to collaborators (not public npm).
+name: release-tarball
+on:
+  push:
+    tags:
+      - "v*"
+permissions:
+  contents: write
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - run: npm ci
+
+      - name: Build and verify private tarball
+        env:
+          REQUIRE_TAG: "1"
+          TAG_NAME: ${{ github.ref_name }}
+        run: |
+          VERSION="$(node -p "require('./package.json').version")"
+          mkdir -p dist
+          bash infra/release-tarball.sh "dist/ttics-${VERSION}.tgz"
+          echo "VERSION=${VERSION}" >> "$GITHUB_ENV"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ttics-private-tarball
+          path: dist/ttics-${{ env.VERSION }}.tgz
+          retention-days: 90
+
+      - name: Attach to GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: dist/ttics-${{ env.VERSION }}.tgz
+          generate_release_notes: true
+          fail_on_unmatched_files: true

@@ -12,7 +12,8 @@
   },
   "scripts": {
     "test": "npm test --workspaces --if-present",
-    "pack:tarball": "node scripts/pack-tarball.js"
+    "pack:tarball": "node scripts/pack-tarball.js",
+    "release:tarball": "bash infra/release-tarball.sh"
   },
   "license": "SEE LICENSE IN LICENSE",
   "author": "geda0 <geda071@gmail.com>"
