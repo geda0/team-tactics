@@ -28,5 +28,15 @@ test("`npm run pack:tarball` builds a self-contained tarball of the released kit
     assert.ok(buf.length > 1000, "non-trivial size");
     assert.strictEqual(buf[0], 0x1f, "gzip magic byte 1");
     assert.strictEqual(buf[1], 0x8b, "gzip magic byte 2");
+    const list = cp.execFileSync("tar", ["-tzf", out], { encoding: "utf8" });
+    for (const f of ["FOR-TESTERS.md", "LICENSE", "packages/team-tactics/bin/cli.js"])
+      assert.ok(list.split("\n").includes(f), "tarball ships " + f);
   } finally { try { fs.rmSync(out); } catch (e) {} }
+});
+
+test("infra/release-tarball.sh exists and release:tarball is wired", () => {
+  const sh = path.join(ROOT, "infra", "release-tarball.sh");
+  assert.ok(fs.existsSync(sh), "infra/release-tarball.sh for CI + dev-ops");
+  assert.ok(require(path.join(ROOT, "package.json")).scripts["release:tarball"], "npm run release:tarball");
+  assert.ok(fs.existsSync(path.join(ROOT, ".github", "workflows", "release-tarball.yml")), "CI workflow on v* tags");
 });

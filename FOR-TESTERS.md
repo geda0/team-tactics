@@ -52,3 +52,24 @@ This is exactly the stage where your friction is gold. Please tell me:
 → **geda071@gmail.com** (or wherever we're already talking). Short notes are perfect.
 
 Thank you — this directly shapes the next version.
+
+---
+
+## For maintainers (private release)
+
+The evaluator tarball is **not** published to npm. After a green milestone:
+
+1. Bump all four `package.json` versions in lockstep and commit.
+2. Tag: `git tag -a v<version> -m "v<version>"` and `git push origin v<version>`.
+3. CI (`.github/workflows/release-tarball.yml`) runs the full suite, builds
+   `ttics-<version>.tgz`, and attaches it to the GitHub Release for that tag.
+4. Download the asset from **Releases** (or the Actions artifact) and send it to the
+   tester over a **private** channel — do not post the `.tgz` publicly.
+
+Local dry-run (same checks as CI):
+
+```bash
+REQUIRE_TAG=1 npm run release:tarball
+```
+
+See `infra/README.md` for the full operator guide.
