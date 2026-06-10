@@ -22,6 +22,28 @@ test("plain install ships the FULL TEAM by default (ADR 0005 — full power by d
   } finally { fs.rmSync(d, { recursive: true, force: true }); }
 });
 
+// REGRESSION GUARD (navigator 2026-06-10: "ensure new installs HAVE full team by default; future
+// installs won't face the same issue"). Pins the WHOLE contract for a fresh, no-flag install end to
+// end — delivered (team + preset) AND surfaced every prompt (the UserPromptSubmit directive fires and
+// names the outer-loop team). If any future change drops a new install back toward solo — flips the
+// default, breaks the directive wiring, or severs the team↔directive coupling — this fails loudly.
+test("GUARD: a fresh no-flag install delivers full-team AND surfaces it every prompt (can't silently regress)", () => {
+  const d = fs.mkdtempSync(path.join(os.tmpdir(), "tdd-preset-"));
+  try {
+    run([d]);   // exactly what a brand-new adopter runs
+    // delivered:
+    for (const a of TEAM) assert.ok(has(d, ".claude", "agents", a + ".md"), a + " present on a default install");
+    assert.strictEqual(manifest(d).preset, "full-team", "preset recorded full-team");
+    // surfaced: the UserPromptSubmit directive is wired AND fires AND names the outer-loop team
+    const settings = JSON.parse(fs.readFileSync(path.join(d, ".claude", "settings.json"), "utf8"));
+    const ups = (settings.hooks && settings.hooks.UserPromptSubmit) || [];
+    assert.ok(ups.some((g) => (g.hooks || []).some((h) => /prompt-directive\.sh/.test(h.command || ""))), "UserPromptSubmit wired to prompt-directive");
+    const dir = cp.spawnSync("bash", [path.join(d, ".claude", "hooks", "prompt-directive.sh")], { encoding: "utf8", input: "" }).stdout;
+    assert.match(dir, /FULL framework/i, "the every-prompt directive fires on a default install");
+    assert.match(dir, /product-owner|architect|qa-verifier/i, "and surfaces the OUTER-LOOP team (the team↔directive coupling holds)");
+  } finally { fs.rmSync(d, { recursive: true, force: true }); }
+});
+
 test("--preset full-team installs the 5 roles + outer-loop doc + state + records preset", () => {
   const d = fs.mkdtempSync(path.join(os.tmpdir(), "tdd-preset-"));
   try {
