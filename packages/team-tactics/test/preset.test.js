@@ -24,23 +24,26 @@ test("plain install ships the FULL TEAM by default (ADR 0005 — full power by d
 
 // REGRESSION GUARD (navigator 2026-06-10: "ensure new installs HAVE full team by default; future
 // installs won't face the same issue"). Pins the WHOLE contract for a fresh, no-flag install end to
-// end — delivered (team + preset) AND surfaced every prompt (the UserPromptSubmit directive fires and
-// names the outer-loop team). If any future change drops a new install back toward solo — flips the
-// default, breaks the directive wiring, or severs the team↔directive coupling — this fails loudly.
-test("GUARD: a fresh no-flag install delivers full-team AND surfaces it every prompt (can't silently regress)", () => {
+// end — delivered (team + preset) AND kept honest by the AUTOMATIC accountability backstop (ADR 0006):
+// the Stop hook wires solo-drift-check.sh, which surfaces substantial solo-drift at session end with
+// zero config. The proactive every-prompt directive is still WIRED but opt-in (ADR 0005 amended). If
+// any future change drops a new install back toward solo — flips the default, drops the
+// solo-drift backstop wiring, or unwires the (opt-in) directive — this fails loudly.
+test("GUARD: a fresh no-flag install delivers full-team + wires the AUTOMATIC accountability backstop (proactive directive available, opt-in)", () => {
   const d = fs.mkdtempSync(path.join(os.tmpdir(), "tdd-preset-"));
   try {
     run([d]);   // exactly what a brand-new adopter runs
     // delivered:
     for (const a of TEAM) assert.ok(has(d, ".claude", "agents", a + ".md"), a + " present on a default install");
     assert.strictEqual(manifest(d).preset, "full-team", "preset recorded full-team");
-    // surfaced: the UserPromptSubmit directive is wired AND fires AND names the outer-loop team
     const settings = JSON.parse(fs.readFileSync(path.join(d, ".claude", "settings.json"), "utf8"));
+    // the proactive directive is still AVAILABLE (opt-in): UserPromptSubmit stays wired to it.
     const ups = (settings.hooks && settings.hooks.UserPromptSubmit) || [];
-    assert.ok(ups.some((g) => (g.hooks || []).some((h) => /prompt-directive\.sh/.test(h.command || ""))), "UserPromptSubmit wired to prompt-directive");
-    const dir = cp.spawnSync("bash", [path.join(d, ".claude", "hooks", "prompt-directive.sh")], { encoding: "utf8", input: "" }).stdout;
-    assert.match(dir, /FULL framework/i, "the every-prompt directive fires on a default install");
-    assert.match(dir, /product-owner|architect|qa-verifier/i, "and surfaces the OUTER-LOOP team (the team↔directive coupling holds)");
+    assert.ok(ups.some((g) => (g.hooks || []).some((h) => /prompt-directive\.sh/.test(h.command || ""))), "UserPromptSubmit wired to prompt-directive (opt-in)");
+    // the AUTOMATIC accountability backstop is the default: Stop wires solo-drift-check.sh AND it ships on disk.
+    const stop = (settings.hooks && settings.hooks.Stop) || [];
+    assert.ok(stop.some((g) => (g.hooks || []).some((h) => /solo-drift-check\.sh/.test(h.command || ""))), "Stop wires solo-drift-check.sh — the AUTOMATIC accountability backstop is the default (ADR 0006)");
+    assert.ok(has(d, ".claude", "hooks", "solo-drift-check.sh"), "the backstop hook ships on disk");
   } finally { fs.rmSync(d, { recursive: true, force: true }); }
 });
 

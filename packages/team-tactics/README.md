@@ -39,9 +39,9 @@ Open the project in Claude Code, approve the hooks, and paste the prompt in
 `KICKOFF.md` — it does the setup, so there are no config files to hand-edit.
 
 > **Full team by default.** Every install ships the outer-loop team (product-owner / architect /
-> qa-verifier / project-manager / dev-ops) alongside the inner pair, and a hook renews the
-> "operate the full framework" directive on every prompt. Want just the inner TDD pair? Add
-> `--minimal`.
+> qa-verifier / project-manager / dev-ops) alongside the inner pair; an automatic backstop notes
+> substantial solo-drift at session end; an opt-in `PROMPT_DIRECTIVE=1` directive can also renew
+> the operating mode every prompt. Want just the inner TDD pair? Add `--minimal`.
 
 ## Commands
 Install / maintain — run from anywhere (fetches the kit from the repo):
@@ -121,7 +121,8 @@ npx ./team-tactics-<version>.tgz        # from a local tarball (offline)
 .claude/agents/        planner, test-writer, implementer, tdd-critic + (default) the outer-loop
                        team: product-owner, architect, qa-verifier, project-manager, dev-ops
 .claude/hooks/         guard-edit-scope, run-suite (+telemetry), require-green-to-stop,
-                       session-green-check, subagent-handoff, prompt-directive — bash
+                       session-green-check, subagent-handoff, solo-drift-check,
+                       prompt-directive (opt-in) — bash
 .claude/settings.json  hook wiring (SessionStart/UserPromptSubmit/PreToolUse/PostToolUse/Stop/SubagentStop)
 .claude/tdd.config     your layers + test commands (yours to edit)
 .claude/state/         progress.md, design-notes.md, plan.md (slice queue),

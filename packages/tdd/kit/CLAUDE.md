@@ -20,6 +20,7 @@ Method + rules: `docs/tdd/tdd-workflow.md`, `docs/tdd/testing-philosophy.md`,
 
 **Operate the full framework by default** (ADR 0005) — the outer-loop team (product-owner /
 architect / qa / PM / dev-ops) is installed by default; engage it, scaled to the task, and follow
-`docs/tdd/outer-loop.md`. A `UserPromptSubmit` hook renews this directive every prompt
-(`PROMPT_DIRECTIVE=0` to silence). Installed `--minimal`? Inner pair only. Large, multi-context
+`docs/tdd/outer-loop.md`. The automatic solo-drift backstop (ADR 0006) keeps full-team honest by
+default (a Stop-hook NOTE on substantial solo-drift); the every-prompt directive is available opt-in
+(`PROMPT_DIRECTIVE=1`; auto-silent in CI). Installed `--minimal`? Inner pair only. Large, multi-context
 project with parallel teams? Section it — `docs/tdd/sectioning.md`.
