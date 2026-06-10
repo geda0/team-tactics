@@ -27,8 +27,9 @@ test("SessionStart nudges when git worktrees exist but the tic bus is not shared
     git(d, "worktree", "add", "-q", wt, "-b", "side");
     const out = (() => { const r = sgc(d); return r.stdout + r.stderr; })();
     assert.match(out, /worktree/i, "mentions worktrees");
-    assert.match(out, /not shared|share one bus/i, "flags the unshared bus");
-    assert.match(out, /TICS_DIR|spool/, "names the fix");
+    assert.match(out, /correlate/i, "frames it accurately — claims/views already correlate across worktrees (pt2)");
+    assert.match(out, /TICS_DIR|spool/, "names the optional shared-bus optimization");
+    assert.doesNotMatch(out, /can.?t correlate|cannot correlate/i, "no longer falsely claims correlation is broken");
   } finally { try { git(d, "worktree", "remove", "--force", wt); } catch (e) {} fs.rmSync(d, { recursive: true, force: true }); fs.rmSync(wt, { recursive: true, force: true }); }
 });
 
@@ -38,7 +39,7 @@ test("SessionStart does NOT nudge about the bus when TIC_STORE=spool", () => {
     fs.appendFileSync(path.join(d, ".claude", "tdd.config"), "\nTIC_STORE=spool\n");
     git(d, "worktree", "add", "-q", wt, "-b", "side2");
     const r = sgc(d);
-    assert.doesNotMatch(r.stdout + r.stderr, /bus is not shared/i, "no nudge when already sharing");
+    assert.doesNotMatch(r.stdout + r.stderr, /correlate/i, "no nudge when already sharing one spool bus");
   } finally { try { git(d, "worktree", "remove", "--force", wt); } catch (e) {} fs.rmSync(d, { recursive: true, force: true }); fs.rmSync(wt, { recursive: true, force: true }); }
 });
 

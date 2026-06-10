@@ -60,10 +60,11 @@ if (preset !== null && preset !== "full-team" && preset !== "none" && preset !==
   process.exit(2);
 }
 let cmd = "init";
-if (["init", "update", "help", "version", "selftest", "report", "validate", "log", "inbox", "conductor", "claims", "sections", "sessions", "todo", "claim-check", "install-hooks", "cycle", "gate"].includes(rest[0])) cmd = rest.shift();
+if (["init", "update", "help", "version", "selftest", "report", "validate", "log", "inbox", "conductor", "claims", "sections", "sessions", "todo", "claim-check", "claim-session", "claim-owner", "install-hooks", "cycle", "gate"].includes(rest[0])) cmd = rest.shift();
 const role = cmd === "inbox" ? rest.shift() : null;
 const cfFile = cmd === "claim-check" ? rest.shift() : null;
 const cfScope = cmd === "claim-check" ? (rest.shift() || scope || "") : null;
+const cmFile = (cmd === "claim-session" || cmd === "claim-owner") ? rest.shift() : null;
 const tdSession = cmd === "todo" ? rest.shift() : null;
 const target = path.resolve(rest[0] || process.cwd());
 
@@ -94,6 +95,8 @@ if (cmd === "todo") { process.exit(TV.ticsTodo(target, tdSession)); }
 if (cmd === "cycle") { process.exit(TV.ticsCycle(target)); }
 if (cmd === "gate") { process.exit(TV.ticsGate(target, all)); }
 if (cmd === "claim-check") { process.exit(TV.claimCheckCli(target, cfFile, cfScope)); }
+if (cmd === "claim-session") { process.exit(TV.claimSessionCli(target, cmFile)); }
+if (cmd === "claim-owner") { process.exit(TV.claimOwnerCli(target, cmFile)); }
 if (cmd === "install-hooks") { process.exit(installHooks(target)); }
 
 // ---- helpers ------------------------------------------------------------

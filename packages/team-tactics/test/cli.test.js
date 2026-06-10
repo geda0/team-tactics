@@ -22,6 +22,18 @@ test("npx layout: the bin resolves @ttics/* siblings WITHOUT workspace symlinks 
   } finally { fs.rmSync(tmp, { recursive: true, force: true }); }
 });
 
+test("cli dispatches claim-session/claim-owner (parity with claim-check) — no silent-init on a reader subcommand", () => {
+  const d = fs.mkdtempSync(path.join(os.tmpdir(), "cli-claim-"));
+  try {
+    run(["init", d]);
+    cp.spawnSync("bash", ["-c", '. "' + path.join(d, ".claude", "hooks", "tics-lib.sh") + '"; export TICS_SESSION=s1 TICS_SCOPE=ui/S2; emit_tic s1 "*" claim app.js app.js'], { cwd: d });
+    const sess = run(["claim-session", "app.js", d]);
+    assert.doesNotMatch(sess.stdout, /Installing team-tactics/, "claim-session is a recognized command, not a silent init target");
+    assert.match(sess.stdout, /s1/, "claim-session reports the holding session");
+    assert.match(run(["claim-owner", "app.js", d]).stdout, /ui\/S2/, "claim-owner reports the holding scope");
+  } finally { fs.rmSync(d, { recursive: true, force: true }); }
+});
+
 test("P2-11: --help prints help and does NOT install into ./--help", () => {
   const d = fs.mkdtempSync(path.join(os.tmpdir(), "tdd-cli-"));
   try {
