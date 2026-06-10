@@ -4,7 +4,7 @@ const assert = require("node:assert");
 const fs = require("fs"), os = require("os"), path = require("path"), cp = require("child_process");
 const { installTdd } = require("..");
 const inst = () => { const d = fs.mkdtempSync(path.join(os.tmpdir(), "tdd-t-")); installTdd(d); fs.writeFileSync(path.join(d, ".claude", "tdd.config"), 'LAYERS="app"\nALL_TEST_CMD="true"\nTEST_CMD_app="true"\n'); fs.writeFileSync(path.join(d, ".claude", "state", "layer"), "app\n"); return d; };
-const fire = (d, h, p) => cp.spawnSync("bash", [path.join(d, ".claude", "hooks", h)], { input: p || "", cwd: d, encoding: "utf8" });
+const fire = (d, h, p) => cp.spawnSync("bash", [path.join(d, ".claude", "hooks", h)], { input: p || "", cwd: d, encoding: "utf8", env: (() => { const e = { ...process.env }; delete e.CI; return e; })() });
 const edit = (f) => JSON.stringify({ tool_input: { file_path: f } });
 const ph = (d, v) => fs.writeFileSync(path.join(d, ".claude", "state", "phase"), v + "\n");
 
@@ -25,6 +25,14 @@ test("UserPromptSubmit: prompt-directive injects the full-framework operating di
     fs.appendFileSync(path.join(d, ".claude", "tdd.config"), "\nPROMPT_DIRECTIVE=0\n");
     assert.strictEqual(fire(d, "prompt-directive.sh", "{}").stdout.trim(), "", "PROMPT_DIRECTIVE=0 silences it (opt-out)");
   } finally { fs.rmSync(d, { recursive: true, force: true }); }
+});
+test("UserPromptSubmit: prompt-directive is CONTEXT-AWARE — silent in CI, fires interactively", () => {
+  const inst2 = inst();
+  try {
+    const inCI = cp.spawnSync("bash", [path.join(inst2, ".claude", "hooks", "prompt-directive.sh")], { input: "", cwd: inst2, encoding: "utf8", env: { ...process.env, CI: "1" } });
+    assert.strictEqual(inCI.stdout.trim(), "", "self-disables in CI — no every-prompt injection in automated/non-interactive runs");
+    assert.match(fire(inst2, "prompt-directive.sh", "{}").stdout, /team-tactics/i, "still fires in an interactive (non-CI) context");
+  } finally { fs.rmSync(inst2, { recursive: true, force: true }); }
 });
 test("the gate enforces phase×layer", () => {
   const d = inst();

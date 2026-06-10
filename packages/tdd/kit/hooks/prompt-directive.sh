@@ -2,12 +2,13 @@
 # prompt-directive.sh — UserPromptSubmit hook (ADR 0005). Renews the standing operating directive on
 # EVERY prompt so full-framework usage stays salient turn-over-turn — SessionStart fires once and a
 # start-of-session NOTE was shown to fade (gvp: obeyed 0/2). stdout is added to the prompt context.
-# Opt out with PROMPT_DIRECTIVE=0. REFRESHED on update; do NOT edit (local tweaks -> hooks/local.d/).
+# Opt out with PROMPT_DIRECTIVE=0; auto-silent in CI (the CI env var is set). REFRESHED on update; do NOT edit (local tweaks -> hooks/local.d/).
 set -uo pipefail
 HERE="$(cd "$(dirname "$0")" && pwd)"; ROOT="$(cd "$HERE/../.." && pwd)"
 # shellcheck disable=SC1091
 [ -f "$ROOT/.claude/tdd.config" ] && . "$ROOT/.claude/tdd.config"
 [ "${PROMPT_DIRECTIVE:-1}" = "1" ] || exit 0
+[ -n "${CI:-}" ] && exit 0   # context-aware: no every-prompt injection in CI / automated / non-interactive runs
 
 printf '%s\n' "[team-tactics] Operate the FULL framework by default, scaled to the task (don't ceremony trivial asks — but reach for the team, not a solo edit, when the work is real):"
 if [ -f "$ROOT/.claude/agents/product-owner.md" ]; then
