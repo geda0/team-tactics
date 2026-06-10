@@ -32,6 +32,27 @@ test("emit_tic appends a valid, auto-filled tic; seq increments", () => {
   } finally { fs.rmSync(d, { recursive: true, force: true }); }
 });
 
+test("N1: emit_tic auto-derives a session id under multi-session when none is set (substrate self-provisions)", () => {
+  const d = inst();
+  try {
+    fs.appendFileSync(path.join(d, ".claude", "tdd.config"), "\nMULTI_SESSION=1\n");   // multi-session declared...
+    srcLib(d, "emit_tic alice '*' claim app.js app.js");                                // ...but NO session id set (the gvp reality)
+    const claim = ticsOf(d).find((x) => x.kind === "claim");
+    assert.ok(claim, "claim emitted");
+    assert.notStrictEqual(claim.session, "", "session auto-derived (non-empty) so claims engage with zero setup");
+    srcLib(d, "emit_tic alice '*' note again");
+    assert.strictEqual(ticsOf(d).find((x) => x.kind === "note").session, claim.session, "the derived id is stable across emits");
+  } finally { fs.rmSync(d, { recursive: true, force: true }); }
+});
+
+test("N1: solo (no multi-session, main tree) is unchanged — session stays empty (conservative)", () => {
+  const d = inst();
+  try {
+    srcLib(d, "emit_tic alice '*' note hi");   // default install: not multi-session
+    assert.strictEqual(ticsOf(d).pop().session, "", "solo ergonomics unchanged: no auto id, no surprise");
+  } finally { fs.rmSync(d, { recursive: true, force: true }); }
+});
+
 test("TICS_SCOPE overrides scope per call (fan-out)", () => {
   const d = inst();
   try {
