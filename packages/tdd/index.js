@@ -18,7 +18,7 @@ function rec(m, rel, cls) { if (m) m[rel] = { class: cls, pkg: "@ttics/tdd", ver
 function installTdd(target, manifest) {
   tics.installTics(target, manifest);                                   // 1) the protocol foundation
   const C = path.join(target, ".claude");
-  for (const h of ["lib.sh", "guard-edit-scope.sh", "run-suite.sh", "require-green-to-stop.sh", "session-green-check.sh", "subagent-handoff.sh", "prompt-directive.sh"]) {
+  for (const h of ["lib.sh", "guard-edit-scope.sh", "run-suite.sh", "require-green-to-stop.sh", "session-green-check.sh", "solo-drift-check.sh", "subagent-handoff.sh", "prompt-directive.sh"]) {
     copy(path.join(KIT, "hooks", h), path.join(C, "hooks", h));
     try { fs.chmodSync(path.join(C, "hooks", h), 0o755); } catch (e) {}
     rec(manifest, path.join(".claude", "hooks", h), "mechanism");

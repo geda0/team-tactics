@@ -27,6 +27,11 @@ if [ -z "${TICS_DIR:-}" ] && [ "${TIC_STORE:-jsonl}" != "spool" ]; then
   fi
 fi
 
+# Stamp session-started marker for solo-drift-check.sh (must be ABOVE the early-exit
+# so opting out of the baseline check doesn't silently lose the backstop).
+mkdir -p "$ROOT/.claude/state" 2>/dev/null || true
+date -u +%Y-%m-%dT%H:%M:%SZ > "$ROOT/.claude/state/session-started" 2>/dev/null || true
+
 [ "${SESSION_BASELINE_CHECK:-1}" = "1" ] || exit 0
 CMD="${BASELINE_CMD:-$ALL_TEST_CMD}"
 
