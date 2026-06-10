@@ -40,6 +40,7 @@ const CFG = path.join(KIT, "claude-config");
 // ---- arg parsing --------------------------------------------------------
 const argv = process.argv.slice(2);
 let force = false;
+let ci = false;
 const rest = [];
 let preset = null, scope = null, all = true;   // whole-picture by default; --here restricts to the local bus
 for (let i = 0; i < argv.length; i++) {
@@ -49,6 +50,7 @@ for (let i = 0; i < argv.length; i++) {
   else if (a === "-v" || a === "--version") rest.push("version");
   else if (a === "--preset") preset = argv[++i] || "";
   else if (a === "--minimal") preset = "minimal";   // ADR 0005: opt out of the default full-team
+  else if (a === "--ci") ci = true;
   else if (a === "--scope") scope = argv[++i] || ""; else if (a === "--all") all = true; else if (a === "--here") all = false;
   else if (a.startsWith("--preset=")) preset = a.slice(9);
   else if (a.startsWith("-")) {
@@ -345,15 +347,17 @@ for (const s of ["design-notes.md", "progress.md", "plan.md", "phase", "layer", 
   seedOnce(path.join(TDD, "state", s), path.join(".claude", "state", s));
 seedOnce(path.join(TDD, "docs", "project-invariants.template.md"),
          path.join("docs", "tdd", "project-invariants.md"), "yours");
-seedOnce(path.join(TDD, "ci", "tdd-verify.yml"),
+if (ci) seedOnce(path.join(TDD, "ci", "tdd-verify.yml"),
          path.join(".github", "workflows", "tdd-verify.yml"));
 
 // 3) settings.json — content-aware merge (kit hooks added, your keys preserved).
 mergeSettings(target);  // P1-7: merge kit hooks into settings.json, preserve user keys
 
 // 4) Entry docs - thin managed block + your overlay (method lives in docs/tdd/; no sidecar).
-for (const f of ["AGENTS.md", "CLAUDE.md", "KICKOFF.md"])
-  mergeEntryDoc(path.join(f === "KICKOFF.md" ? KIT : TDD, f), f);
+for (const f of ["AGENTS.md", "CLAUDE.md"])
+  mergeEntryDoc(path.join(TDD, f), f);
+// KICKOFF bootstrap lives under .claude/ (not root-pinned like AGENTS.md/CLAUDE.md)
+seedOnce(path.join(KIT, "KICKOFF.md"), path.join(".claude", "KICKOFF.md"));
 
 // Manifest (P0-3): record kit-owned files + content hashes, for clobber-safe updates.
 ensureDir(path.join(target, ".claude", ".team-tactics"));
@@ -363,6 +367,8 @@ say("manifest", MANIFEST_REL + (backups ? "  (" + backups + " local change(s) ba
 ensureGitignore(target);
 if (presetActive === "full-team")
   console.log("\n[full-team] outer-loop roles installed (product-owner, architect, qa-verifier, project-manager, dev-ops) — see docs/tdd/outer-loop.md.");
+if (!ci)
+  console.log("\n[ci] CI workflow not written (opt-in). Re-run with --ci to add .github/workflows/tdd-verify.yml.");
 
 console.log("\nDone — team-tactics installed. One thing to do, then you're building:\n\n  Open this project in Claude Code, approve the hooks, and paste your first\n  message — the orchestrator configures the harness for you (nothing to hand-edit):\n\n    Read AGENTS.md and CLAUDE.md. Detect this project's stack and set LAYERS + the\n    test command(s) in .claude/tdd.config, and draft docs/tdd/project-invariants.md\n    from the code for me to confirm. Then build the first feature with the\n    red->green loop: <what you want built>.\n\n  Existing codebase? Tell the orchestrator to ADOPT it and bring it up to standard\n  (characterization tests, green baseline, CI) before new work.\n\n  KICKOFF.md has both prompts (one-shot for an agent, and this two-step) ready to copy.\n\nNote: the hooks are bash scripts (use WSL/git-bash on Windows). Hook event names\nand exit-code semantics shift between Claude Code releases — confirm against\ncode.claude.com/docs/en/hooks before relying on the gate.");
 

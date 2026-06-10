@@ -91,6 +91,28 @@ test("an unknown preset name errors (exit != 0)", () => {
 // at .bak; for an agent that destroys the customization (the exact Based friction). After N8 the
 // adopter's bytes survive and the KIT version is parked beside as <role>.md.kit-<version> (not .bak),
 // to diff/adopt; agents nobody touched still refresh so the kit keeps flowing.
+// H1b (design-notes § H1): minimize the install footprint in the adopter's repo. CI becomes OPT-IN —
+// a plain install writes NOTHING under .github/ (the adopter's CI surface is untouched); `--ci` opts
+// into the seedable tdd-verify.yml. And the one-time KICKOFF bootstrap moves under .claude/ (it is not
+// root-pinned the way AGENTS.md/CLAUDE.md are). Today the installer seedOnce-writes .github/workflows/
+// tdd-verify.yml on EVERY install and merges KICKOFF.md at the repo root — so this is RED.
+test("H1b: a default install writes NO CI workflow + KICKOFF lives under .claude; --ci opts into CI", () => {
+  const d = fs.mkdtempSync(path.join(os.tmpdir(), "tdd-h1b-"));
+  const d2 = fs.mkdtempSync(path.join(os.tmpdir(), "tdd-h1b-ci-"));
+  try {
+    run([d]);   // default install, no --ci
+    assert.ok(!has(d, ".github", "workflows", "tdd-verify.yml"), "no CI workflow written by default");
+    assert.ok(has(d, ".claude", "KICKOFF.md"), "KICKOFF moved under .claude");
+    assert.ok(!has(d, "KICKOFF.md"), "KICKOFF no longer written to the repo root");
+
+    run(["--ci", d2]);   // opt in
+    assert.ok(has(d2, ".github", "workflows", "tdd-verify.yml"), "--ci writes the CI workflow");
+  } finally {
+    fs.rmSync(d, { recursive: true, force: true });
+    fs.rmSync(d2, { recursive: true, force: true });
+  }
+});
+
 test("N8: a locally-modified agent is PRESERVED on update + the kit version parked beside it; unmodified agents refresh normally", () => {
   const d = fs.mkdtempSync(path.join(os.tmpdir(), "tdd-preset-"));
   try {

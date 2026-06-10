@@ -41,6 +41,27 @@ test("infra/release-tarball.sh exists and release:tarball is wired", () => {
   assert.ok(fs.existsSync(path.join(ROOT, ".github", "workflows", "release-tarball.yml")), "CI workflow on v* tags");
 });
 
+// H1a (design-notes § H1): the sendable tarball is built from the committed tree via `git archive`,
+// so slimming it = (1) the dev-cruft fossils stop being tracked and (2) a `.gitattributes` declares
+// `export-ignore` for the non-shipping areas. Both are SOURCE-LEVEL facts that go green BEFORE commit
+// (asserting the archive output would deadlock the pre-commit gate, since the tarball reflects the
+// COMMITTED tree). Today: 94 fossil files are tracked and there is no `.gitattributes` — so this is RED.
+test("H1a: the release artifact excludes dev cruft — fossils untracked + .gitattributes export-ignore covers them", () => {
+  const tracked = cp.execFileSync("git", ["-C", ROOT, "ls-files", "claim-session", "claim-owner"], { encoding: "utf8" }).trim();
+  assert.strictEqual(tracked, "", "the fossil dirs claim-session/ + claim-owner/ are no longer tracked");
+
+  const ga = path.join(ROOT, ".gitattributes");
+  assert.ok(fs.existsSync(ga), "a .gitattributes exists at the repo root");
+  const t = fs.readFileSync(ga, "utf8");
+  assert.match(t, /export-ignore/, "declares export-ignore for git archive");
+  assert.match(t, /test\b|tests?\/|\*\*\/test/, "excludes test dirs from the artifact");
+  assert.match(t, /\.claude/, "excludes the repo's own .claude dogfood tree");
+  assert.match(t, /docs\/decisions/, "excludes docs/decisions ADRs");
+  assert.match(t, /infra/, "excludes infra/");
+  assert.match(t, /claim-session/, "export-ignores the claim-session fossil");
+  assert.match(t, /claim-owner/, "export-ignores the claim-owner fossil");
+});
+
 test("release-tarball.sh rejects a pushed tag that does not match package.json (clear error)", () => {
   const sh = path.join(ROOT, "infra", "release-tarball.sh");
   const r = cp.spawnSync("bash", [sh], {
