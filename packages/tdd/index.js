@@ -34,4 +34,4 @@ function installTdd(target, manifest) {
   seedOnce(path.join(KIT, "ci", "tdd-verify.yml"), path.join(target, ".github", "workflows", "tdd-verify.yml"));
   return manifest;
 }
-module.exports = { KIT, PKG, TV: tics.TV, installTdd, installTics: tics.installTics, preCommitHook: path.join(KIT, "githooks", "pre-commit"), postCommitHook: tics.postCommitHook };
+module.exports = { KIT, PKG, TV: tics.TV, installTdd, installTics: tics.installTics, preCommitHook: path.join(KIT, "githooks", "pre-commit"), prePushHook: path.join(KIT, "githooks", "pre-push"), postCommitHook: tics.postCommitHook };

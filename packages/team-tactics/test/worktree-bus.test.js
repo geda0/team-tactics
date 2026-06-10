@@ -187,3 +187,26 @@ test("N1 pt2: a claim in one worktree is VISIBLE + BLOCKS across worktrees (cros
     assert.strictEqual(tics(d, "claim-check", "app.js", "ui/S2").status, 0, "the owning scope is not blocked");
   } finally { try { git(d, "worktree", "remove", "--force", wt); } catch (e) {} fs.rmSync(d, { recursive: true, force: true }); fs.rmSync(wt, { recursive: true, force: true }); }
 });
+
+test("N6: install-hooks installs a pre-push that BLOCKS a tag whose version drifts from root package.json, ALLOWS a matching tag, ignores branch pushes", () => {
+  const d = gitInstall(); const remote = d + "-remote";
+  try {
+    // known root version
+    fs.writeFileSync(path.join(d, "package.json"), '{"name":"x","version":"1.0.0"}\n');
+    git(d, "add", "-A"); git(d, "commit", "-qm", "pkg");
+    // bare remote + seed the main branch (a branch push is NOT gated)
+    cp.spawnSync("git", ["init", "--bare", remote], { encoding: "utf8", env: ENV });
+    git(d, "remote", "add", "origin", remote);
+    assert.strictEqual(git(d, "push", "origin", "HEAD:refs/heads/main").status, 0, "branch push unaffected");
+    // install the gate
+    assert.strictEqual(node("install-hooks", d).status, 0);
+    // MISMATCH: tag v2.0.0 while package.json is 1.0.0 → must be blocked, and name the drift
+    git(d, "tag", "v2.0.0");
+    const blocked = git(d, "push", "origin", "v2.0.0");
+    assert.notStrictEqual(blocked.status, 0, "drifted tag push blocked");
+    assert.match(blocked.stdout + blocked.stderr, /1\.0\.0|2\.0\.0|version|mismatch/i, "names the drift");
+    // MATCH: tag v1.0.0 equals package.json → pushes fine
+    git(d, "tag", "v1.0.0");
+    assert.strictEqual(git(d, "push", "origin", "v1.0.0").status, 0, "matching tag pushes fine");
+  } finally { fs.rmSync(d, { recursive: true, force: true }); fs.rmSync(remote, { recursive: true, force: true }); }
+});

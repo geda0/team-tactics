@@ -34,6 +34,7 @@ const tics = reqSib("@ttics/tics", "../../tics");
 const TV = tics.TV;
 const tdd = reqSib("@ttics/tdd", "../../tdd");
 const TDD = tdd.KIT;
+const HOOK_SRC = { "pre-commit": tdd.preCommitHook, "post-commit": tics.postCommitHook, "pre-push": tdd.prePushHook };  // portable git hooks: name -> source template
 const CFG = path.join(KIT, "claude-config");
 
 // ---- arg parsing --------------------------------------------------------
@@ -110,13 +111,13 @@ function installHooks(target) {
   const hooksDir = path.isAbsolute(cdir) ? path.join(cdir, "hooks") : path.join(target, cdir, "hooks");
   ensureDir(hooksDir);
   let installed = 0, skipped = 0;
-  for (const name of ["pre-commit", "post-commit"]) {
+  for (const name of ["pre-commit", "post-commit", "pre-push"]) {
     const dest = path.join(hooksDir, name);
     if (fs.existsSync(dest) && fs.readFileSync(dest, "utf8").indexOf("team-tactics " + name) === -1) {
       console.error("install-hooks: a non-team-tactics " + name + " already exists at\n  " + dest + "\nNot clobbering it (merge it yourself, or point core.hooksPath at a shared dir).");
       skipped++; continue;
     }
-    fs.copyFileSync(name === "post-commit" ? tics.postCommitHook : tdd.preCommitHook, dest);
+    fs.copyFileSync(HOOK_SRC[name], dest);
     try { fs.chmodSync(dest, 0o755); } catch (e) { /* windows */ }
     installed++;
   }
@@ -138,11 +139,11 @@ function refreshGitHooks(target) {
   catch (e) { return; }   // not a git repo — nothing to do
   const hooksDir = path.isAbsolute(cdir) ? path.join(cdir, "hooks") : path.join(target, cdir, "hooks");
   let n = 0;
-  for (const name of ["pre-commit", "post-commit"]) {
+  for (const name of ["pre-commit", "post-commit", "pre-push"]) {
     const dest = path.join(hooksDir, name);
     if (!fs.existsSync(dest)) continue;                                                  // not installed — respect the opt-in
     if (fs.readFileSync(dest, "utf8").indexOf("team-tactics " + name) === -1) continue;  // foreign — never clobber
-    fs.copyFileSync(name === "post-commit" ? tics.postCommitHook : tdd.preCommitHook, dest);
+    fs.copyFileSync(HOOK_SRC[name], dest);
     try { fs.chmodSync(dest, 0o755); } catch (e) { /* windows */ }
     n++;
   }
