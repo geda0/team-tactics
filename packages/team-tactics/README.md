@@ -38,8 +38,10 @@ npx github:geda0/team-tactics            # install into your project (or: … ./
 Open the project in Claude Code, approve the hooks, and paste the prompt in
 `KICKOFF.md` — it does the setup, so there are no config files to hand-edit.
 
-> **Adopting an existing repo?** Install with `npx github:geda0/team-tactics --preset full-team`
-> so the product-owner / architect / qa-verifier are on hand to characterize and upgrade it.
+> **Full team by default.** Every install ships the outer-loop team (product-owner / architect /
+> qa-verifier / project-manager / dev-ops) alongside the inner pair, and a hook renews the
+> "operate the full framework" directive on every prompt. Want just the inner TDD pair? Add
+> `--minimal`.
 
 ## Commands
 Install / maintain — run from anywhere (fetches the kit from the repo):
@@ -48,7 +50,7 @@ npx github:geda0/team-tactics [init] [target]   # install (default)
 npx github:geda0/team-tactics update [target]    # refresh agents/hooks/docs, keep your files
 npx github:geda0/team-tactics selftest [target]  # verify the gate works in YOUR environment
 npx github:geda0/team-tactics --force [target]   # also reset seeded (user-owned) files
-npx github:geda0/team-tactics --preset full-team [target]  # also install the outer-loop team (PO/architect/QA/PM/dev-ops)
+npx github:geda0/team-tactics --minimal [target]  # inner TDD pair only (opt out of the default full team)
 ```
 Read the bus — after install, the kit ships a local reader (no fetch, no target):
 ```bash
@@ -116,10 +118,11 @@ npx ./team-tactics-<version>.tgz        # from a local tarball (offline)
 
 ## What gets installed
 ```
-.claude/agents/        planner, test-writer, implementer, tdd-critic
+.claude/agents/        planner, test-writer, implementer, tdd-critic + (default) the outer-loop
+                       team: product-owner, architect, qa-verifier, project-manager, dev-ops
 .claude/hooks/         guard-edit-scope, run-suite (+telemetry), require-green-to-stop,
-                       session-green-check (baseline check) — bash
-.claude/settings.json  hook wiring (PreToolUse/PostToolUse/Stop/SubagentStop/SessionStart)
+                       session-green-check, subagent-handoff, prompt-directive — bash
+.claude/settings.json  hook wiring (SessionStart/UserPromptSubmit/PreToolUse/PostToolUse/Stop/SubagentStop)
 .claude/tdd.config     your layers + test commands (yours to edit)
 .claude/state/         progress.md, design-notes.md, plan.md (slice queue),
                        phase (seeded 'off'), layer, telemetry.jsonl

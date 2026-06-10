@@ -47,6 +47,7 @@ for (let i = 0; i < argv.length; i++) {
   else if (a === "-h" || a === "--help") rest.push("help");
   else if (a === "-v" || a === "--version") rest.push("version");
   else if (a === "--preset") preset = argv[++i] || "";
+  else if (a === "--minimal") preset = "minimal";   // ADR 0005: opt out of the default full-team
   else if (a === "--scope") scope = argv[++i] || ""; else if (a === "--all") all = true; else if (a === "--here") all = false;
   else if (a.startsWith("--preset=")) preset = a.slice(9);
   else if (a.startsWith("-")) {
@@ -54,8 +55,8 @@ for (let i = 0; i < argv.length; i++) {
     process.exit(2);
   } else rest.push(a);
 }
-if (preset !== null && preset !== "full-team" && preset !== "none") {
-  console.error("tics: unknown preset '" + preset + "'. Known presets: full-team (or 'none' to remove).");
+if (preset !== null && preset !== "full-team" && preset !== "none" && preset !== "minimal") {
+  console.error("tics: unknown preset '" + preset + "'. Known: full-team (default) | minimal (or 'none' = minimal).");
   process.exit(2);
 }
 let cmd = "init";
@@ -140,9 +141,11 @@ const priorManifest = (() => {
 })();
 const priorSha = (rel) => (priorManifest.files && priorManifest.files[rel] && priorManifest.files[rel].sha256) || null;
 
-// P2-14: the team preset is sticky — recorded in the manifest so `update` keeps
-// refreshing it without re-passing the flag. `--preset none` clears it.
-const presetActive = preset === "none" ? null : (preset || priorManifest.preset || null);
+// ADR 0005: full-team is the DEFAULT (full power by default). `--minimal` (alias `--preset none`)
+// opts out to the inner pair, recorded as "minimal" so it's sticky. P2-14: the preset is sticky —
+// recorded in the manifest so `update` keeps refreshing it without re-passing the flag.
+const presetActive = (preset === "none" || preset === "minimal") ? "minimal"
+  : (preset || priorManifest.preset || "full-team");
 const manifestFiles = {};
 let backups = 0;
 function record(rel, cls) { manifestFiles[rel] = { class: cls, version: PKG.version, sha256: sha256(path.join(target, rel)) }; }
@@ -266,7 +269,7 @@ for (const a of ["test-writer", "implementer", "tdd-critic", "planner"])
   refresh(path.join(TDD, "agents", a + ".md"), path.join(".claude", "agents", a + ".md"));
 // Shared hook library (resolver + defaults), sourced by the hooks below.
 refresh(path.join(TDD, "hooks", "lib.sh"), path.join(".claude", "hooks", "lib.sh"));
-for (const h of ["guard-edit-scope", "run-suite", "require-green-to-stop", "session-green-check", "subagent-handoff"]) {
+for (const h of ["guard-edit-scope", "run-suite", "require-green-to-stop", "session-green-check", "subagent-handoff", "prompt-directive"]) {
   const rel = path.join(".claude", "hooks", h + ".sh");
   refresh(path.join(TDD, "hooks", h + ".sh"), rel);
   try { fs.chmodSync(path.join(target, rel), 0o755); } catch (e) { /* windows */ }

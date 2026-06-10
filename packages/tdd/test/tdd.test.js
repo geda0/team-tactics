@@ -16,6 +16,16 @@ test("installTdd composes the tics protocol + lays the gate, roles, docs", () =>
     assert.ok(fs.existsSync(path.join(d, "docs", "tdd", "tdd-workflow.md")));
   } finally { fs.rmSync(d, { recursive: true, force: true }); }
 });
+test("UserPromptSubmit: prompt-directive injects the full-framework operating directive every prompt (ADR 0005)", () => {
+  const d = inst();
+  try {
+    const out = fire(d, "prompt-directive.sh", "{}").stdout;
+    assert.match(out, /team-tactics/i, "names the framework");
+    assert.match(out, /phase|tic|delegate|orchestrat/i, "reminds of the operating mode");
+    fs.appendFileSync(path.join(d, ".claude", "tdd.config"), "\nPROMPT_DIRECTIVE=0\n");
+    assert.strictEqual(fire(d, "prompt-directive.sh", "{}").stdout.trim(), "", "PROMPT_DIRECTIVE=0 silences it (opt-out)");
+  } finally { fs.rmSync(d, { recursive: true, force: true }); }
+});
 test("the gate enforces phase×layer", () => {
   const d = inst();
   try {

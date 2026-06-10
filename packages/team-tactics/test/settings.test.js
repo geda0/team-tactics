@@ -15,9 +15,22 @@ test("install wires all kit hook events; no sidecar", () => {
   const d = install();
   try {
     const s = S(d);
-    for (const ev of ["SessionStart", "PreToolUse", "PostToolUse", "Stop", "SubagentStop"])
+    for (const ev of ["SessionStart", "UserPromptSubmit", "PreToolUse", "PostToolUse", "Stop", "SubagentStop"])
       assert.ok(s.hooks && s.hooks[ev] && s.hooks[ev].length, "event wired: " + ev);
     assert.ok(!fs.existsSync(path.join(d, ".claude", "settings.team-tactics.json")), "no sidecar left to merge");
+  } finally { fs.rmSync(d, { recursive: true, force: true }); }
+});
+
+test("every wired kit hook command points to an INSTALLED file (no wired-but-missing hook)", () => {
+  const d = install();
+  try {
+    const cmds = Object.values(S(d).hooks || {}).flat().flatMap((g) => (g.hooks || []).map((h) => h.command || ""));
+    const kit = cmds.filter((c) => c.includes(".claude/hooks/"));
+    assert.ok(kit.length, "some kit hooks are wired");
+    for (const c of kit) {
+      const rel = c.replace("$CLAUDE_PROJECT_DIR/", "").trim();
+      assert.ok(fs.existsSync(path.join(d, rel)), "wired hook exists on disk: " + rel);
+    }
   } finally { fs.rmSync(d, { recursive: true, force: true }); }
 });
 

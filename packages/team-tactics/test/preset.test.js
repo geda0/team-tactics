@@ -1,6 +1,7 @@
 "use strict";
-// P2-14: `--preset full-team` installs the outer-loop roles + method + state and
-// records the preset in the manifest (sticky across updates). A plain install does not.
+// ADR 0005: full-team is the DEFAULT (full power by default). A plain install ships the outer-loop
+// roles + method + state and records preset:"full-team"; `--minimal` opts out (sticky). P2-14: the
+// preset is sticky across updates.
 const { test } = require("node:test");
 const assert = require("node:assert");
 const fs = require("fs"), os = require("os"), path = require("path"), cp = require("child_process");
@@ -10,13 +11,14 @@ const has = (d, ...p) => fs.existsSync(path.join(d, ...p));
 const manifest = (d) => JSON.parse(fs.readFileSync(path.join(d, ".claude", ".team-tactics", "manifest.json"), "utf8"));
 const TEAM = ["product-owner", "architect", "qa-verifier", "project-manager", "dev-ops"];
 
-test("plain install ships only the inner-loop agents (no team)", () => {
+test("plain install ships the FULL TEAM by default (ADR 0005 — full power by default)", () => {
   const d = fs.mkdtempSync(path.join(os.tmpdir(), "tdd-preset-"));
   try {
-    run([d]);
-    for (const a of TEAM) assert.ok(!has(d, ".claude", "agents", a + ".md"), a + " must NOT install by default");
-    assert.ok(has(d, ".claude", "agents", "test-writer.md"), "inner agents still installed");
-    assert.strictEqual(manifest(d).preset || null, null, "no preset recorded");
+    run([d]);   // no flag
+    for (const a of TEAM) assert.ok(has(d, ".claude", "agents", a + ".md"), a + " installs by DEFAULT now");
+    assert.ok(has(d, ".claude", "agents", "test-writer.md"), "inner agents too");
+    assert.ok(has(d, "docs", "tdd", "outer-loop.md"), "outer-loop doc shipped by default");
+    assert.strictEqual(manifest(d).preset, "full-team", "default preset recorded as full-team");
   } finally { fs.rmSync(d, { recursive: true, force: true }); }
 });
 
@@ -44,12 +46,15 @@ test("preset is sticky: a plain update on a full-team install keeps refreshing t
   } finally { fs.rmSync(d, { recursive: true, force: true }); }
 });
 
-test("--preset none clears stickiness", () => {
+test("--minimal opts out of the team (inner pair only) and is sticky across update", () => {
   const d = fs.mkdtempSync(path.join(os.tmpdir(), "tdd-preset-"));
   try {
-    run(["--preset", "full-team", d]);
-    run(["--preset", "none", "update", d]);
-    assert.strictEqual(manifest(d).preset || null, null, "preset cleared");
+    run(["--minimal", d]);
+    for (const a of TEAM) assert.ok(!has(d, ".claude", "agents", a + ".md"), a + " absent under --minimal");
+    assert.ok(has(d, ".claude", "agents", "test-writer.md"), "inner pair present");
+    assert.strictEqual(manifest(d).preset, "minimal", "minimal recorded (sticky opt-out)");
+    run(["update", d]);   // plain update must NOT re-add the team
+    for (const a of TEAM) assert.ok(!has(d, ".claude", "agents", a + ".md"), a + " stays absent (sticky minimal)");
   } finally { fs.rmSync(d, { recursive: true, force: true }); }
 });
 
