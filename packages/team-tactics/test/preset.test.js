@@ -85,3 +85,26 @@ test("an unknown preset name errors (exit != 0)", () => {
   assert.notStrictEqual(r.status, 0);
   assert.match(r.stdout + r.stderr, /preset/i);
 });
+
+// N8 (ADR 0007): an agent the adopter has customized GRADUATES to user-owned — a plain `update`
+// must NOT clobber it. Today refresh() overwrites a modified mechanism file and parks the OLD copy
+// at .bak; for an agent that destroys the customization (the exact Based friction). After N8 the
+// adopter's bytes survive and the KIT version is parked beside as <role>.md.kit-<version> (not .bak),
+// to diff/adopt; agents nobody touched still refresh so the kit keeps flowing.
+test("N8: a locally-modified agent is PRESERVED on update + the kit version parked beside it; unmodified agents refresh normally", () => {
+  const d = fs.mkdtempSync(path.join(os.tmpdir(), "tdd-preset-"));
+  try {
+    run([d]);   // default full-team install — product-owner.md present; manifest records its sha
+    const po = path.join(d, ".claude", "agents", "product-owner.md");
+    const custom = fs.readFileSync(po, "utf8") + "\n# MY CUSTOM SEAM NOTES\n";
+    fs.writeFileSync(po, custom);                       // adopter customizes the agent
+
+    const upd = run(["update", d]);                     // plain update (no --force)
+    const ver = manifest(d).kitVersion;                 // dynamic — the stamp the installer recorded
+
+    assert.strictEqual(fs.readFileSync(po, "utf8"), custom, "modified agent preserved byte-for-byte");
+    assert.ok(fs.existsSync(po + ".kit-" + ver), "kit version parked as <role>.md.kit-<version>");
+    assert.ok(!fs.existsSync(path.join(d, ".claude", "agents", "architect.md.kit-" + ver)), "an unmodified agent gets no sidecar (kit keeps flowing)");
+    assert.match(upd.stdout + upd.stderr, /product-owner|preserv/i, "the run names the preserved agent");
+  } finally { fs.rmSync(d, { recursive: true, force: true }); }
+});

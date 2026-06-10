@@ -173,6 +173,7 @@ const presetActive = (preset === "none" || preset === "minimal") ? "minimal"
   : (preset || priorManifest.preset || "full-team");
 const manifestFiles = {};
 let backups = 0;
+let preserved = 0;
 function record(rel, cls) { manifestFiles[rel] = { class: cls, version: PKG.version, sha256: sha256(path.join(target, rel)) }; }
 
 // ---- version + breaking notes (P0-5) ----
@@ -193,6 +194,22 @@ const BREAKING = {
   ],
 };
 
+function refreshAgent(src, destRel) {       // agents: preserve if locally modified (ADR 0007 N8)
+  const dest = path.join(target, destRel);
+  const cur = fs.existsSync(dest) ? sha256(dest) : null;
+  const rec = priorSha(destRel);
+  if (rec !== null && cur !== null && cur !== rec && !force) {
+    // Locally modified — preserve adopter's bytes, park kit version beside it
+    copy(src, dest + ".kit-" + PKG.version);
+    preserved++;
+    say("preserve", destRel + "  (your edits kept; kit " + PKG.version + " parked beside it)");
+    // Record the KIT source sha (not on-disk customized sha) so future updates still detect modification
+    manifestFiles[destRel] = { class: "agent", version: PKG.version, sha256: sha256(src) };
+  } else {
+    // Pristine / first install / --force: normal refresh
+    copy(src, dest); record(destRel, "agent");
+  }
+}
 function refresh(src, destRel) {            // always overwrite (pure mechanism)
   const dest = path.join(target, destRel);
   if (fs.existsSync(dest)) {
@@ -220,6 +237,7 @@ function ensureGitignore(targetDir) {
     ".claude/state/tics.jsonl\n" +
     ".claude/state/tics.d/\n" +
     ".claude/**/*.bak\n" +
+    ".claude/agents/*.md.kit-*\n" +
     "*.team-tactics.*\n" +
     END;
   const LEGACY = [["# >>> teamentic (managed) >>>", "# <<< teamentic (managed) <<<"],
@@ -291,7 +309,7 @@ if (cmd === "update") {
 
 // 1) Mechanism — refreshed every run.
 for (const a of ["test-writer", "implementer", "tdd-critic", "planner"])
-  refresh(path.join(TDD, "agents", a + ".md"), path.join(".claude", "agents", a + ".md"));
+  refreshAgent(path.join(TDD, "agents", a + ".md"), path.join(".claude", "agents", a + ".md"));
 // Shared hook library (resolver + defaults), sourced by the hooks below.
 refresh(path.join(TDD, "hooks", "lib.sh"), path.join(".claude", "hooks", "lib.sh"));
 for (const h of ["guard-edit-scope", "run-suite", "require-green-to-stop", "session-green-check", "solo-drift-check", "subagent-handoff", "prompt-directive"]) {
@@ -313,7 +331,7 @@ refresh(path.join(tics.KIT, "docs", "tic-protocol.md"), path.join("docs", "tics"
 if (presetActive === "full-team") {
   const PRESET = path.join(KIT, "presets", "full-team");
   for (const a of ["product-owner", "architect", "qa-verifier", "project-manager", "dev-ops"])
-    refresh(path.join(PRESET, "agents", a + ".md"), path.join(".claude", "agents", a + ".md"));
+    refreshAgent(path.join(PRESET, "agents", a + ".md"), path.join(".claude", "agents", a + ".md"));
   refresh(path.join(PRESET, "docs", "outer-loop.md"), path.join("docs", "tdd", "outer-loop.md"));
   refresh(path.join(PRESET, "docs", "sectioning.md"), path.join("docs", "tdd", "sectioning.md"));
   for (const s of ["backlog.md", "releases.md", "sections.md"])
@@ -341,7 +359,7 @@ for (const f of ["AGENTS.md", "CLAUDE.md", "KICKOFF.md"])
 ensureDir(path.join(target, ".claude", ".team-tactics"));
 fs.writeFileSync(path.join(target, MANIFEST_REL),
   JSON.stringify({ kit: "team-tactics", kitVersion: PKG.version, configSchema: 2, preset: presetActive, updatedAt: new Date().toISOString(), files: manifestFiles }, null, 2) + "\n");
-say("manifest", MANIFEST_REL + (backups ? "  (" + backups + " local change(s) backed up to .bak)" : ""));
+say("manifest", MANIFEST_REL + (backups ? "  (" + backups + " local change(s) backed up to .bak)" : "") + (preserved ? "  ; " + preserved + " customized agent(s) preserved" : ""));
 ensureGitignore(target);
 if (presetActive === "full-team")
   console.log("\n[full-team] outer-loop roles installed (product-owner, architect, qa-verifier, project-manager, dev-ops) — see docs/tdd/outer-loop.md.");
