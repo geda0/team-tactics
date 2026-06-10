@@ -86,6 +86,32 @@ test("install-hooks installs a post-commit that emits a commit tic (cross-tool b
   } finally { fs.rmSync(d, { recursive: true, force: true }); }
 });
 
+test("N5: update REFRESHES an already-installed (stale) team-tactics git hook; never installs/clobbers", () => {
+  const d = gitInstall();
+  try {
+    assert.strictEqual(node("install-hooks", d).status, 0);
+    const pc = path.join(commonHooks(d), "pre-commit");
+    fs.writeFileSync(pc, "#!/bin/sh\n# team-tactics pre-commit (STALE 0.27)\nexit 0\n");   // drift, keeps the sentinel
+    node("update", d);                                                                      // plain update
+    const after = fs.readFileSync(pc, "utf8");
+    assert.doesNotMatch(after, /STALE/, "the stale ttics pre-commit was refreshed by update (no silent rot)");
+    assert.match(after, /green-bar referee|PRECOMMIT_GATE/, "refreshed to the current kit hook");
+    // foreign hook is left untouched by update
+    const post = path.join(commonHooks(d), "post-commit");
+    fs.writeFileSync(post, "#!/bin/sh\n# my own post-commit\nexit 0\n");
+    node("update", d);
+    assert.match(fs.readFileSync(post, "utf8"), /my own post-commit/, "foreign hook preserved across update");
+  } finally { fs.rmSync(d, { recursive: true, force: true }); }
+});
+
+test("N5: update does NOT install git hooks where none exist (install-hooks stays opt-in)", () => {
+  const d = gitInstall();
+  try {
+    node("update", d);
+    assert.ok(!fs.existsSync(path.join(commonHooks(d), "pre-commit")), "no git hook auto-installed on update");
+  } finally { fs.rmSync(d, { recursive: true, force: true }); }
+});
+
 test("tics log merges every worktree's bus BY DEFAULT (whole picture); --here restricts to local", () => {
   const d = gitInstall(); const wt = d + "-wtall";
   try {

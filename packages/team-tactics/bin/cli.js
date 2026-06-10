@@ -128,6 +128,27 @@ function installHooks(target) {
   return skipped ? 1 : 0;
 }
 
+// N5: keep the portable git hooks current. Refresh ONLY hooks already ours (present + sentinel) —
+// never newly install (install-hooks stays the opt-in) and never clobber a foreign hook. So once
+// installed, the cross-tool referee can't silently ROT on `update` (it did in the wild, pre-0.28:
+// a stale pre-commit missed the cross-session claim-check teeth).
+function refreshGitHooks(target) {
+  let cdir;
+  try { cdir = cp.execFileSync("git", ["-C", target, "rev-parse", "--git-common-dir"], { encoding: "utf8", stdio: ["ignore", "pipe", "ignore"] }).trim(); }
+  catch (e) { return; }   // not a git repo — nothing to do
+  const hooksDir = path.isAbsolute(cdir) ? path.join(cdir, "hooks") : path.join(target, cdir, "hooks");
+  let n = 0;
+  for (const name of ["pre-commit", "post-commit"]) {
+    const dest = path.join(hooksDir, name);
+    if (!fs.existsSync(dest)) continue;                                                  // not installed — respect the opt-in
+    if (fs.readFileSync(dest, "utf8").indexOf("team-tactics " + name) === -1) continue;  // foreign — never clobber
+    fs.copyFileSync(name === "post-commit" ? tics.postCommitHook : tdd.preCommitHook, dest);
+    try { fs.chmodSync(dest, 0o755); } catch (e) { /* windows */ }
+    n++;
+  }
+  if (n) console.log("  githooks refreshed " + n + " portable hook(s) — kept current with the kit (N5)");
+}
+
 // ---- manifest (P0-3): track kit-owned files so updates never silently clobber ----
 const PKG = require("../package.json");
 const MANIFEST_REL = path.join(".claude", ".team-tactics", "manifest.json");
@@ -282,6 +303,7 @@ for (const h of ["guard-edit-scope", "run-suite", "require-green-to-stop", "sess
 for (const h of ["tics-lib.sh", "tic.sh", "tics", "tics-view.cjs"]) refresh(path.join(tics.KIT, "hooks", h), path.join(".claude", "hooks", h));
 for (const h of ["tics-lib.sh", "tic.sh", "tics"]) { try { fs.chmodSync(path.join(target, ".claude", "hooks", h), 0o755); } catch (e) {} }
 try { fs.unlinkSync(path.join(target, ".claude", "hooks", "tics-view.js")); } catch (e) {} // migrate stale .js reader -> .cjs
+refreshGitHooks(target);   // N5: keep already-installed portable git hooks current (no silent rot); never installs/clobbers
 for (const d of ["tdd-workflow", "testing-philosophy", "conventions", "divide-and-conquer", "tool-support"])
   refresh(path.join(TDD, "docs", d + ".md"), path.join("docs", "tdd", d + ".md"));
 refresh(path.join(tics.KIT, "docs", "tic-protocol.md"), path.join("docs", "tics", "tic-protocol.md"));
