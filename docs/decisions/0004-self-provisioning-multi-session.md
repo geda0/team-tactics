@@ -56,6 +56,17 @@ sees *no change* — same id (empty), same jsonl, same ergonomics. Opt out with 
   sets `TICS_SESSION`. Two sessions sharing ONE tree (no worktrees) still need `TICS_SESSION` to
   differ — documented; the common real case (worktree-per-session) is handled automatically.
 
+## Implementation notes
+
+- **pt1 (v0.34.0):** `emit_tic` auto-derives the session id from the worktree (above).
+- **pt2 (v0.36.0) — cross-worktree claim visibility, simpler than "relocate the bus".** The read
+  views already merge sibling worktrees (`--all` default, with a dedup that collapses snapshot
+  copies). The only gap was that the *enforcement* readers (`claimCheck`/`claimOwner`/`claimSession`,
+  used by the guard + pre-commit) read the LOCAL bus only. Pt2 switches those three to `loadTicsAll`
+  — so a peer's claim in another worktree is now seen and blocks — reusing the proven merge instead
+  of relocating the bus to a common-dir spool. A single shared spool (and the jsonl seq-race fix)
+  becomes a follow-up under N2, not a prerequisite for cross-visibility.
+
 ## Follow-ups (other ingest slices, not this ADR)
 
 - N2 collision-proof seq fallback for explicit-jsonl multi-writer use.

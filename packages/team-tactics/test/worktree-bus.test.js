@@ -145,3 +145,18 @@ test("C1: SessionStart auto-announces the session (a session/open beacon) only u
     assert.strictEqual(beacons(d2).length, 0, "single-session: no auto-announce beacon (ergonomics unchanged)");
   } finally { fs.rmSync(d, { recursive: true, force: true }); fs.rmSync(d2, { recursive: true, force: true }); }
 });
+
+test("N1 pt2: a claim in one worktree is VISIBLE + BLOCKS across worktrees (cross-worktree enforcement)", () => {
+  const d = gitInstall(); const wt = d + "-pt2";
+  // the REAL enforcement path: the installed reader (.claude/hooks/tics), used by the guard + pre-commit
+  const tics = (dir, ...a) => cp.spawnSync(path.join(dir, ".claude", "hooks", "tics"), a, { cwd: dir, encoding: "utf8", env: ENV });
+  try {
+    git(d, "worktree", "add", "-q", wt, "-b", "pt2branch");
+    emitAs(wt, "wtSess", "ui/S2", "wtSess '*' claim app.js app.js");   // worktree wt's session claims app.js
+    // from the MAIN worktree, enforcement must SEE the sibling's claim (was local-only → blind)
+    assert.match(tics(d, "claim-session", "app.js").stdout, /wtSess/, "claim-session sees the sibling worktree's claim");
+    assert.match(tics(d, "claim-owner", "app.js").stdout, /ui\/S2/, "claim-owner reports the holding scope cross-worktree");
+    assert.notStrictEqual(tics(d, "claim-check", "app.js", "other/S9").status, 0, "claim-check blocks a rival scope cross-worktree");
+    assert.strictEqual(tics(d, "claim-check", "app.js", "ui/S2").status, 0, "the owning scope is not blocked");
+  } finally { try { git(d, "worktree", "remove", "--force", wt); } catch (e) {} fs.rmSync(d, { recursive: true, force: true }); fs.rmSync(wt, { recursive: true, force: true }); }
+});
