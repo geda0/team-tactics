@@ -3,18 +3,15 @@
 # For each pushed refs/tags/v* ref, compares the tag version to root package.json version.
 # Mismatch → nonzero exit naming the drift. Bypass: git push --no-verify or TAGGATE=0.
 [ "${TAGGATE:-1}" = "1" ] || exit 0
-root=$(git rev-parse --show-toplevel 2>/dev/null) || exit 0
-pkg="$root/package.json"
-[ -f "$pkg" ] || exit 0
-ver=$(sed -n 's/.*"version"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' "$pkg" | head -1)
-[ -n "$ver" ] || exit 0
 rc=0
 while read lref lsha rref rsha; do
   case "$rref" in refs/tags/v*) ;; *) continue ;; esac
   case "$lsha" in 0000000000000000000000000000000000000000) continue ;; esac
   tagver="${rref#refs/tags/v}"
-  if [ "$tagver" != "$ver" ]; then
-    printf '[team-tactics] PUSH BLOCKED — tag v%s does not match package.json version %s (version mismatch/drift).\n  To fix: bump package.json to %s and retag, or `git push --no-verify` to bypass.\n' "$tagver" "$ver" "$tagver" >&2
+  commitver=$(git show "$lsha:package.json" 2>/dev/null | sed -n 's/.*"version"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' | head -1)
+  [ -n "$commitver" ] || continue
+  if [ "$tagver" != "$commitver" ]; then
+    printf '[team-tactics] PUSH BLOCKED — tag v%s does not match its commit'\''s package.json version %s (version mismatch/drift).\n  To fix: bump package.json to %s and retag, or `git push --no-verify` to bypass.\n' "$tagver" "$commitver" "$tagver" >&2
     rc=1
   fi
 done

@@ -210,3 +210,30 @@ test("N6: install-hooks installs a pre-push that BLOCKS a tag whose version drif
     assert.strictEqual(git(d, "push", "origin", "v1.0.0").status, 0, "matching tag pushes fine");
   } finally { fs.rmSync(d, { recursive: true, force: true }); fs.rmSync(remote, { recursive: true, force: true }); }
 });
+
+test("F4: pre-push validates a tag against its OWN commit's package.json (a stacked tag matching its commit pushes even after HEAD moved on; a tag mismatching its commit still blocks)", () => {
+  const d = gitInstall(); const remote = d + "-remote";
+  try {
+    // C1: package.json at 1.0.0
+    fs.writeFileSync(path.join(d, "package.json"), '{"name":"x","version":"1.0.0"}\n');
+    git(d, "add", "-A"); git(d, "commit", "-qm", "v1");
+    // bare remote + seed main (C1 on remote)
+    cp.spawnSync("git", ["init", "--bare", remote], { encoding: "utf8", env: ENV });
+    git(d, "remote", "add", "origin", remote);
+    git(d, "push", "origin", "HEAD:refs/heads/main");
+    // install the gate
+    assert.strictEqual(node("install-hooks", d).status, 0);
+    // tag v1.0.0 AT C1 — its own commit's package.json is 1.0.0
+    git(d, "tag", "v1.0.0");
+    // C2: HEAD moves on to 2.0.0
+    fs.writeFileSync(path.join(d, "package.json"), '{"name":"x","version":"2.0.0"}\n');
+    git(d, "add", "-A"); git(d, "commit", "-qm", "v2");
+    // a stacked/historical tag that matches ITS OWN commit must still push, even though HEAD is now 2.0.0
+    assert.strictEqual(git(d, "push", "origin", "v1.0.0").status, 0, "a stacked tag matching its OWN commit pushes even after HEAD moved on");
+    // protective behavior intact: a tag mismatching its own commit (v5.0.0 at C2 whose package.json is 2.0.0) still blocks
+    git(d, "tag", "v5.0.0");
+    const drift = git(d, "push", "origin", "v5.0.0");
+    assert.notStrictEqual(drift.status, 0, "a tag mismatching its own commit still blocks");
+    assert.match(drift.stdout + drift.stderr, /2\.0\.0|5\.0\.0|version|mismatch/i, "names the drift");
+  } finally { fs.rmSync(d, { recursive: true, force: true }); fs.rmSync(remote, { recursive: true, force: true }); }
+});
