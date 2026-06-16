@@ -523,6 +523,118 @@ test("G1: fleetModel collision ignores the '*' wildcard session (no false collis
   assert.deepStrictEqual(dup && dup.sessions, ["sessX", "sessY"], "two real distinct sessions on a scope is a genuine collision");
 });
 
+test("E8-1: greenAttestation classifies a green signal as hook-signed (from=run-suite) vs self-reported (role), null otherwise; never throws", () => {
+  const TV = require(path.join(__dirname, "..", "kit", "hooks", "tics-view.cjs"));
+  // a green signal from the suite-runner hook is real proof
+  assert.strictEqual(TV.greenAttestation({ kind: "signal", result: "green", from: "run-suite" }), "hook-signed");
+  // a green signal hand-emitted by a role is only self-reported
+  assert.strictEqual(TV.greenAttestation({ kind: "signal", result: "green", from: "implementer" }), "self-reported");
+  assert.strictEqual(TV.greenAttestation({ kind: "signal", result: "green", from: "orchestrator" }), "self-reported");
+  // a red signal is never proof, regardless of from
+  assert.strictEqual(TV.greenAttestation({ kind: "signal", result: "red", from: "run-suite" }), null);
+  // a non-signal kind is never an attestation
+  assert.strictEqual(TV.greenAttestation({ kind: "note", from: "run-suite" }), null);
+  // degrade-safe: missing/empty from, malformed/empty object, null -> null, never throws
+  assert.strictEqual(TV.greenAttestation({ kind: "signal", result: "green" }), null);
+  assert.strictEqual(TV.greenAttestation({}), null);
+  assert.strictEqual(TV.greenAttestation(null), null);
+});
+
+test("E8-1b: attestationTally folds signals into {hookSigned,selfReported,greens} (reconciling), skipping non-greens; empty->zeros", () => {
+  const TV = require(path.join(__dirname, "..", "kit", "hooks", "tics-view.cjs"));
+  const tics = [
+    { kind: "signal", result: "green", from: "run-suite", seq: 1 },   // hook-signed
+    { kind: "signal", result: "green", from: "run-suite", seq: 2 },   // hook-signed
+    { kind: "signal", result: "green", from: "implementer", seq: 3 }, // self-reported
+    { kind: "signal", result: "red", from: "run-suite", seq: 4 },     // red -> not counted
+    { kind: "note", from: "run-suite", seq: 5 },                       // non-signal -> not counted
+  ];
+  const r = TV.attestationTally(tics);
+  assert.deepStrictEqual(r, { hookSigned: 2, selfReported: 1, greens: 3 });
+  // reconciliation invariant: every green is exactly one of hook-signed / self-reported
+  assert.strictEqual(r.hookSigned + r.selfReported, r.greens);
+  // degrade-safe: empty list -> zeros, never throws
+  assert.deepStrictEqual(TV.attestationTally([]), { hookSigned: 0, selfReported: 0, greens: 0 });
+  // degrade-safe: a non-array (undefined / null) -> zeros, never throws
+  assert.deepStrictEqual(TV.attestationTally(undefined), { hookSigned: 0, selfReported: 0, greens: 0 });
+  assert.deepStrictEqual(TV.attestationTally(null), { hookSigned: 0, selfReported: 0, greens: 0 });
+});
+
+test("E8-3a: tics gate surfaces a no-hook-signed-green warning (flag-only, still exit 0) when all greens are self-reported; silent when a hook-signed green exists", () => {
+  // Passing PO + critic verdicts keep the gate CLEAR (exit 0). The attestation SURFACE is flag-only:
+  // it warns but must NOT change the exit code (the hard-block under ATTEST_ENFORCE is a later slice).
+  const verdicts =
+    JSON.stringify({ kind: "verdict", from: "product-owner", to: "*", result: "accept", msg: "E8 accept", seq: 1 }) + "\n" +
+    JSON.stringify({ kind: "verdict", from: "tdd-critic", to: "*", result: "pass", msg: "E8 pass", seq: 2 }) + "\n";
+
+  // Case A: greens exist but NONE is hook-signed (a self-reported green only) -> the warning surfaces.
+  const d = inst();
+  // Case B: a hook-signed green (from=run-suite) exists -> no false alarm, the warning stays silent.
+  const e = inst();
+  try {
+    fs.writeFileSync(path.join(d, ".claude", "state", "tics.jsonl"),
+      verdicts +
+      JSON.stringify({ kind: "signal", from: "implementer", to: "*", result: "green", msg: "[app] suite green", seq: 3 }) + "\n");
+    const a = read(d, "gate");
+    const aOut = a.stdout + a.stderr;
+    assert.strictEqual(a.status, 0, "flag-only: the verdict gate stays CLEAR (exit 0) by default — the attestation surface must NOT block: " + aOut);
+    assert.match(aOut, /no hook-signed|unrefereed|self-reported/i, "warns that the release has only self-reported (unrefereed) green evidence");
+
+    fs.writeFileSync(path.join(e, ".claude", "state", "tics.jsonl"),
+      verdicts +
+      JSON.stringify({ kind: "signal", from: "run-suite", to: "*", result: "green", msg: "[app] suite green", seq: 3 }) + "\n");
+    const b = read(e, "gate");
+    const bOut = b.stdout + b.stderr;
+    assert.strictEqual(b.status, 0, "a hook-signed green keeps the gate CLEAR (exit 0): " + bOut);
+    assert.doesNotMatch(bOut, /no hook-signed|unrefereed|self-reported/i, "no false alarm: a hook-signed green means no attestation warning surfaces");
+  } finally {
+    fs.rmSync(d, { recursive: true, force: true });
+    fs.rmSync(e, { recursive: true, force: true });
+  }
+});
+
+test("E8-3b: tics gate hard-blocks under ATTEST_ENFORCE when all greens are self-reported; never false-blocks (hook-signed green / zero greens / default off)", () => {
+  // Passing PO + critic verdicts keep the VERDICT gate CLEAR, isolating the attestation effect.
+  const verdicts =
+    JSON.stringify({ kind: "verdict", from: "product-owner", to: "*", result: "accept", msg: "E8 accept", seq: 1 }) + "\n" +
+    JSON.stringify({ kind: "verdict", from: "tdd-critic", to: "*", result: "pass", msg: "E8 pass", seq: 2 }) + "\n";
+  const selfGreen = JSON.stringify({ kind: "signal", from: "implementer", to: "*", result: "green", msg: "[app] suite green", seq: 3 }) + "\n";
+  const hookGreen = JSON.stringify({ kind: "signal", from: "run-suite", to: "*", result: "green", msg: "[app] suite green", seq: 3 }) + "\n";
+
+  // Case 1 BLOCK: enforce on + only self-reported green -> hard block (non-zero exit).
+  const block = inst();
+  // Case 2 no-false-block: enforce on + a hook-signed green exists -> CLEAR (a refereed green).
+  const hooked = inst();
+  // Case 3 no-false-block: enforce on + zero greens (verdict-only bus) -> nothing to attest, CLEAR.
+  const empty = inst();
+  // Case 4 default off: no ATTEST_ENFORCE + only self-reported green -> S4 flag-only, no block.
+  const def = inst();
+  try {
+    // Arrange — turn the enforce knob on in three installs.
+    [block, hooked, empty].forEach((x) => fs.appendFileSync(path.join(x, ".claude", "tdd.config"), "\nATTEST_ENFORCE=1\n"));
+
+    fs.writeFileSync(path.join(block, ".claude", "state", "tics.jsonl"), verdicts + selfGreen);
+    fs.writeFileSync(path.join(hooked, ".claude", "state", "tics.jsonl"), verdicts + hookGreen);
+    fs.writeFileSync(path.join(empty, ".claude", "state", "tics.jsonl"), verdicts);
+    fs.writeFileSync(path.join(def, ".claude", "state", "tics.jsonl"), verdicts + selfGreen);
+
+    // Act
+    const r1 = read(block, "gate"), o1 = r1.stdout + r1.stderr;
+    const r2 = read(hooked, "gate"), o2 = r2.stdout + r2.stderr;
+    const r3 = read(empty, "gate"), o3 = r3.stdout + r3.stderr;
+    const r4 = read(def, "gate"), o4 = r4.stdout + r4.stderr;
+
+    // Assert
+    assert.notStrictEqual(r1.status, 0, "ATTEST_ENFORCE=1 + only self-reported green -> hard block (non-zero exit): " + o1);
+    assert.match(o1, /hook-signed|unrefereed|self-reported|ATTEST_ENFORCE/i, "the block names the attestation reason: " + o1);
+    assert.strictEqual(r2.status, 0, "no false block: a hook-signed green means a refereed green exists -> CLEAR: " + o2);
+    assert.strictEqual(r3.status, 0, "no false block: zero greens means nothing to attest -> CLEAR: " + o3);
+    assert.strictEqual(r4.status, 0, "default off: self-reported-only green stays flag-only (S4) -> CLEAR: " + o4);
+  } finally {
+    [block, hooked, empty, def].forEach((x) => fs.rmSync(x, { recursive: true, force: true }));
+  }
+});
+
 test("selftest passes (emit + read round-trip)", () => {
   assert.strictEqual(node("selftest").status, 0);
 });

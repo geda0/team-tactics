@@ -56,6 +56,32 @@ test("`tics report` reads signal tics (per-layer metrics)", () => {
   } finally { fs.rmSync(d, { recursive: true, force: true }); }
 });
 
+test("E8-2: tics report splits greens into hook-signed vs self-reported and calls out unrefereed greens", () => {
+  const mixed = freshWithTics([
+    T({ seq: 1, kind: "signal", from: "run-suite", to: "*", result: "green", msg: "[app] suite green" }),
+    T({ seq: 2, kind: "signal", from: "run-suite", to: "*", result: "green", msg: "[app] suite green" }),
+    T({ seq: 3, kind: "signal", from: "implementer", to: "*", result: "green", msg: "[app] suite green" }),
+    T({ seq: 4, kind: "signal", from: "run-suite", to: "*", result: "red", msg: "[app] suite red" }),
+  ]);
+  try {
+    const r = run(["report", mixed]);
+    assert.strictEqual(r.status, 0, r.stderr);
+    assert.match(r.stdout, /hook-signed[^0-9]*2/i, "reports 2 hook-signed greens");
+    assert.match(r.stdout, /self-reported[^0-9]*1/i, "reports 1 self-reported green");
+    assert.match(r.stdout, /unrefereed|not refereed/i, "LOUD call-out when a self-reported green exists");
+  } finally { fs.rmSync(mixed, { recursive: true, force: true }); }
+
+  const allRefereed = freshWithTics([
+    T({ seq: 1, kind: "signal", from: "run-suite", to: "*", result: "green", msg: "[app] suite green" }),
+    T({ seq: 2, kind: "signal", from: "run-suite", to: "*", result: "green", msg: "[app] suite green" }),
+  ]);
+  try {
+    const r = run(["report", allRefereed]);
+    assert.strictEqual(r.status, 0, r.stderr);
+    assert.doesNotMatch(r.stdout, /unrefereed|not refereed/i, "no call-out when every green is hook-signed");
+  } finally { fs.rmSync(allRefereed, { recursive: true, force: true }); }
+});
+
 test("`tics report` falls back to legacy telemetry.jsonl when tics.jsonl is absent", () => {
   const d = fs.mkdtempSync(path.join(os.tmpdir(), "tt-view-"));
   run([d]);

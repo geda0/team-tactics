@@ -548,5 +548,11 @@ function report(targetDir) {
   console.log("  total suite time : " + totalDur + "s over " + runs + " runs");
   const first = events[0].ts, last = events[events.length - 1].ts;
   console.log("  window           : " + first + "  ->  " + last);
+
+  const att = TV.attestationTally(events);
+  console.log("\n  green attestation: hook-signed=" + att.hookSigned + ", self-reported=" + att.selfReported);
+  if (att.selfReported > 0) {
+    console.log("  WARNING: " + att.selfReported + " self-reported (UNREFEREED) green(s) — not signed by the run-suite hook. Does not prove the referee ran.");
+  }
   return 0;
 }

@@ -250,6 +250,25 @@ function cfgNum(targetDir, key, def) {
   try { const m = fs.readFileSync(path.join(targetDir, ".claude", "tdd.config"), "utf8").match(new RegExp("^\\s*" + key + "\\s*=\\s*(\\d+)", "m")); return m ? parseInt(m[1], 10) : def; }
   catch (e) { return def; }
 }
+// Classify a green signal as hook-signed (objective) or self-reported (role), null otherwise.
+function greenAttestation(tic) {
+  if (!tic) return null;
+  if (tic.kind !== "signal" || tic.result !== "green") return null;
+  if (tic.from === "run-suite") return "hook-signed";
+  if (tic.from && typeof tic.from === "string" && tic.from.length > 0) return "self-reported";
+  return null;
+}
+// Fold signals into attestation counts: hook-signed vs self-reported green signals.
+function attestationTally(signals) {
+  const out = { hookSigned: 0, selfReported: 0, greens: 0 };
+  if (!Array.isArray(signals)) return out;
+  for (const tic of signals) {
+    const a = greenAttestation(tic);
+    if (a === "hook-signed") { out.hookSigned++; out.greens++; }
+    else if (a === "self-reported") { out.selfReported++; out.greens++; }
+  }
+  return out;
+}
 // Classify how fresh a last-tic timestamp is. Aliver tier wins at boundaries (inclusive).
 function livenessTier(lastTs, nowMs, idleSec, staleSec) {
   if (lastTs == null) return "unknown";
@@ -471,6 +490,16 @@ function ticsGate(targetDir, all) {
   }
   const qa = latest["qa-verifier"];
   if (qa && verdictOutcome(qa) !== "pass") problems.push("qa-verifier: " + verdictOutcome(qa));
+  const signals = (all ? loadTicsAll(targetDir) : loadTics(targetDir)).filter((x) => x.kind === "signal");
+  const att = attestationTally(signals);
+  const enforce = cfgNum(targetDir, "ATTEST_ENFORCE", 0) === 1;
+  const attestFail = (att.greens >= 1 && att.hookSigned === 0);
+  if (attestFail) {
+    console.error("  ⚠ no hook-signed green evidence — all " + att.selfReported + " green(s) are self-reported (not signed by the run-suite hook). The referee may not have run for this work. (ATTEST_ENFORCE=" + (enforce ? "1" : "0") + ")");
+  }
+  if (attestFail && enforce) {
+    problems.push("unrefereed greens: all " + att.selfReported + " green(s) are self-reported (not hook-signed); set ATTEST_ENFORCE=0 or supply a hook-signed green (run-suite)");
+  }
   if (!problems.length) {
     console.log("Release gate: CLEAR — product-owner + tdd-critic verdicts are pass" + (qa ? " (+ qa-verifier)" : "") + ".");
     return 0;
@@ -553,4 +582,4 @@ function main(argv, defaultRoot) {
 if (require.main === module) {
   process.exit(main(process.argv.slice(2), path.join(__dirname, "..", "..")) || 0);
 }
-module.exports = { loadTics, loadSignalEvents, ticsLog, ticsInbox, ticsConductor, ticsClaims, ticsSections, ticsSessions, ticsTodo, ticsCycle, ticsGate, claimCheck, claimCheckCli, claimOwner, claimOwnerCli, claimSession, claimSessionCli, sectionStatus, sectionStatusCli, livenessTier, fleetModel, ticsBoard, fanOut, main };
+module.exports = { loadTics, loadSignalEvents, ticsLog, ticsInbox, ticsConductor, ticsClaims, ticsSections, ticsSessions, ticsTodo, ticsCycle, ticsGate, claimCheck, claimCheckCli, claimOwner, claimOwnerCli, claimSession, claimSessionCli, sectionStatus, sectionStatusCli, livenessTier, fleetModel, ticsBoard, fanOut, greenAttestation, attestationTally, main };
