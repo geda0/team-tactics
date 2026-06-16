@@ -153,9 +153,15 @@ installed `.claude/hooks/tics` re-derives on the next dogfood install), exported
      green; `honored` = `hasGreen && redBeforeGreen`.
   4. **Scope-degrade:** greens whose scope is empty/absent or `*` are NOT placed in a
      per-scope honored/violation bucket (they are un-replayable, §1) — they contribute to
-     `anyGreen` but never to `anyNotTestFirst`. (Cross-scope matching via `scopeMatch` for
-     `S`/`S/sub` is honored so a sub-scope red can satisfy a parent-scope green's evidence,
-     consistent with the rest of the reader; `*`-only greens remain un-replayable.)
+     `anyGreen` but never to `anyNotTestFirst`. **Scope matching is EXACT-string for the fold
+     floor** (as built, v0.50.0): a hook-signed red satisfies a green's evidence only on the
+     *same* literal scope, so a red on a sibling/parent scope never false-honors a green. This
+     is the degrade-safe minimum and is conservative by design — it can only *under*-honor (miss
+     a `feat/S1` red for a `feat` green), never *over*-honor, so it cannot cause a false
+     CLEAR/block. (Hierarchical `scopeMatch` — a sub-scope red satisfying a parent-scope green,
+     as elsewhere in the reader — is a possible later refinement, DEFERRED: it loosens evidence,
+     so it needs its own slice + tests proving it still can't false-honor. The exact-scope floor
+     ships first.) `*`-only greens remain un-replayable.
   5. Aggregates: `anyGreen` (≥1 hook-signed green anywhere), `anyNotTestFirst` (≥1
      **scoped** hook-signed green whose scope has NO preceding hook-signed red — i.e. ≥1
      `hasGreen && !redBeforeGreen` in a real scope).

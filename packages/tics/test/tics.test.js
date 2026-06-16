@@ -680,6 +680,169 @@ test("E9-1: tics roster lists each standard role with its configured MODEL_<ROLE
   }
 });
 
+test("E10-1a: isHookSignedRed is true only for a red signal from run-suite (self-reported red / green / non-signal / malformed -> false; never throws)", () => {
+  const TV = require(path.join(__dirname, "..", "kit", "hooks", "tics-view.cjs"));
+  // a red signal from the suite-runner hook is hook-signed evidence
+  assert.strictEqual(TV.isHookSignedRed({ kind: "signal", result: "red", from: "run-suite" }), true);
+  // a red signal hand-emitted by a role is only self-reported -> not evidence
+  assert.strictEqual(TV.isHookSignedRed({ kind: "signal", result: "red", from: "implementer" }), false);
+  // a green signal is never a red, regardless of from
+  assert.strictEqual(TV.isHookSignedRed({ kind: "signal", result: "green", from: "run-suite" }), false);
+  // a non-signal kind is never a hook-signed red
+  assert.strictEqual(TV.isHookSignedRed({ kind: "note", from: "run-suite" }), false);
+  // degrade-safe: malformed/empty object, null -> false, never throws
+  assert.strictEqual(TV.isHookSignedRed({}), false);
+  assert.strictEqual(TV.isHookSignedRed(null), false);
+});
+
+test("E10-1b: evidenceFor folds per-scope red-before-green (honored vs not-test-first); self-reported red & red-after-green not evidence; no-scope un-replayable; degrade-safe", () => {
+  const TV = require(path.join(__dirname, "..", "kit", "hooks", "tics-view.cjs"));
+  const S = (m, name) => m.scopes.find((s) => s.scope === name) || {};
+  // Arrange — one fixture covering the four scope cases (explicit ascending seq).
+  const fixture = [
+    // test-first: a hook-signed red precedes the latest hook-signed green -> honored.
+    { seq: 1, kind: "signal", result: "red", from: "run-suite", scope: "feat/S1" },
+    { seq: 2, kind: "signal", result: "green", from: "run-suite", scope: "feat/S1" },
+    // not-test-first: a hook-signed green with no preceding red.
+    { seq: 3, kind: "signal", result: "green", from: "run-suite", scope: "bare/S2" },
+    // self-reported red ignored: the role-emitted red is not evidence -> not test-first.
+    { seq: 4, kind: "signal", result: "red", from: "implementer", scope: "fake/S3" },
+    { seq: 5, kind: "signal", result: "green", from: "run-suite", scope: "fake/S3" },
+    // red-after-green does not honor: the red follows the green by seq -> not test-first.
+    { seq: 6, kind: "signal", result: "green", from: "run-suite", scope: "late/S4" },
+    { seq: 7, kind: "signal", result: "red", from: "run-suite", scope: "late/S4" },
+    // cross-scope: a hook-signed green on xscope/S5 with a hook-signed red on a DIFFERENT scope.
+    // The sibling red must NOT honor xscope/S5 (exact-scope floor; no false-honor across scopes).
+    { seq: 8, kind: "signal", result: "green", from: "run-suite", scope: "xscope/S5" },
+    { seq: 9, kind: "signal", result: "red", from: "run-suite", scope: "sibling/S9" },
+  ];
+  // Act
+  const m = TV.evidenceFor("/tmp/nonexistent-e10", fixture);
+  // Assert — top-level rollups.
+  assert.strictEqual(m.anyGreen, true, "a hook-signed green exists somewhere");
+  assert.strictEqual(m.anyNotTestFirst, true, "at least one scoped green lacks a preceding hook-signed red");
+  // test-first scope -> honored, red-before-green.
+  assert.strictEqual(S(m, "feat/S1").honored, true, "feat/S1 had a hook-signed red before its green -> honored");
+  assert.strictEqual(S(m, "feat/S1").redBeforeGreen, true, "feat/S1 red precedes its latest green");
+  // not-test-first scope -> hasGreen but no preceding red.
+  assert.strictEqual(S(m, "bare/S2").hasGreen, true, "bare/S2 has a hook-signed green");
+  assert.strictEqual(S(m, "bare/S2").redBeforeGreen, false, "bare/S2 has no preceding hook-signed red");
+  assert.strictEqual(S(m, "bare/S2").honored, false, "bare/S2 is not honored (no test-first red)");
+  // self-reported red is not evidence.
+  assert.strictEqual(S(m, "fake/S3").redBeforeGreen, false, "a role-emitted (self-reported) red does not honor the green");
+  // a red after the green does not honor it.
+  assert.strictEqual(S(m, "late/S4").redBeforeGreen, false, "a red AFTER the green (higher seq) does not honor it");
+  // cross-scope: a red on a DIFFERENT scope (sibling/S9) does NOT honor xscope/S5's green.
+  assert.strictEqual(S(m, "xscope/S5").hasGreen, true, "xscope/S5 has a hook-signed green");
+  assert.strictEqual(S(m, "xscope/S5").redBeforeGreen, false, "a red on a different scope (sibling/S9) does not count for xscope/S5");
+  assert.strictEqual(S(m, "xscope/S5").honored, false, "xscope/S5 is not honored (no test-first red on its own scope)");
+  // No-scope degrade: a `*`-only green is un-replayable, never a violation.
+  const star = TV.evidenceFor("/tmp/x", [{ seq: 1, kind: "signal", result: "green", from: "run-suite", scope: "*" }]);
+  assert.strictEqual(star.anyGreen, true, "a `*` green still counts toward anyGreen");
+  assert.strictEqual(star.anyNotTestFirst, false, "a `*`-only green is un-replayable -> NOT a not-test-first violation");
+  // absent scope behaves the same (un-replayable).
+  const noScope = TV.evidenceFor("/tmp/x", [{ seq: 1, kind: "signal", result: "green", from: "run-suite" }]);
+  assert.strictEqual(noScope.anyGreen, true, "a scopeless green still counts toward anyGreen");
+  assert.strictEqual(noScope.anyNotTestFirst, false, "a scopeless green is un-replayable -> NOT a violation");
+  // Degrade-safe: empty list / null -> the zero shape, never throws.
+  assert.deepStrictEqual(TV.evidenceFor("/tmp/x", []), { scopes: [], anyGreen: false, anyNotTestFirst: false });
+  assert.deepStrictEqual(TV.evidenceFor("/tmp/x", null), { scopes: [], anyGreen: false, anyNotTestFirst: false });
+});
+
+test("E10-2: tics gate surfaces a no-red-before-green warning (flag-only, still exit 0) for a not-test-first green; silent when the green is evidenced", () => {
+  // Passing PO + critic verdicts keep the VERDICT gate CLEAR (exit 0), isolating the EVIDENCE effect.
+  // The evidence SURFACE is flag-only by default: it warns but must NOT change the exit code
+  // (the hard-block under EVIDENCE_ENFORCE is the next slice; default config has no EVIDENCE_ENFORCE).
+  const verdicts =
+    JSON.stringify({ kind: "verdict", from: "product-owner", to: "*", result: "accept", msg: "E10 accept", seq: 1 }) + "\n" +
+    JSON.stringify({ kind: "verdict", from: "tdd-critic", to: "*", result: "pass", msg: "E10 pass", seq: 2 }) + "\n";
+
+  // Case A (surface): a hook-signed green on feat/S1 with NO preceding hook-signed red -> not test-first -> warns.
+  const d = inst();
+  // Case B (no false alarm): the same green PRECEDED by a hook-signed red on feat/S1 -> evidenced -> silent.
+  const e = inst();
+  try {
+    fs.writeFileSync(path.join(d, ".claude", "state", "tics.jsonl"),
+      verdicts +
+      JSON.stringify({ kind: "signal", from: "run-suite", to: "*", result: "green", scope: "feat/S1", msg: "[app] suite green", seq: 3 }) + "\n");
+    const a = read(d, "gate");
+    const aOut = a.stdout + a.stderr;
+    assert.strictEqual(a.status, 0, "flag-only: the verdict gate stays CLEAR (exit 0) by default — the evidence surface must NOT block: " + aOut);
+    assert.match(aOut, /red-before-green|not.?test.?first|no .*evidence/i, "warns that a scoped green has no red-before-green (not test-first) evidence: " + aOut);
+    assert.match(aOut, /feat\/S1/, "names the offending scope feat/S1: " + aOut);
+
+    fs.writeFileSync(path.join(e, ".claude", "state", "tics.jsonl"),
+      verdicts +
+      JSON.stringify({ kind: "signal", from: "run-suite", to: "*", result: "red", scope: "feat/S1", msg: "[app] suite red", seq: 3 }) + "\n" +
+      JSON.stringify({ kind: "signal", from: "run-suite", to: "*", result: "green", scope: "feat/S1", msg: "[app] suite green", seq: 4 }) + "\n");
+    const b = read(e, "gate");
+    const bOut = b.stdout + b.stderr;
+    assert.strictEqual(b.status, 0, "an evidenced (test-first) green keeps the gate CLEAR (exit 0): " + bOut);
+    assert.doesNotMatch(bOut, /red-before-green|not.?test.?first|no .*evidence/i, "no false alarm: a hook-signed red before the green means no evidence warning surfaces: " + bOut);
+  } finally {
+    fs.rmSync(d, { recursive: true, force: true });
+    fs.rmSync(e, { recursive: true, force: true });
+  }
+});
+
+test("E10-3: tics gate hard-blocks under EVIDENCE_ENFORCE for a not-test-first green; never false-blocks (evidenced / no greens / default off)", () => {
+  // Passing PO + critic verdicts keep the VERDICT gate CLEAR, isolating the EVIDENCE effect.
+  // All greens/reds are hook-signed (from=run-suite) so this is purely about SEQUENCE (red-before-green),
+  // not provenance — keeping E8's ATTEST_ENFORCE dial entirely out of it.
+  const verdicts =
+    JSON.stringify({ kind: "verdict", from: "product-owner", to: "*", result: "accept", msg: "E10 accept", seq: 1 }) + "\n" +
+    JSON.stringify({ kind: "verdict", from: "tdd-critic", to: "*", result: "pass", msg: "E10 pass", seq: 2 }) + "\n";
+
+  // Case 1 BLOCK: enforce on + a not-test-first green (no preceding red on the scope) -> hard block.
+  const block = inst();
+  // Case 2 no-false-block: enforce on + a red-before-green on the scope -> evidenced -> CLEAR.
+  const evidenced = inst();
+  // Case 3 no-false-block: enforce on + NO greens (verdict-only bus) -> nothing to evidence -> CLEAR.
+  const empty = inst();
+  // Case 4 default off: no EVIDENCE_ENFORCE + a not-test-first green -> E10-2 flag-only, no block.
+  const def = inst();
+  // Case 5 no-false-block: enforce on + a `*`-scope-only green (no preceding red) -> un-replayable -> CLEAR
+  // (ADR 0011 §3 case 3: the solo/zero-config floor — `*`-only greens can't be replayed, so not a not-test-first violation).
+  const wildcard = inst();
+  try {
+    // Arrange — turn the enforce knob on in four installs (mirror the E8-3b ATTEST_ENFORCE pattern).
+    [block, evidenced, empty, wildcard].forEach((x) => fs.appendFileSync(path.join(x, ".claude", "tdd.config"), "\nEVIDENCE_ENFORCE=1\n"));
+
+    fs.writeFileSync(path.join(block, ".claude", "state", "tics.jsonl"),
+      verdicts +
+      JSON.stringify({ kind: "signal", from: "run-suite", to: "*", result: "green", scope: "feat/S1", msg: "[app] suite green", seq: 3 }) + "\n");
+    fs.writeFileSync(path.join(evidenced, ".claude", "state", "tics.jsonl"),
+      verdicts +
+      JSON.stringify({ kind: "signal", from: "run-suite", to: "*", result: "red", scope: "feat/S1", msg: "[app] suite red", seq: 3 }) + "\n" +
+      JSON.stringify({ kind: "signal", from: "run-suite", to: "*", result: "green", scope: "feat/S1", msg: "[app] suite green", seq: 4 }) + "\n");
+    fs.writeFileSync(path.join(empty, ".claude", "state", "tics.jsonl"), verdicts);
+    fs.writeFileSync(path.join(def, ".claude", "state", "tics.jsonl"),
+      verdicts +
+      JSON.stringify({ kind: "signal", from: "run-suite", to: "*", result: "green", scope: "feat/S1", msg: "[app] suite green", seq: 3 }) + "\n");
+    fs.writeFileSync(path.join(wildcard, ".claude", "state", "tics.jsonl"),
+      verdicts +
+      JSON.stringify({ kind: "signal", from: "run-suite", to: "*", result: "green", scope: "*", seq: 3 }) + "\n");
+
+    // Act
+    const r1 = read(block, "gate"), o1 = r1.stdout + r1.stderr;
+    const r2 = read(evidenced, "gate"), o2 = r2.stdout + r2.stderr;
+    const r3 = read(empty, "gate"), o3 = r3.stdout + r3.stderr;
+    const r4 = read(def, "gate"), o4 = r4.stdout + r4.stderr;
+    const r5 = read(wildcard, "gate"), o5 = r5.stdout + r5.stderr;
+
+    // Assert
+    assert.notStrictEqual(r1.status, 0, "EVIDENCE_ENFORCE=1 + a not-test-first green -> hard block (non-zero exit): " + o1);
+    assert.match(o1, /red-before-green|not.?test.?first|evidence|EVIDENCE_ENFORCE/i, "the block names the evidence reason: " + o1);
+    assert.strictEqual(r2.status, 0, "no false block: a red-before-green on the scope means the green is test-first -> CLEAR: " + o2);
+    assert.strictEqual(r3.status, 0, "no false block: zero greens means nothing to evidence -> CLEAR: " + o3);
+    assert.strictEqual(r4.status, 0, "default off: a not-test-first green stays flag-only (E10-2) -> CLEAR: " + o4);
+    assert.strictEqual(r5.status, 0, "no false block: a `*`-only green is un-replayable -> not a not-test-first violation -> CLEAR even with enforce on: " + o5);
+    assert.doesNotMatch(o5, /red-before-green|not.?test.?first/i, "no false-alarm line for an un-replayable `*`-only green: " + o5);
+  } finally {
+    [block, evidenced, empty, def, wildcard].forEach((x) => fs.rmSync(x, { recursive: true, force: true }));
+  }
+});
+
 test("selftest passes (emit + read round-trip)", () => {
   assert.strictEqual(node("selftest").status, 0);
 });

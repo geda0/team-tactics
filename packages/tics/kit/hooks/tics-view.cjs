@@ -267,6 +267,11 @@ function greenAttestation(tic) {
   if (tic.from && typeof tic.from === "string" && tic.from.length > 0) return "self-reported";
   return null;
 }
+// Return true only for a red signal emitted by run-suite (hook-signed red).
+function isHookSignedRed(tic) {
+  if (!tic) return false;
+  return tic.kind === "signal" && tic.result === "red" && tic.from === "run-suite";
+}
 // Fold signals into attestation counts: hook-signed vs self-reported green signals.
 function attestationTally(signals) {
   const out = { hookSigned: 0, selfReported: 0, greens: 0 };
@@ -521,6 +526,15 @@ function ticsGate(targetDir, all) {
   if (attestFail && enforce) {
     problems.push("unrefereed greens: all " + att.selfReported + " green(s) are self-reported (not hook-signed); set ATTEST_ENFORCE=0 or supply a hook-signed green (run-suite)");
   }
+  const ev = evidenceFor(targetDir, signals);
+  const evEnforce = cfgNum(targetDir, "EVIDENCE_ENFORCE", 0) === 1;
+  if (ev.anyNotTestFirst) {
+    const bad = ev.scopes.filter(function(s) { return s.hasGreen && !s.redBeforeGreen; }).map(function(s) { return s.scope; });
+    console.error("  ⚠ green(s) without red-before-green evidence — not proven test-first on: " + bad.join(", ") + " (EVIDENCE_ENFORCE=" + (evEnforce ? "1" : "0") + ")");
+    if (evEnforce) {
+      problems.push("not-test-first greens on: " + bad.join(", ") + " — supply a hook-signed red-before-green on the scope, or set EVIDENCE_ENFORCE=0");
+    }
+  }
   if (!problems.length) {
     console.log("Release gate: CLEAR — product-owner + tdd-critic verdicts are pass" + (qa ? " (+ qa-verifier)" : "") + ".");
     return 0;
@@ -604,4 +618,41 @@ function main(argv, defaultRoot) {
 if (require.main === module) {
   process.exit(main(process.argv.slice(2), path.join(__dirname, "..", "..")) || 0);
 }
-module.exports = { loadTics, loadSignalEvents, ticsLog, ticsInbox, ticsConductor, ticsClaims, ticsSections, ticsSessions, ticsTodo, ticsCycle, ticsGate, claimCheck, claimCheckCli, claimOwner, claimOwnerCli, claimSession, claimSessionCli, sectionStatus, sectionStatusCli, livenessTier, fleetModel, ticsBoard, ticsRoster, fanOut, greenAttestation, attestationTally, cfgStr, main };
+// Pure fold: does the tic list evidence test-first discipline per scope?
+// targetDir is accepted for signature symmetry but the fold reads only the passed tics list.
+function evidenceFor(targetDir, tics) {
+  if (!Array.isArray(tics)) return { scopes: [], anyGreen: false, anyNotTestFirst: false };
+  // Per real-scope buckets: { latestGreenSeq, minHookRedSeq }
+  const buckets = new Map();
+  let anyGreen = false;
+  for (const t of tics) {
+    if (greenAttestation(t) === "hook-signed") {
+      anyGreen = true;
+      const sc = t.scope || "";
+      if (sc === "" || sc === "*") continue; // un-replayable, skip per-scope
+      const b = buckets.get(sc) || { latestGreenSeq: -Infinity, minHookRedSeq: Infinity };
+      const s = (typeof t.seq === "number" ? t.seq : 0);
+      if (s > b.latestGreenSeq) b.latestGreenSeq = s;
+      buckets.set(sc, b);
+    } else if (isHookSignedRed(t)) {
+      const sc = t.scope || "";
+      if (sc === "" || sc === "*") continue;
+      const b = buckets.get(sc) || { latestGreenSeq: -Infinity, minHookRedSeq: Infinity };
+      const s = (typeof t.seq === "number" ? t.seq : 0);
+      if (s < b.minHookRedSeq) b.minHookRedSeq = s;
+      buckets.set(sc, b);
+    }
+  }
+  const scopes = [];
+  let anyNotTestFirst = false;
+  for (const [scope, b] of buckets.entries()) {
+    if (b.latestGreenSeq === -Infinity) continue; // no hook-signed green for this scope
+    const hasGreen = true;
+    const redBeforeGreen = b.minHookRedSeq < b.latestGreenSeq;
+    const honored = hasGreen && redBeforeGreen;
+    if (!redBeforeGreen) anyNotTestFirst = true;
+    scopes.push({ scope, hasGreen, redBeforeGreen, honored });
+  }
+  return { scopes, anyGreen, anyNotTestFirst };
+}
+module.exports = { loadTics, loadSignalEvents, ticsLog, ticsInbox, ticsConductor, ticsClaims, ticsSections, ticsSessions, ticsTodo, ticsCycle, ticsGate, claimCheck, claimCheckCli, claimOwner, claimOwnerCli, claimSession, claimSessionCli, sectionStatus, sectionStatusCli, livenessTier, fleetModel, ticsBoard, ticsRoster, fanOut, greenAttestation, attestationTally, isHookSignedRed, cfgStr, evidenceFor, main };
