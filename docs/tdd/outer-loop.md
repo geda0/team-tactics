@@ -25,6 +25,9 @@ over-build audit, prioritization); **faster** for the implementer (minimal green
 failing test — which is why the implementer, not the test-writer, is the safe tier-down) and the
 mechanics roles (qa-verifier / project-manager / dev-ops). `tics roster` shows the resolved roster. This
 is an orchestrator convention (config + this guidance), not a hook gate — the hooks never see the spawn.
+Model tiering and **slice-sizing** are one convention: size the red→green slice to the executor too — a
+tiered-down implementer (faster model) gets a finer slice, a capable test-writer/role a coarser one (same
+one-behavior-per-red invariant at both; see "Slice granularity" in `docs/tdd/divide-and-conquer.md`, ADR 0010).
 
 ## The loop, per feature
 1. **PLAN** — product-owner selects the next backlog item and writes its acceptance
