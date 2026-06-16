@@ -18,7 +18,7 @@ function rec(m, rel, cls) { if (m) m[rel] = { class: cls, pkg: "@ttics/tdd", ver
 function installTdd(target, manifest) {
   tics.installTics(target, manifest);                                   // 1) the protocol foundation
   const C = path.join(target, ".claude");
-  for (const h of ["lib.sh", "guard-edit-scope.sh", "run-suite.sh", "require-green-to-stop.sh", "session-green-check.sh", "solo-drift-check.sh", "subagent-handoff.sh", "prompt-directive.sh"]) {
+  for (const h of ["lib.sh", "guard-edit-scope.sh", "run-suite.sh", "require-green-to-stop.sh", "session-green-check.sh", "solo-drift-check.sh", "subagent-handoff.sh", "prompt-directive.sh", "tool-witness.sh"]) {
     copy(path.join(KIT, "hooks", h), path.join(C, "hooks", h));
     try { fs.chmodSync(path.join(C, "hooks", h), 0o755); } catch (e) {}
     rec(manifest, path.join(".claude", "hooks", h), "mechanism");
@@ -34,4 +34,4 @@ function installTdd(target, manifest) {
   seedOnce(path.join(KIT, "ci", "tdd-verify.yml"), path.join(target, ".github", "workflows", "tdd-verify.yml"));
   return manifest;
 }
-module.exports = { KIT, PKG, TV: tics.TV, installTdd, installTics: tics.installTics, preCommitHook: path.join(KIT, "githooks", "pre-commit"), prePushHook: path.join(KIT, "githooks", "pre-push"), postCommitHook: tics.postCommitHook };
+module.exports = { KIT, PKG, TV: tics.TV, installTdd, installTics: tics.installTics, preCommitHook: path.join(KIT, "githooks", "pre-commit"), prePushHook: path.join(KIT, "githooks", "pre-push"), postCommitHook: tics.postCommitHook, toolWitnessHook: path.join(KIT, "hooks", "tool-witness.sh") };

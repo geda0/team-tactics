@@ -432,3 +432,53 @@ test("tics gate recognizes product-owner ACCEPT / approved (verdict vocabulary, 
     assert.match(r.stdout, /CLEAR/i);
   } finally { fs.rmSync(d, { recursive: true, force: true }); }
 });
+
+test("E12-1: tics report tallies per-tool usage from witness notes (from=witness only); no witness notes -> no tally", () => {
+  // A signal keeps report from short-circuiting; the witness notes drive the tally.
+  // The architect's `used Read` note is a NON-witness control: it must NOT be counted.
+  const withWitness = freshWithTics([
+    T({ seq: 1, kind: "note", from: "witness", to: "*", msg: "used Read" }),
+    T({ seq: 2, kind: "note", from: "witness", to: "*", msg: "used Read" }),
+    T({ seq: 3, kind: "note", from: "witness", to: "*", msg: "used Read" }),
+    T({ seq: 4, kind: "note", from: "witness", to: "*", msg: "used Edit" }),
+    T({ seq: 5, kind: "note", from: "architect", to: "*", msg: "used Read" }),
+    T({ seq: 6, kind: "signal", from: "run-suite", to: "*", layer: "app", phase: "green", result: "green", durationSec: 2 }),
+  ]);
+  try {
+    const r = run(["report", withWitness]);
+    assert.strictEqual(r.status, 0, r.stderr);
+    assert.match(r.stdout, /tool|witness/i, "a per-tool usage tally heading is shown");
+    assert.match(r.stdout, /Read[^0-9]*3/, "Read tallies 3 (witness notes only — the architect's note is excluded)");
+    assert.match(r.stdout, /Edit[^0-9]*1/, "Edit tallies 1");
+  } finally { fs.rmSync(withWitness, { recursive: true, force: true }); }
+
+  // Degrade-safe: a signal but no witness notes -> the tally heading is absent.
+  const noWitness = freshWithTics([
+    T({ seq: 1, kind: "signal", from: "run-suite", to: "*", layer: "app", phase: "green", result: "green", durationSec: 2 }),
+  ]);
+  try {
+    const r = run(["report", noWitness]);
+    assert.strictEqual(r.status, 0, r.stderr);
+    assert.doesNotMatch(r.stdout, /tool usage|used Read|used Edit/i, "no witness notes -> no tool-usage tally");
+  } finally { fs.rmSync(noWitness, { recursive: true, force: true }); }
+});
+
+test("E12-2b: team-tactics log --witness parses + reveals witness notes (cli.js surface); default hides them", () => {
+  const d = freshWithTics([
+    T({ seq: 1, kind: "note", from: "witness", to: "*", msg: "used Read" }),
+    T({ seq: 2, kind: "delegate", from: "orchestrator", to: "test-writer", msg: "slice X", ref: "X" }),
+  ]);
+  try {
+    // Default: witness note hidden, non-witness tic shown
+    const def = run(["log", d]);
+    assert.strictEqual(def.status, 0, def.stderr);
+    assert.match(def.stdout, /slice X/);
+    assert.doesNotMatch(def.stdout, /used Read/);
+
+    // --witness flag: both notes shown, and must exit 0 (today exits 2 = RED)
+    const w = run(["log", "--witness", d]);
+    assert.strictEqual(w.status, 0, w.stderr);
+    assert.match(w.stdout, /used Read/);
+    assert.match(w.stdout, /slice X/);
+  } finally { fs.rmSync(d, { recursive: true, force: true }); }
+});

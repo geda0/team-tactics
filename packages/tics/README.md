@@ -74,7 +74,7 @@ The installed reader is `.claude/hooks/tics` (full command set). The same reader
 ### Command reference
 
 ```sh
-tics log                       # the thread, newest last (consecutive run-suite signals fold to xN)
+tics log [--witness]           # the thread, newest last (run-suite signals fold to xN); --witness shows tool-use notes (ADR 0013)
 tics inbox <role>              # tics addressed to <role> or broadcast (to = *)
 tics cycle                     # current phase/layer/scope + last suite + cycles since last critic
 tics board                     # scope-grouped fleet board: members + liveness + STUCK/orphan/collision

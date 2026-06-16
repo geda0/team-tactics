@@ -42,7 +42,7 @@ const argv = process.argv.slice(2);
 let force = false;
 let ci = false;
 const rest = [];
-let preset = null, scope = null, all = true;   // whole-picture by default; --here restricts to the local bus
+let preset = null, scope = null, all = true, showWitness = false;   // whole-picture by default; --here restricts to the local bus
 for (let i = 0; i < argv.length; i++) {
   const a = argv[i];
   if (a === "--force" || a === "-f") force = true;
@@ -52,6 +52,7 @@ for (let i = 0; i < argv.length; i++) {
   else if (a === "--minimal") preset = "minimal";   // ADR 0005: opt out of the default full-team
   else if (a === "--ci") ci = true;
   else if (a === "--scope") scope = argv[++i] || ""; else if (a === "--all") all = true; else if (a === "--here") all = false;
+  else if (a === "--witness") showWitness = true;
   else if (a.startsWith("--preset=")) preset = a.slice(9);
   else if (a.startsWith("-")) {
     console.error("tics: unknown option '" + a + "'. Try `team-tactics help`.");
@@ -88,7 +89,7 @@ if (!fs.existsSync(TDD)) {
 if (cmd === "selftest") { process.exit(selftest(target)); }
 if (cmd === "report") { process.exit(report(target)); }
 if (cmd === "validate") { process.exit(validateInstall(target)); }
-if (cmd === "log") { process.exit(TV.ticsLog(target, scope, all)); }
+if (cmd === "log") { process.exit(TV.ticsLog(target, scope, all, showWitness)); }
 if (cmd === "inbox") { process.exit(TV.ticsInbox(target, role, scope)); }
 if (cmd === "conductor") { process.exit(TV.ticsConductor(target, all)); }
 if (cmd === "claims") { process.exit(TV.ticsClaims(target, all)); }
@@ -314,7 +315,7 @@ for (const a of ["test-writer", "implementer", "tdd-critic", "planner"])
   refreshAgent(path.join(TDD, "agents", a + ".md"), path.join(".claude", "agents", a + ".md"));
 // Shared hook library (resolver + defaults), sourced by the hooks below.
 refresh(path.join(TDD, "hooks", "lib.sh"), path.join(".claude", "hooks", "lib.sh"));
-for (const h of ["guard-edit-scope", "run-suite", "require-green-to-stop", "session-green-check", "solo-drift-check", "subagent-handoff", "prompt-directive"]) {
+for (const h of ["guard-edit-scope", "run-suite", "require-green-to-stop", "session-green-check", "solo-drift-check", "subagent-handoff", "prompt-directive", "tool-witness"]) {
   const rel = path.join(".claude", "hooks", h + ".sh");
   refresh(path.join(TDD, "hooks", h + ".sh"), rel);
   try { fs.chmodSync(path.join(target, rel), 0o755); } catch (e) { /* windows */ }
@@ -553,6 +554,13 @@ function report(targetDir) {
   console.log("\n  green attestation: hook-signed=" + att.hookSigned + ", self-reported=" + att.selfReported);
   if (att.selfReported > 0) {
     console.log("  WARNING: " + att.selfReported + " self-reported (UNREFEREED) green(s) — not signed by the run-suite hook. Does not prove the referee ran.");
+  }
+
+  const tally = TV.toolTally(TV.loadTics(targetDir));
+  const tools = Object.keys(tally).sort();
+  if (tools.length) {
+    console.log("\n  Tool usage (witness):");
+    for (const t of tools) console.log("    " + t.padEnd(12) + tally[t]);
   }
   return 0;
 }

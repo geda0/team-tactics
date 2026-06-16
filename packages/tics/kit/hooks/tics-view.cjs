@@ -63,9 +63,10 @@ function collapseRunSuite(list) {
   }
   return out;
 }
-function ticsLog(targetDir, scopeFilter, all) {
+function ticsLog(targetDir, scopeFilter, all, showWitness) {
   let t = loadFor(targetDir, all);
   if (scopeFilter) t = t.filter((x) => scopeMatch(x.scope, scopeFilter));
+  if (!showWitness) t = t.filter((x) => !(x.kind === "note" && x.from === "witness"));
   if (!t.length) { console.log("No tics yet — the agent thread is empty (.claude/state/tics.jsonl)."); return 0; }
   t = collapseRunSuite(t);
   for (const x of t) {
@@ -603,8 +604,8 @@ function fanOut(targetDir, specPath) {
   return 0;
 }
 function main(argv, defaultRoot) {
-  let scope = null, all = true, fromRole = null; const rest = [];   // whole-picture by default (merge every worktree's bus); --here restricts to the local bus
-  for (let i = 0; i < argv.length; i++) { const a = argv[i]; if (a === "--scope") scope = argv[++i] || ""; else if (a === "--all") all = true; else if (a === "--here") all = false; else if (a === "--from") fromRole = argv[++i] || null; else rest.push(a); }
+  let scope = null, all = true, fromRole = null, showWitness = false; const rest = [];   // whole-picture by default (merge every worktree's bus); --here restricts to the local bus
+  for (let i = 0; i < argv.length; i++) { const a = argv[i]; if (a === "--scope") scope = argv[++i] || ""; else if (a === "--all") all = true; else if (a === "--here") all = false; else if (a === "--from") fromRole = argv[++i] || null; else if (a === "--witness") showWitness = true; else rest.push(a); }
   const cmd = rest.shift();
   const role = cmd === "inbox" ? rest.shift() : null;
   const cfFile = cmd === "claim-check" ? rest.shift() : null;
@@ -619,7 +620,7 @@ function main(argv, defaultRoot) {
   if (cmd === "answer") { rest.length = 0; }
   const target = rest[0] ? path.resolve(rest[0]) : (defaultRoot || process.cwd());
   switch (cmd) {
-    case "log": return ticsLog(target, scope, all);
+    case "log": return ticsLog(target, scope, all, showWitness);
     case "inbox": return ticsInbox(target, role, scope);
     case "conductor": return ticsConductor(target, all);
     case "claims": return ticsClaims(target, all);
@@ -712,4 +713,17 @@ function openNeeds(tics) {
   }
   return out;
 }
-module.exports = { loadTics, loadSignalEvents, ticsLog, ticsInbox, ticsConductor, ticsClaims, ticsSections, ticsSessions, ticsTodo, ticsCycle, ticsGate, claimCheck, claimCheckCli, claimOwner, claimOwnerCli, claimSession, claimSessionCli, sectionStatus, sectionStatusCli, livenessTier, fleetModel, ticsBoard, ticsRoster, ticsReview, ticsAnswer, fanOut, greenAttestation, attestationTally, isHookSignedRed, cfgStr, evidenceFor, openNeeds, main };
+// Pure fold: tally per-tool usage from witness notes (from=witness, msg starts with "used ").
+// Returns a map { <tool>: count } or {} if no witness notes match. Never throws.
+function toolTally(tics) {
+  if (!Array.isArray(tics)) return {};
+  const out = {};
+  for (const x of tics) {
+    if (x && x.kind === "note" && x.from === "witness" && typeof x.msg === "string" && x.msg.indexOf("used ") === 0) {
+      const tool = x.msg.slice(5).trim();
+      if (tool) out[tool] = (out[tool] || 0) + 1;
+    }
+  }
+  return out;
+}
+module.exports = { loadTics, loadSignalEvents, ticsLog, ticsInbox, ticsConductor, ticsClaims, ticsSections, ticsSessions, ticsTodo, ticsCycle, ticsGate, claimCheck, claimCheckCli, claimOwner, claimOwnerCli, claimSession, claimSessionCli, sectionStatus, sectionStatusCli, livenessTier, fleetModel, ticsBoard, ticsRoster, ticsReview, ticsAnswer, fanOut, greenAttestation, attestationTally, isHookSignedRed, cfgStr, evidenceFor, openNeeds, main, toolTally };

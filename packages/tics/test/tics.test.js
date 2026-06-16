@@ -84,6 +84,31 @@ test("tics log renders + --scope filters hierarchically; sections summarizes", (
   } finally { fs.rmSync(d, { recursive: true, force: true }); }
 });
 
+test("E12-2: tics log hides from=witness notes by default; --witness (and --all) reveals them; coordination tics unaffected", () => {
+  const d = inst();
+  try {
+    // Arrange — a bus with one witness note (the per-tool activity record, from=witness) and one
+    // real coordination tic. Direct-write deterministic seqs/ts (the log fold is seq/ts-ordered).
+    const ts = "2026-06-16T00:00:00Z";
+    fs.writeFileSync(path.join(d, ".claude", "state", "tics.jsonl"),
+      JSON.stringify({ kind: "note", from: "witness", to: "*", msg: "used Read", scope: "*", seq: 1, ts }) + "\n" +
+      JSON.stringify({ kind: "delegate", from: "orchestrator", to: "test-writer", msg: "slice S2", ref: "S2", scope: "*", seq: 2, ts }) + "\n");
+
+    // Act + Assert — default view HIDES the witness note; the real coordination tic still shows.
+    const def = read(d, "log");
+    assert.strictEqual(def.status, 0, "tics log exits 0 on a witnessed bus: " + def.stderr);
+    assert.match(def.stdout, /slice S2/, "the real coordination tic is shown by default");
+    assert.doesNotMatch(def.stdout, /used Read/, "a from=witness note is HIDDEN by default — the coordination thread stays readable");
+    assert.doesNotMatch(def.stdout, /witness/, "the witness identity does not surface in the default thread");
+
+    // Act + Assert — --witness reveals the witness note AND keeps the real coordination tic.
+    const w = read(d, "log", "--witness");
+    assert.strictEqual(w.status, 0, "tics log --witness exits 0: " + w.stderr);
+    assert.match(w.stdout, /used Read/, "--witness reveals the hidden witness note (the raw activity trace)");
+    assert.match(w.stdout, /slice S2/, "--witness still shows the real coordination tic");
+  } finally { fs.rmSync(d, { recursive: true, force: true }); }
+});
+
 test("coupling views: conductor, claims, claim-check, gate, cycle", () => {
   const d = inst();
   try {
