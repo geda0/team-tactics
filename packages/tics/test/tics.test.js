@@ -311,6 +311,193 @@ test("MS3: tics claim-session <file> reports the SESSION holding an active claim
   } finally { fs.rmSync(d, { recursive: true, force: true }); }
 });
 
+test("E7-1: livenessTier classifies last-tic age into live/idle/stale, aliver-wins at boundaries, unknown when unparseable", () => {
+  const TV = require(path.join(__dirname, "..", "kit", "hooks", "tics-view.cjs"));
+  const now = Date.UTC(2026, 5, 16, 0, 0, 0);
+  const idleSec = 300, staleSec = 900;
+  const tsAge = (ageSec) => new Date(now - ageSec * 1000).toISOString();
+  // recent -> live; older than idle but within stale -> idle; older than stale -> stale
+  assert.strictEqual(TV.livenessTier(tsAge(10), now, idleSec, staleSec), "live");
+  assert.strictEqual(TV.livenessTier(tsAge(600), now, idleSec, staleSec), "idle");
+  assert.strictEqual(TV.livenessTier(tsAge(1200), now, idleSec, staleSec), "stale");
+  // boundary inclusive on the aliver side
+  assert.strictEqual(TV.livenessTier(tsAge(idleSec), now, idleSec, staleSec), "live");
+  assert.strictEqual(TV.livenessTier(tsAge(staleSec), now, idleSec, staleSec), "idle");
+  // degrade-safe: missing / unparseable -> unknown, never throws
+  assert.strictEqual(TV.livenessTier(undefined, now, idleSec, staleSec), "unknown");
+  assert.strictEqual(TV.livenessTier("not-a-date", now, idleSec, staleSec), "unknown");
+});
+
+test("E7-2: tics board groups members by scope (unscoped bucket) with a liveness tier; empty bus exits 0 friendly", () => {
+  const d = inst();
+  const e = inst();
+  try {
+    // A populated bus: sessA holds scope auth/S1 (active claim); sessB holds no scope -> unscoped.
+    srcLib(d, "export TICS_SESSION='sessA'; export TICS_SCOPE='auth/S1'; emit_tic a '*' claim login.ts login.ts");
+    srcLib(d, "export TICS_SESSION='sessB'; emit_tic b '*' note hello");
+    const b = read(d, "board");
+    assert.strictEqual(b.status, 0, "board renders a populated bus: " + b.stderr);
+    const line = (s) => b.stdout.split("\n").find((l) => l.includes(s)) || "";
+    assert.match(b.stdout, /auth\/S1/, "groups under the held scope heading");
+    assert.match(line("sessA"), /auth\/S1|live/i, "sessA appears with its scope/liveness");
+    assert.match(b.stdout, /sessA/, "the scope holder is shown");
+    assert.match(b.stdout, /live/i, "a liveness tier word is shown (fresh tics read live)");
+    assert.match(b.stdout, /unscoped/i, "members holding no scope group under unscoped");
+    assert.match(line("sessB"), /sessB/, "the no-scope member is listed");
+
+    // Empty bus: friendly indicator, still exits 0 (degrade-safe).
+    const eb = read(e, "board");
+    assert.strictEqual(eb.status, 0, "an empty bus still exits 0: " + eb.stderr);
+    assert.match(eb.stdout, /no .*(fleet|activity|sessions)/i, "prints a friendly empty indicator");
+  } finally {
+    fs.rmSync(d, { recursive: true, force: true });
+    fs.rmSync(e, { recursive: true, force: true });
+  }
+});
+
+test("E7-3: tics board flags STUCK only for a held scope that is stale — never idle/live/unknown or unscoped", () => {
+  const d = inst();
+  try {
+    // Deterministic timestamps: liveness is computed from real Date.now(), and `stale` means older
+    // than LIVENESS_STALE_SEC (default 900s). So build the bus directly (NOT emit_tic, which stamps
+    // "now"). CLAIMS_TTL stays at its default (0 = off) so a stale holder still HOLDS its claim.
+    const now = Date.now();
+    const stale = new Date(now - 3600 * 1000).toISOString();   // 1h ago -> stale
+    const live = new Date(now - 5 * 1000).toISOString();        // 5s ago -> live
+    const idle = new Date(now - 600 * 1000).toISOString();      // 600s ago -> between idle(300) and stale(900) -> idle
+    fs.writeFileSync(path.join(d, ".claude", "state", "tics.jsonl"),
+      JSON.stringify({ ts: stale, seq: 1, kind: "claim", from: "a", to: "*", scope: "pay/S1", session: "sessStuck", ref: "api.ts", msg: "api.ts" }) + "\n" +
+      JSON.stringify({ ts: live, seq: 2, kind: "claim", from: "b", to: "*", scope: "ui/S2", session: "sessLive", ref: "web.ts", msg: "web.ts" }) + "\n" +
+      JSON.stringify({ ts: stale, seq: 3, kind: "note", from: "c", to: "*", session: "sessGhostNoScope", msg: "ghost" }) + "\n" +
+      JSON.stringify({ ts: idle, seq: 4, kind: "claim", from: "e", to: "*", scope: "idle/S3", session: "sessIdleHeld", ref: "idle.ts", msg: "idle.ts" }) + "\n" +
+      JSON.stringify({ ts: "not-a-date", seq: 5, kind: "claim", from: "f", to: "*", scope: "unk/S4", session: "sessUnknownHeld", ref: "unk.ts", msg: "unk.ts" }) + "\n");
+    const b = read(d, "board");
+    assert.strictEqual(b.status, 0, "board renders the populated bus: " + b.stderr);
+    assert.match(b.stdout, /STUCK/, "a STUCK call-out token is shown");
+    const stuckText = b.stdout.split("\n").filter((l) => /STUCK/i.test(l)).join("\n");
+    assert.match(stuckText, /sessStuck|pay\/S1/, "STUCK names the held-and-stale member (sessStuck / pay/S1)");
+    assert.doesNotMatch(stuckText, /sessLive/, "a live holder is never STUCK (no false alarm)");
+    assert.doesNotMatch(stuckText, /sessGhostNoScope/, "a stale member holding no scope is never STUCK (no false alarm)");
+    assert.doesNotMatch(stuckText, /sessIdleHeld/, "an idle holder is never STUCK (no false alarm)");
+    assert.doesNotMatch(stuckText, /sessUnknownHeld/, "an unknown-liveness holder is never STUCK (no false alarm)");
+  } finally { fs.rmSync(d, { recursive: true, force: true }); }
+});
+
+test("E7-4: tics board surfaces orphan/abandoned claims (closed-session holder) — never a live holder", () => {
+  const d = inst();
+  try {
+    // sessGone claims a scope, then closes its session WITHOUT releasing -> claim is abandoned (orphan).
+    srcLib(d, "export TICS_SESSION='sessGone'; export TICS_SCOPE='abandoned/S1'; emit_tic g '*' claim old.ts old.ts");
+    srcLib(d, "export TICS_SESSION='sessGone'; emit_tic g '*' session leaving '' close");
+    // sessHere claims a scope and stays live (a known/live holder) -> NOT orphan.
+    srcLib(d, "export TICS_SESSION='sessHere'; export TICS_SCOPE='active/S2'; emit_tic h '*' claim live.ts live.ts");
+
+    const b = read(d, "board");
+    assert.strictEqual(b.status, 0, "board renders the populated bus: " + b.stderr);
+    assert.match(b.stdout, /orphan|abandoned/i, "an orphan/abandoned call-out token is shown");
+    const orphanText = b.stdout.split("\n").filter((l) => /orphan|abandoned/i.test(l)).join("\n");
+    assert.match(orphanText, /old\.ts|abandoned\/S1|sessGone/, "orphan names the abandoned claim (ref/scope/session)");
+    assert.doesNotMatch(orphanText, /live\.ts/, "a live holder's claim is never orphan (no false alarm)");
+    assert.doesNotMatch(orphanText, /active\/S2/, "a live holder's scope is never orphan (no false alarm)");
+    assert.doesNotMatch(orphanText, /sessHere/, "a live holder's session is never orphan (no false alarm)");
+  } finally { fs.rmSync(d, { recursive: true, force: true }); }
+});
+
+test("E7-5: tics board flags a scope touched by >=2 distinct sessions as a collision — one session (even many tics) is not", () => {
+  const d = inst();
+  try {
+    // shared/S1 is touched by two DISTINCT sessions -> a collision.
+    srcLib(d, "export TICS_SESSION='sessX'; export TICS_SCOPE='shared/S1'; emit_tic x '*' note working");
+    srcLib(d, "export TICS_SESSION='sessY'; export TICS_SCOPE='shared/S1'; emit_tic y '*' note working");
+    // solo/S2 is touched by ONE session twice -> NOT a collision (no self-collision).
+    srcLib(d, "export TICS_SESSION='sessZ'; export TICS_SCOPE='solo/S2'; emit_tic z '*' note one");
+    srcLib(d, "export TICS_SESSION='sessZ'; export TICS_SCOPE='solo/S2'; emit_tic z '*' note two");
+
+    const b = read(d, "board");
+    assert.strictEqual(b.status, 0, "board renders the populated bus: " + b.stderr);
+    assert.match(b.stdout, /collision/i, "a collision call-out token is shown");
+    const collisionText = b.stdout.split("\n").filter((l) => /collision/i.test(l)).join("\n");
+    assert.match(collisionText, /shared\/S1/, "collision names the contested scope");
+    assert.match(collisionText, /sessX/, "collision names the first colliding session");
+    assert.match(collisionText, /sessY/, "collision names the second colliding session");
+    assert.doesNotMatch(collisionText, /solo\/S2/, "one session's many tics never self-collide (no false alarm)");
+  } finally { fs.rmSync(d, { recursive: true, force: true }); }
+});
+
+test("E7-6: tics cycle prints a fleet-health line (stuck/orphan/collision counts + liveness tally); quiet bus shows zeros, exits 0", () => {
+  const d = inst();
+  const e = inst();
+  try {
+    // Quiet/empty bus: fleet-health line reports zeros and cycle still exits 0.
+    const ec = read(e, "cycle");
+    assert.strictEqual(ec.status, 0, "cycle exits 0 on a quiet bus: " + ec.stderr);
+    const eFleet = ec.stdout.split("\n").find((l) => /fleet/i.test(l)) || "";
+    assert.match(eFleet, /fleet/i, "a fleet-health line is printed on a quiet bus");
+    assert.match(eFleet, /stuck[^0-9]*0/i, "quiet bus reports zero stuck");
+    assert.match(eFleet, /colli\w*[^0-9]*0/i, "quiet bus reports zero collisions");
+
+    // Populated bus: two distinct sessions on hot/S1 -> one collision; fresh tics -> live members.
+    srcLib(d, "export TICS_SESSION='sA'; export TICS_SCOPE='hot/S1'; emit_tic a '*' note x");
+    srcLib(d, "export TICS_SESSION='sB'; export TICS_SCOPE='hot/S1'; emit_tic b '*' note y");
+    const c = read(d, "cycle");
+    assert.strictEqual(c.status, 0, "cycle exits 0 on a populated bus: " + c.stderr);
+    const fleet = c.stdout.split("\n").find((l) => /fleet/i.test(l)) || "";
+    assert.match(fleet, /colli\w*[^0-9]*[1-9]/i, "fleet-health line shows at least one collision");
+    assert.match(fleet, /live[^0-9]*[1-9]/i, "fleet-health line reflects the live members in its liveness tally");
+  } finally {
+    fs.rmSync(d, { recursive: true, force: true });
+    fs.rmSync(e, { recursive: true, force: true });
+  }
+});
+
+test("E7-4b: tics board surfaces a CLAIMS_TTL-stale claim as orphan (reason=stale) — live holder within TTL is not", () => {
+  const d = inst();
+  try {
+    fs.appendFileSync(path.join(d, ".claude", "tdd.config"), "\nCLAIMS_TTL=60\n");   // 60s lifecycle window
+    const now = Date.now();
+    const stale = new Date(now - 3600 * 1000).toISOString();   // 1h ago -> past TTL, never closed -> orphan (stale)
+    const fresh = new Date(now - 5 * 1000).toISOString();       // 5s ago -> within TTL -> active, not orphan
+    fs.writeFileSync(path.join(d, ".claude", "state", "tics.jsonl"),
+      JSON.stringify({ ts: stale, seq: 1, kind: "claim", from: "a", to: "*", scope: "ghosttown/S1", session: "sessStaleHold", ref: "ghost.ts", msg: "ghost.ts" }) + "\n" +
+      JSON.stringify({ ts: fresh, seq: 2, kind: "claim", from: "b", to: "*", scope: "town/S2", session: "sessFresh", ref: "fresh.ts", msg: "fresh.ts" }) + "\n");
+
+    const b = read(d, "board");
+    assert.strictEqual(b.status, 0, "board renders the populated bus: " + b.stderr);
+    assert.match(b.stdout, /orphan|abandoned/i, "an orphan/abandoned call-out token is shown");
+    const orphanText = b.stdout.split("\n").filter((l) => /orphan|abandoned/i.test(l)).join("\n");
+    assert.match(orphanText, /ghost\.ts|ghosttown\/S1|sessStaleHold/, "orphan names the TTL-stale abandoned claim");
+    assert.match(orphanText, /reason=stale|stale/i, "orphan reports a stale lifecycle reason");
+    assert.doesNotMatch(orphanText, /fresh\.ts/, "a within-TTL holder's claim is never orphan (no false alarm)");
+    assert.doesNotMatch(orphanText, /town\/S2/, "a within-TTL holder's scope is never orphan (no false alarm)");
+    assert.doesNotMatch(orphanText, /sessFresh/, "a within-TTL holder's session is never orphan (no false alarm)");
+  } finally { fs.rmSync(d, { recursive: true, force: true }); }
+});
+
+test("F1: a commented CLAIMS_TTL in tdd.config is inactive (cfgNum ignores #-commented lines) — claims do not silently expire", () => {
+  const d = inst();
+  try {
+    // The kit ships CLAIMS_TTL as a COMMENTED example; it must read as OFF (0=off), not active.
+    fs.appendFileSync(path.join(d, ".claude", "tdd.config"), "\n#   CLAIMS_TTL=900    # example default (commented)\n");
+    const now = Date.now();
+    const stale = new Date(now - 3600 * 1000).toISOString();   // 1h ago -> would expire IF the commented TTL=900 were active
+    fs.writeFileSync(path.join(d, ".claude", "state", "tics.jsonl"),
+      JSON.stringify({ ts: stale, seq: 1, kind: "claim", from: "a", to: "*", scope: "x/S1", session: "sX", ref: "old.ts", msg: "old.ts" }) + "\n");
+    assert.match(read(d, "claims").stdout, /old\.ts/, "a COMMENTED CLAIMS_TTL must be OFF (0=off) — the claim is NOT expired");
+  } finally { fs.rmSync(d, { recursive: true, force: true }); }
+});
+
+test("F1b: a commented RED_STREAK_LIMIT is inactive (tics cycle uses the default limit) — no false red-storm", () => {
+  const d = inst();
+  try {
+    // A COMMENTED knob must be ignored; the default limit (5) applies.
+    fs.appendFileSync(path.join(d, ".claude", "tdd.config"), "\n#   RED_STREAK_LIMIT=2    # example (commented)\n");
+    fs.writeFileSync(path.join(d, ".claude", "state", "red-streak"), "3\n");   // above commented "2", below default 5
+    const c = read(d, "cycle").stdout;
+    assert.match(c, /red-streak.*3|3 reds/i, "shows the current streak");
+    assert.doesNotMatch(c, /over-constrained|contradictory|red-storm|reconsider/i, "a COMMENTED RED_STREAK_LIMIT must be inactive — default limit (5) applies, so streak 3 is not a red-storm");
+  } finally { fs.rmSync(d, { recursive: true, force: true }); }
+});
+
 test("selftest passes (emit + read round-trip)", () => {
   assert.strictEqual(node("selftest").status, 0);
 });

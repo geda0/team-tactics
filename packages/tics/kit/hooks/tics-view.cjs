@@ -247,12 +247,124 @@ function activeClaims(tics, opts) {
 }
 // Read a numeric setting from tdd.config (e.g. CLAIMS_TTL), default if absent/unreadable.
 function cfgNum(targetDir, key, def) {
-  try { const m = fs.readFileSync(path.join(targetDir, ".claude", "tdd.config"), "utf8").match(new RegExp(key + "\\s*=\\s*(\\d+)")); return m ? parseInt(m[1], 10) : def; }
+  try { const m = fs.readFileSync(path.join(targetDir, ".claude", "tdd.config"), "utf8").match(new RegExp("^\\s*" + key + "\\s*=\\s*(\\d+)", "m")); return m ? parseInt(m[1], 10) : def; }
   catch (e) { return def; }
+}
+// Classify how fresh a last-tic timestamp is. Aliver tier wins at boundaries (inclusive).
+function livenessTier(lastTs, nowMs, idleSec, staleSec) {
+  if (lastTs == null) return "unknown";
+  const t = Date.parse(lastTs);
+  if (isNaN(t)) return "unknown";
+  const age = (nowMs - t) / 1000;
+  if (age <= idleSec) return "live";
+  if (age <= staleSec) return "idle";
+  return "stale";
 }
 // Active claims for a target dir, with the stale-TTL applied (CLAIMS_TTL seconds from tdd.config;
 // 0 = off). The single entry every claim consumer uses, so release-on-stale is uniform.
 function claimsFor(targetDir, tics) { return activeClaims(tics, { nowMs: Date.now(), ttlSec: cfgNum(targetDir, "CLAIMS_TTL", 0) }); }
+// Fleet model: fold the bus into members grouped by held scope, with liveness tiers.
+// opts.nowMs injectable for tests; idleSec/staleSec come from tdd.config with defaults.
+function fleetModel(targetDir, tics, opts) {
+  opts = opts || {};
+  const nowMs = opts.nowMs != null ? opts.nowMs : Date.now();
+  const idleSec = cfgNum(targetDir, "LIVENESS_IDLE_SEC", 300);
+  const staleSec = cfgNum(targetDir, "LIVENESS_STALE_SEC", 900);
+  const ttlMs = cfgNum(targetDir, "CLAIMS_TTL", 0) * 1000;
+  // Single pass: sessLatest, raw claim ledger, section status, closed sessions.
+  const sessLatest = new Map();
+  const rawLedger = new Map();   // ref -> tic (claim minus release, no drops)
+  const secStatus = new Map();   // section name -> latest lifecycle result
+  const sessClosed = new Set();
+  const scopeSessions = new Map(); // scope -> Set of distinct sessions (for collision detection)
+  for (const x of tics) {
+    const id = x.session || "";
+    if (id) { const ts = x.ts || ""; if (ts > (sessLatest.get(id) || "")) sessLatest.set(id, ts); }
+    if (x.kind === "section" && x.ref && x.result) secStatus.set(x.ref, x.result);
+    if (x.kind === "session" && x.session) {
+      if (x.result === "close" || x.result === "closed") sessClosed.add(x.session);
+      else sessClosed.delete(x.session);
+    }
+    if (x.kind === "claim" && x.ref) rawLedger.set(x.ref, x);
+    else if (x.kind === "release" && x.ref) rawLedger.delete(x.ref);
+    const sc = x.scope || "";
+    if (sc && sc !== "*" && id) { let s = scopeSessions.get(sc); if (!s) { s = new Set(); scopeSessions.set(sc, s); } s.add(id); }
+  }
+  const activeCls = claimsFor(targetDir, tics);
+  const sessScope = new Map();
+  for (const x of activeCls.values()) {
+    if (x.session && x.scope && x.scope !== "*") sessScope.set(x.session, x.scope);
+  }
+  const members = [];
+  for (const [id, lastTs] of sessLatest.entries()) {
+    const scope = sessScope.get(id) || null;
+    const liveness = livenessTier(lastTs, nowMs, idleSec, staleSec);
+    const stuck = scope != null && liveness === "stale";
+    members.push({ session: id, scope, liveness, lastTs, stuck });
+  }
+  const byScope = {};
+  for (const m of members) {
+    const key = m.scope || "unscoped";
+    if (!byScope[key]) byScope[key] = [];
+    byScope[key].push(m);
+  }
+  const tally = { live: 0, idle: 0, stale: 0, unknown: 0 };
+  for (const m of members) tally[m.liveness] = (tally[m.liveness] || 0) + 1;
+  // Orphans: raw-ledger claims NOT in active set, dropped due to session death (not section-done).
+  const orphans = [];
+  for (const [ref, x] of rawLedger.entries()) {
+    if (activeCls.has(ref)) continue;
+    if (secStatus.get((x.scope || "").split("/")[0]) === "done") continue;
+    const sess = x.session || "";
+    if (!sess) continue;
+    const isClosedSess = sessClosed.has(sess);
+    let isTtlStale = false;
+    if (ttlMs > 0 && nowMs > 0) {
+      const last = Date.parse(sessLatest.get(sess) || "") || 0;
+      if (last > 0 && (nowMs - last) > ttlMs) isTtlStale = true;
+    }
+    if (isClosedSess || isTtlStale) orphans.push({ scope: x.scope || "*", ref, session: sess, reason: isClosedSess ? "closed" : "stale" });
+  }
+  // Collisions: scopes touched by >=2 distinct sessions.
+  const collisions = [];
+  for (const [sc, sessSet] of scopeSessions.entries()) {
+    if (sessSet.size >= 2) collisions.push({ scope: sc, sessions: [...sessSet].sort() });
+  }
+  return { members, byScope, tally, orphans, collisions };
+}
+// Board view (ADR 0008): fleet at a glance — members grouped by held scope with liveness tier.
+function ticsBoard(targetDir, all) {
+  const tics = loadFor(targetDir, all);
+  const model = fleetModel(targetDir, tics);
+  if (!model.members.length) { console.log("No fleet activity yet — the agent bus is empty."); return 0; }
+  console.log("Fleet board:");
+  const scopes = Object.keys(model.byScope).sort((a, b) => {
+    if (a === "unscoped") return 1;
+    if (b === "unscoped") return -1;
+    return a.localeCompare(b);
+  });
+  for (const sc of scopes) {
+    console.log("  [" + sc + "]");
+    for (const m of model.byScope[sc]) {
+      const when = (m.lastTs || "").slice(11, 19);
+      const stuckMark = m.stuck ? "  STUCK" : "";
+      console.log("    " + m.session.padEnd(16) + m.liveness.padEnd(8) + when + stuckMark);
+    }
+  }
+  if (model.orphans.length) {
+    console.log("Orphaned claims (holder gone — closed or stale):");
+    for (const o of model.orphans) {
+      console.log("  orphan: " + o.scope + "  ref=" + o.ref + "  session=" + o.session + "  reason=" + o.reason);
+    }
+  }
+  if (model.collisions.length) {
+    console.log("Scope collisions (>=2 distinct sessions on one scope):");
+    for (const c of model.collisions) {
+      console.log("  collision: " + c.scope + "  sessions=" + c.sessions.join(", "));
+    }
+  }
+  return 0;
+}
 function claimCheck(targetDir, file, myScope) {
   if (!file || !myScope) return null;            // unscoped editor or no path -> no enforcement
   const active = claimsFor(targetDir, loadTicsAll(targetDir));   // ADR 0004 pt2: enforce ACROSS worktrees (the host gives each session its own) so a peer's claim is seen
@@ -324,14 +436,16 @@ function ticsCycle(targetDir) {
   console.log("  last suite: " + (lastSig ? (lastSig.result || "?") : "(none yet)"));
   const streak = parseInt(rd("red-streak") || "0", 10);
   if (streak > 0) {
-    const cfg = (() => { try { return fs.readFileSync(path.join(targetDir, ".claude", "tdd.config"), "utf8"); } catch (e) { return ""; } })();
-    const m = cfg.match(/RED_STREAK_LIMIT\s*=\s*(\d+)/);
-    const lim = m ? parseInt(m[1], 10) : 5;
+    const lim = cfgNum(targetDir, "RED_STREAK_LIMIT", 5);
     if (streak >= lim) console.log("  red-streak: " + streak + " reds in a row — suspected OVER-CONSTRAINED/CONTRADICTORY test; reconsider it (route to test-writer) or escalate, don't grind.");
     else console.log("  red-streak: " + streak);
   }
   if (since > 5) console.log("  " + since + " cycles since the last tdd-critic verdict — consider a critic pass (rule: every ~3-5 cycles).");
   else console.log("  " + since + " cycles since the last critic verdict.");
+  const fm = fleetModel(targetDir, t);
+  const stuck = fm.members.filter((m) => m.stuck).length;
+  const tl = fm.tally;
+  console.log("  Fleet: " + stuck + " stuck, " + fm.orphans.length + " orphan, " + fm.collisions.length + " collisions | live " + tl.live + " idle " + tl.idle + " stale " + tl.stale + " unknown " + tl.unknown);
   return 0;
 }
 function verdictOutcome(x) {
@@ -431,10 +545,11 @@ function main(argv, defaultRoot) {
     case "claim-session": return claimSessionCli(target, csFile);
     case "section-status": return sectionStatusCli(target, soName);
     case "fan-out": return fanOut(target, foSpec);
-    default: console.error("usage: tics <log [--scope S] | inbox <role> [--scope S] | conductor | claims | sections | claim-check <file> <scope> | claim-owner <file> | section-status <name> | fan-out <spec>] [--all]>"); return 2;
+    case "board": return ticsBoard(target, all);
+    default: console.error("usage: tics <log [--scope S] | inbox <role> [--scope S] | conductor | claims | sections | sessions | board | claim-check <file> <scope> | claim-owner <file> | section-status <name> | fan-out <spec>] [--all]>"); return 2;
   }
 }
 if (require.main === module) {
   process.exit(main(process.argv.slice(2), path.join(__dirname, "..", "..")) || 0);
 }
-module.exports = { loadTics, loadSignalEvents, ticsLog, ticsInbox, ticsConductor, ticsClaims, ticsSections, ticsSessions, ticsTodo, ticsCycle, ticsGate, claimCheck, claimCheckCli, claimOwner, claimOwnerCli, claimSession, claimSessionCli, sectionStatus, sectionStatusCli, fanOut, main };
+module.exports = { loadTics, loadSignalEvents, ticsLog, ticsInbox, ticsConductor, ticsClaims, ticsSections, ticsSessions, ticsTodo, ticsCycle, ticsGate, claimCheck, claimCheckCli, claimOwner, claimOwnerCli, claimSession, claimSessionCli, sectionStatus, sectionStatusCli, livenessTier, fleetModel, ticsBoard, fanOut, main };

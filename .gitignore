@@ -9,6 +9,7 @@ node_modules/
 .claude/state/tics.jsonl
 .claude/state/tics.d/
 .claude/**/*.bak
+.claude/agents/*.md.kit-*
 *.team-tactics.*
 # <<< team-tactics (managed) <<<
 

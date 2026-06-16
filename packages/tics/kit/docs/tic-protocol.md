@@ -63,7 +63,8 @@ Use the installed reader `.claude/hooks/tics <cmd>` (agents) or `npx team-tactic
 - `tics report` — process metrics aggregated from the `signal` tics.
 - `tics conductor` — the cross-pair coupling tics only (claim/release/contract/need/msg).
 - `tics claims` — active file/module claims (claim minus release), by scope.
-- `tics cycle` — inner-loop dashboard: phase/layer/scope + last suite signal + cycles since the last tdd-critic verdict (nudges a critic pass when overdue).
+- `tics cycle` — inner-loop dashboard: phase/layer/scope + last suite signal + cycles since the last tdd-critic verdict (nudges a critic pass when overdue) + a one-line fleet-health summary (STUCK/orphan/collision counts + a live/idle/stale/unknown liveness tally).
+- `tics board` — the fleet board (ADR 0008): one row per session/member grouped by held scope (an `unscoped` bucket for the rest), each with a locally-computed **liveness** tier (`live`/`idle`/`stale`/`unknown` from last-tic age vs `LIVENESS_IDLE_SEC`/`LIVENESS_STALE_SEC`), plus loud call-outs — **STUCK** (holds a scope yet is stale), **orphaned claims** (a claim whose holder closed or went `CLAIMS_TTL`-stale), and **collisions** (a scope touched by ≥2 distinct sessions). A pure read-side fold over the bus; degrade-safe (never invents a tier, never false-alarms).
 - `tics gate` — release gate: exits non-zero unless the required outer-loop verdicts (product-owner accept + tdd-critic PASS) are on the bus; the project-manager runs it before tagging.
 
 ## Parallel pairs (the coupling kit)
