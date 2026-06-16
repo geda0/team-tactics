@@ -32,19 +32,6 @@ test("emit_tic appends a valid, auto-filled tic; seq increments", () => {
   } finally { fs.rmSync(d, { recursive: true, force: true }); }
 });
 
-test("N1: emit_tic auto-derives a session id under multi-session when none is set (substrate self-provisions)", () => {
-  const d = inst();
-  try {
-    fs.appendFileSync(path.join(d, ".claude", "tdd.config"), "\nMULTI_SESSION=1\n");   // multi-session declared...
-    srcLib(d, "emit_tic alice '*' claim app.js app.js");                                // ...but NO session id set (the gvp reality)
-    const claim = ticsOf(d).find((x) => x.kind === "claim");
-    assert.ok(claim, "claim emitted");
-    assert.notStrictEqual(claim.session, "", "session auto-derived (non-empty) so claims engage with zero setup");
-    srcLib(d, "emit_tic alice '*' note again");
-    assert.strictEqual(ticsOf(d).find((x) => x.kind === "note").session, claim.session, "the derived id is stable across emits");
-  } finally { fs.rmSync(d, { recursive: true, force: true }); }
-});
-
 test("N1: solo (no multi-session, main tree) is unchanged — session stays empty (conservative)", () => {
   const d = inst();
   try {
@@ -267,63 +254,6 @@ test("MS1: emit_tic stamps a `session` field (TICS_SESSION / state/session) — 
   } finally { fs.rmSync(d, { recursive: true, force: true }); }
 });
 
-test("C2/C3: `tics todo <session>` shows your OPEN assignments + the joint-forces pool", () => {
-  const d = inst();
-  try {
-    srcLib(d, "emit_tic lead sessW delegate 'build the ranker' task1");          // assigned to me, open
-    srcLib(d, "emit_tic lead sessW delegate 'wire the app' task2");              // assigned to me...
-    srcLib(d, "emit_tic sessW lead handoff 'app wired' task2 green");             // ...but handed off (done)
-    srcLib(d, "emit_tic lead '*' delegate 'docs pass' task3");                    // offered to the pool
-    srcLib(d, "emit_tic peer architect need 'need the StockLevel contract'");     // help wanted
-    const out = read(d, "todo", "sessW").stdout;
-    assert.match(out, /build the ranker|task1/, "shows my open assignment");
-    assert.doesNotMatch(out, /wire the app/, "hides a handed-off (done) assignment");
-    assert.match(out, /docs pass|task3/, "shows pooled work to grab");
-    assert.match(out, /StockLevel|need/i, "shows open help requests");
-  } finally { fs.rmSync(d, { recursive: true, force: true }); }
-});
-
-test("MS1: `tics sessions` lists live sessions + their scopes + claims (who's active, where)", () => {
-  const d = inst();
-  try {
-    srcLib(d, "export TICS_SESSION='sessA'; export TICS_SCOPE='auth/S1'; emit_tic a '*' claim login.ts login.ts");
-    srcLib(d, "export TICS_SESSION='sessA'; emit_tic a '*' session open started");
-    srcLib(d, "export TICS_SESSION='sessB'; export TICS_SCOPE='ui/S2'; emit_tic b '*' note hi");
-    const s = read(d, "sessions").stdout;
-    const line = (id) => s.split("\n").find((l) => l.includes(id)) || "";
-    assert.match(line("sessA"), /auth\/S1/, "sessA shows its scope");
-    assert.match(line("sessA"), /open|active/i, "sessA shows a live status");
-    assert.match(line("sessB"), /ui\/S2/, "sessB shows its scope");
-  } finally { fs.rmSync(d, { recursive: true, force: true }); }
-});
-
-test("MS5: a STALE session's claim expires (no tic within CLAIMS_TTL) — a dead session's lane frees", () => {
-  const d = inst();
-  try {
-    fs.appendFileSync(path.join(d, ".claude", "tdd.config"), "\nCLAIMS_TTL=60\n");   // 60s liveness window
-    const now = Date.now();
-    const stale = new Date(now - 3600 * 1000).toISOString();   // 1h ago -> dead
-    const live = new Date(now - 5 * 1000).toISOString();        // 5s ago -> alive
-    fs.writeFileSync(path.join(d, ".claude", "state", "tics.jsonl"),
-      JSON.stringify({ ts: stale, seq: 1, kind: "claim", from: "a", to: "*", scope: "dead/S1", session: "sessDead", ref: "old.ts", msg: "old.ts" }) + "\n" +
-      JSON.stringify({ ts: live, seq: 2, kind: "claim", from: "b", to: "*", scope: "live/S2", session: "sessLive", ref: "new.ts", msg: "new.ts" }) + "\n");
-    const claims = read(d, "claims").stdout;
-    assert.doesNotMatch(claims, /old\.ts/, "a stale (dead) session's claim is released");
-    assert.match(claims, /new\.ts/, "a live session's claim is kept");
-  } finally { fs.rmSync(d, { recursive: true, force: true }); }
-});
-
-test("C1: a `session close` auto-releases that session's claims (a leaving worker frees its lane)", () => {
-  const d = inst();
-  try {
-    srcLib(d, "export TICS_SESSION='sessA' TICS_SCOPE='auth/S1'; emit_tic a '*' claim login.ts login.ts");
-    assert.match(read(d, "claims").stdout, /login\.ts/, "claimed while the session is live");
-    srcLib(d, "export TICS_SESSION='sessA'; emit_tic a '*' session leaving '' close");
-    assert.doesNotMatch(read(d, "claims").stdout, /login\.ts/, "the session close frees its claim");
-    assert.strictEqual(read(d, "claim-session", "login.ts").stdout.trim(), "", "claim-session clears -> a peer may take the lane");
-  } finally { fs.rmSync(d, { recursive: true, force: true }); }
-});
-
 test("MS3: tics claim-session <file> reports the SESSION holding an active claim (empty if free)", () => {
   const d = inst();
   try {
@@ -385,7 +315,7 @@ test("E7-3: tics board flags STUCK only for a held scope that is stale — never
   try {
     // Deterministic timestamps: liveness is computed from real Date.now(), and `stale` means older
     // than LIVENESS_STALE_SEC (default 900s). So build the bus directly (NOT emit_tic, which stamps
-    // "now"). CLAIMS_TTL stays at its default (0 = off) so a stale holder still HOLDS its claim.
+    // "now"). Claims never auto-expire (release-on-section-done only, ADR 0015) so a stale holder still HOLDS its claim.
     const now = Date.now();
     const stale = new Date(now - 3600 * 1000).toISOString();   // 1h ago -> stale
     const live = new Date(now - 5 * 1000).toISOString();        // 5s ago -> live
@@ -411,26 +341,6 @@ test("E7-3: tics board flags STUCK only for a held scope that is stale — never
   } finally { fs.rmSync(d, { recursive: true, force: true }); }
 });
 
-test("E7-4: tics board surfaces orphan/abandoned claims (closed-session holder) — never a live holder", () => {
-  const d = inst();
-  try {
-    // sessGone claims a scope, then closes its session WITHOUT releasing -> claim is abandoned (orphan).
-    srcLib(d, "export TICS_SESSION='sessGone'; export TICS_SCOPE='abandoned/S1'; emit_tic g '*' claim old.ts old.ts");
-    srcLib(d, "export TICS_SESSION='sessGone'; emit_tic g '*' session leaving '' close");
-    // sessHere claims a scope and stays live (a known/live holder) -> NOT orphan.
-    srcLib(d, "export TICS_SESSION='sessHere'; export TICS_SCOPE='active/S2'; emit_tic h '*' claim live.ts live.ts");
-
-    const b = read(d, "board");
-    assert.strictEqual(b.status, 0, "board renders the populated bus: " + b.stderr);
-    assert.match(b.stdout, /orphan|abandoned/i, "an orphan/abandoned call-out token is shown");
-    const orphanText = b.stdout.split("\n").filter((l) => /orphan|abandoned/i.test(l)).join("\n");
-    assert.match(orphanText, /old\.ts|abandoned\/S1|sessGone/, "orphan names the abandoned claim (ref/scope/session)");
-    assert.doesNotMatch(orphanText, /live\.ts/, "a live holder's claim is never orphan (no false alarm)");
-    assert.doesNotMatch(orphanText, /active\/S2/, "a live holder's scope is never orphan (no false alarm)");
-    assert.doesNotMatch(orphanText, /sessHere/, "a live holder's session is never orphan (no false alarm)");
-  } finally { fs.rmSync(d, { recursive: true, force: true }); }
-});
-
 test("E7-5: tics board flags a scope touched by >=2 distinct sessions as a collision — one session (even many tics) is not", () => {
   const d = inst();
   try {
@@ -452,7 +362,7 @@ test("E7-5: tics board flags a scope touched by >=2 distinct sessions as a colli
   } finally { fs.rmSync(d, { recursive: true, force: true }); }
 });
 
-test("E7-6: tics cycle prints a fleet-health line (stuck/orphan/collision counts + liveness tally); quiet bus shows zeros, exits 0", () => {
+test("E7-6: tics cycle prints a fleet-health line (stuck/collision counts + liveness tally); quiet bus shows zeros, exits 0", () => {
   const d = inst();
   const e = inst();
   try {
@@ -476,42 +386,6 @@ test("E7-6: tics cycle prints a fleet-health line (stuck/orphan/collision counts
     fs.rmSync(d, { recursive: true, force: true });
     fs.rmSync(e, { recursive: true, force: true });
   }
-});
-
-test("E7-4b: tics board surfaces a CLAIMS_TTL-stale claim as orphan (reason=stale) — live holder within TTL is not", () => {
-  const d = inst();
-  try {
-    fs.appendFileSync(path.join(d, ".claude", "tdd.config"), "\nCLAIMS_TTL=60\n");   // 60s lifecycle window
-    const now = Date.now();
-    const stale = new Date(now - 3600 * 1000).toISOString();   // 1h ago -> past TTL, never closed -> orphan (stale)
-    const fresh = new Date(now - 5 * 1000).toISOString();       // 5s ago -> within TTL -> active, not orphan
-    fs.writeFileSync(path.join(d, ".claude", "state", "tics.jsonl"),
-      JSON.stringify({ ts: stale, seq: 1, kind: "claim", from: "a", to: "*", scope: "ghosttown/S1", session: "sessStaleHold", ref: "ghost.ts", msg: "ghost.ts" }) + "\n" +
-      JSON.stringify({ ts: fresh, seq: 2, kind: "claim", from: "b", to: "*", scope: "town/S2", session: "sessFresh", ref: "fresh.ts", msg: "fresh.ts" }) + "\n");
-
-    const b = read(d, "board");
-    assert.strictEqual(b.status, 0, "board renders the populated bus: " + b.stderr);
-    assert.match(b.stdout, /orphan|abandoned/i, "an orphan/abandoned call-out token is shown");
-    const orphanText = b.stdout.split("\n").filter((l) => /orphan|abandoned/i.test(l)).join("\n");
-    assert.match(orphanText, /ghost\.ts|ghosttown\/S1|sessStaleHold/, "orphan names the TTL-stale abandoned claim");
-    assert.match(orphanText, /reason=stale|stale/i, "orphan reports a stale lifecycle reason");
-    assert.doesNotMatch(orphanText, /fresh\.ts/, "a within-TTL holder's claim is never orphan (no false alarm)");
-    assert.doesNotMatch(orphanText, /town\/S2/, "a within-TTL holder's scope is never orphan (no false alarm)");
-    assert.doesNotMatch(orphanText, /sessFresh/, "a within-TTL holder's session is never orphan (no false alarm)");
-  } finally { fs.rmSync(d, { recursive: true, force: true }); }
-});
-
-test("F1: a commented CLAIMS_TTL in tdd.config is inactive (cfgNum ignores #-commented lines) — claims do not silently expire", () => {
-  const d = inst();
-  try {
-    // The kit ships CLAIMS_TTL as a COMMENTED example; it must read as OFF (0=off), not active.
-    fs.appendFileSync(path.join(d, ".claude", "tdd.config"), "\n#   CLAIMS_TTL=900    # example default (commented)\n");
-    const now = Date.now();
-    const stale = new Date(now - 3600 * 1000).toISOString();   // 1h ago -> would expire IF the commented TTL=900 were active
-    fs.writeFileSync(path.join(d, ".claude", "state", "tics.jsonl"),
-      JSON.stringify({ ts: stale, seq: 1, kind: "claim", from: "a", to: "*", scope: "x/S1", session: "sX", ref: "old.ts", msg: "old.ts" }) + "\n");
-    assert.match(read(d, "claims").stdout, /old\.ts/, "a COMMENTED CLAIMS_TTL must be OFF (0=off) — the claim is NOT expired");
-  } finally { fs.rmSync(d, { recursive: true, force: true }); }
 });
 
 test("F1b: a commented RED_STREAK_LIMIT is inactive (tics cycle uses the default limit) — no false red-storm", () => {
@@ -811,7 +685,7 @@ test("E11-1: openNeeds folds needs open until a msg+result=answered references t
   assert.ok(TV.openNeeds(selfResult).some((n) => n.handle === "selfX"), "a need carrying its own result=answered must NOT self-settle — answered-set admits only kind=msg tics");
 
   // Arrange — contract guard #2 (no cross-close): a need plus a handoff reusing its token.
-  // A handoff closes delegates in ticsTodo (a SEPARATE fold) — it must not reach the needs fold.
+  // A handoff pairs with delegates (a SEPARATE concern) — it must not reach the needs answered-set.
   const crossClose = selfResult.concat([
     { kind: "need", from: "y", to: "*", ref: "crossY", msg: "cross-close need", seq: 6 },
     { kind: "handoff", from: "impl", to: "*", ref: "crossY", result: "green", seq: 7 },

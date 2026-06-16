@@ -6,32 +6,6 @@
 root=$(git rev-parse --show-toplevel 2>/dev/null) || exit 0
 [ -f "$root/.claude/tdd.config" ] && . "$root/.claude/tdd.config"
 
-# Cross-session claims (ADR 0002, MS3/MS4): don't commit a file — or a release — that ANOTHER live
-# session has claimed. The pre-commit is git's choke-point; it sees the staged set even for writes
-# that bypass the PreToolUse edit-guard (programmatic/indirect). Disarm with CLAIMS_ENFORCE=0.
-reader="$root/.claude/hooks/tics"
-if [ "${CLAIMS_ENFORCE:-1}" = "1" ] && [ -x "$reader" ]; then
-  mysess="${TICS_SESSION:-$(cat "$root/.claude/state/session" 2>/dev/null)}"
-  staged=$(git diff --cached --name-only 2>/dev/null)
-  xconf=""
-  while IFS= read -r f; do
-    [ -n "$f" ] || continue
-    owner=$("$reader" claim-session "$f" 2>/dev/null)
-    if [ -n "$owner" ] && [ "$owner" != "$mysess" ]; then xconf="$f (claimed by session: $owner)"; break; fi
-  done <<EOF
-$staged
-EOF
-  # MS4: a release-shaped commit (touches package.json) needs the RELEASE lock free or ours.
-  if [ -z "$xconf" ] && printf '%s\n' "$staged" | grep -qE '(^|/)package\.json$'; then
-    rl=$("$reader" claim-session RELEASE 2>/dev/null)
-    [ -n "$rl" ] && [ "$rl" != "$mysess" ] && xconf="the release (RELEASE lock held by session: $rl)"
-  fi
-  if [ -n "$xconf" ]; then
-    printf '[team-tactics] COMMIT BLOCKED — %s. Another session owns it; coordinate (tics sessions / tics claims), release it, or bypass: git commit --no-verify\n' "$xconf" >&2
-    exit 1
-  fi
-fi
-
 cmd="${BASELINE_CMD:-${ALL_TEST_CMD:-true}}"
 printf '[team-tactics] pre-commit green-bar gate: %s\n' "$cmd" >&2
 out=$(cd "$root" && eval "$cmd" 2>&1); code=$?

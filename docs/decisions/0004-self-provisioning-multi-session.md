@@ -1,6 +1,7 @@
 # 0004 — Self-provisioning multi-session (the substrate engages itself)
 
-- Status: Accepted
+- Status: **Superseded by ADR 0015** (parallel isolation via git worktrees). Was: Accepted.
+  Note: 0004's §2 spool-bus (`TIC_STORE=spool` at the git-common-dir) carries forward into 0015.
 - Date: 2026-06-10
 - Supersedes nothing; **completes ADR 0003** (cooperation on one tree).
 - Deciders: navigator (proceed), architect (bus/identity seam)

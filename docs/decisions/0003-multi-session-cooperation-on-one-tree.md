@@ -1,6 +1,6 @@
 # 0003 — Multi-session COOPERATION on one working tree (combine power, don't isolate)
 
-- Status: Proposed
+- Status: **Superseded by ADR 0015** (parallel isolation via git worktrees). Was: Proposed.
 - Date: 2026-06-05
 - Feature: (backlog) multi-session cooperation — see the slice breakdown at the foot
 - Deciders: architect (seam), product-owner (scope), human navigator (principle)

@@ -7,12 +7,11 @@ const { TV, PKG, installTics } = require("../index.js");
 const argv = process.argv.slice(2);
 let scope = null, all = true, fromRole = null, showWitness = false; const rest = [];   // whole-picture by default (merge every worktree's bus); --here restricts to the local bus
 for (let i = 0; i < argv.length; i++) { const a = argv[i]; if (a === "--scope") scope = argv[++i] || ""; else if (a === "--all") all = true; else if (a === "--here") all = false; else if (a === "--from") fromRole = argv[++i] || null; else if (a === "--witness") showWitness = true; else rest.push(a); }
-const KNOWN = ["log", "inbox", "conductor", "claims", "sections", "sessions", "board", "roster", "review", "todo", "cycle", "gate", "claim-check", "answer", "init", "install", "update", "selftest", "help"];
+const KNOWN = ["log", "inbox", "conductor", "claims", "sections", "board", "roster", "review", "cycle", "gate", "claim-check", "answer", "init", "install", "update", "selftest", "help"];
 const cmd = KNOWN.indexOf(rest[0]) !== -1 ? rest.shift() : "help";
 const role = cmd === "inbox" ? rest.shift() : null;
 const cfFile = cmd === "claim-check" ? rest.shift() : null;
 const cfScope = cmd === "claim-check" ? (rest.shift() || scope || "") : null;
-const tdSession = cmd === "todo" ? rest.shift() : null;
 const ansHandle = cmd === "answer" ? rest.shift() : null;
 const ansText = cmd === "answer" ? rest.join(" ") : null;
 if (cmd === "answer") { rest.length = 0; }
@@ -23,8 +22,6 @@ if (cmd === "inbox") process.exit(TV.ticsInbox(target, role, scope));
 if (cmd === "conductor") process.exit(TV.ticsConductor(target, all));
 if (cmd === "claims") process.exit(TV.ticsClaims(target, all));
 if (cmd === "sections") process.exit(TV.ticsSections(target, all));
-if (cmd === "sessions") process.exit(TV.ticsSessions(target, all));
-if (cmd === "todo") process.exit(TV.ticsTodo(target, tdSession));
 if (cmd === "cycle") process.exit(TV.ticsCycle(target));
 if (cmd === "gate") process.exit(TV.ticsGate(target, all));
 if (cmd === "board") process.exit(TV.ticsBoard(target, all));

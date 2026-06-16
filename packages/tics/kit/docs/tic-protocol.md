@@ -63,8 +63,8 @@ Use the installed reader `.claude/hooks/tics <cmd>` (agents) or `npx team-tactic
 - `tics report` — process metrics aggregated from the `signal` tics. Green suite results are split by **provenance** (ADR 0009): a green with `from=run-suite` is **hook-signed** (the CC referee produced it — `run-suite.sh` is a PostToolUse hook), while a green a role hand-emitted (per AGENTS.md, outside CC) is **self-reported**. `report` shows the split and loudly calls out any self-reported greens so they can't silently inflate the pass rate; an all-refereed bus gets no call-out. Provenance, not signature — honest-by-default (ADR 0006). When the **per-tool witness** is on (`TOOL_WITNESS=1`, ADR 0013), `report` also shows a per-tool usage tally from the `note` tics the PostToolUse witness emits (`from=witness`, "used <Tool>"); those notes are hidden from `tics log` by default (`tics log --witness` reveals them) so the coordination thread stays readable. A record, never a gate.
 - `tics conductor` — the cross-pair coupling tics only (claim/release/contract/need/msg).
 - `tics claims` — active file/module claims (claim minus release), by scope.
-- `tics cycle` — inner-loop dashboard: phase/layer/scope + last suite signal + cycles since the last tdd-critic verdict (nudges a critic pass when overdue) + a one-line fleet-health summary (STUCK/orphan/collision counts + a live/idle/stale/unknown liveness tally).
-- `tics board` — the fleet board (ADR 0008): one row per session/member grouped by held scope (an `unscoped` bucket for the rest), each with a locally-computed **liveness** tier (`live`/`idle`/`stale`/`unknown` from last-tic age vs `LIVENESS_IDLE_SEC`/`LIVENESS_STALE_SEC`), plus loud call-outs — **STUCK** (holds a scope yet is stale), **orphaned claims** (a claim whose holder closed or went `CLAIMS_TTL`-stale), and **collisions** (a scope touched by ≥2 distinct sessions). A pure read-side fold over the bus; degrade-safe (never invents a tier, never false-alarms).
+- `tics cycle` — inner-loop dashboard: phase/layer/scope + last suite signal + cycles since the last tdd-critic verdict (nudges a critic pass when overdue) + a one-line fleet-health summary (STUCK/collision counts + a live/idle/stale/unknown liveness tally).
+- `tics board` — the fleet board (ADR 0008): one row per session/member grouped by held scope (an `unscoped` bucket for the rest), each with a locally-computed **liveness** tier (`live`/`idle`/`stale`/`unknown` from last-tic age vs `LIVENESS_IDLE_SEC`/`LIVENESS_STALE_SEC`), plus loud call-outs — **STUCK** (holds a scope yet is stale) and **collisions** (a scope touched by ≥2 distinct sessions). A pure read-side fold over the bus; degrade-safe (never invents a tier, never false-alarms).
 - `tics gate` — release gate: exits non-zero unless the required outer-loop verdicts (product-owner accept + tdd-critic PASS) are on the bus; the project-manager runs it before tagging. It also surfaces **attestation** (ADR 0009): if greens exist but NONE is hook-signed (all self-reported — the honest non-CC degradation), the gate prints a loud "no hook-signed green evidence" line. By default that is flag-only (the verdict gate's exit code is unchanged); set `ATTEST_ENFORCE=1` in `tdd.config` to make that case a hard block. An empty/old bus, or a bus with ≥1 hook-signed green, adds no new block and no false alarm.
 - `tics review` — the **answerable-asks** queue (ADR 0012): the OPEN `need` tics — questions awaiting an answer — each with a handle (the need's `ref`, else `n<seq>`), the asker, the scope, and the question; ref-less needs are grouped "unaddressable (no ref)". Without it a `need` dies in the inbox; this is the navigator's queue. A pure read-side fold; empty bus → "no open needs", exit 0.
 - `tics answer <handle> <text> [--from <role>]` — answer an open need (the one `tics` command that WRITES): emits a directed `msg` to the asker carrying the need's token with `result=answered` — which both lands in the asker's inbox AND settles the need (it leaves `tics review`). Keying on `result=answered` (not bare ref) means an ordinary `msg` can never false-settle a need. `from` defaults to `navigator`. An unknown/closed handle exits non-zero and emits nothing (idempotent). A convention/queue, not a hook gate — nothing blocks on an open need.
@@ -100,33 +100,16 @@ seq race). Default `TIC_STORE=jsonl` (one append-only file) suits a single sessi
 merge either store transparently. SQLite is intentionally avoided — it would break the zero-dep
 / Node>=16 / bash-hook portability invariants for wins not needed at session scale.
 
-## Multiple sessions on one repo — COMBINE forces (ADR 0003, supersedes 0002's worktree advice)
-Multiple sessions exist to combine power on ONE shared tree — horizontal scaling, where a new
-session is a new worker on the team — NOT to isolate into separate worktrees (that forks the team
-and splits its power). Sessions share `.claude/state/tics.jsonl`, so the bus IS the cooperation
-medium. First, the substrate that keeps cooperation from double-working or clobbering:
-1. **Identify + scope each session.** `echo <id> > .claude/state/session` (or `TICS_SESSION`) + a
-   distinct `echo <id>/<area> > .claude/state/scope`. Every tic carries the session; edits auto-claim;
-   `tics sessions` shows who's active where.
-2. **Fail-closed:** `MULTI_SESSION=1` — the guard refuses an *unscoped* edit (unscoped is how two
-   sessions silently collide; scoping makes claims engage).
-3. **The bus enforces disjoint writes:** a rival session's claim blocks your edit (`claim-check`);
-   the **pre-commit** blocks committing a file — or a release (the **`RELEASE` lock**) — held by
-   another live session (the git choke-point the edit-guard can't see).
-
-On that substrate, two cooperation patterns — same primitives, no new kinds:
-- **Master/worker.** A worker JOINS: `tic.sh <id> '*' session open available` (now `[active]` in
-  `tics sessions`). The lead ASSIGNS: `tic.sh lead <id> delegate "<slice>" <id>/<area>`. The worker
-  loops: `tics todo` (your open assignments + the pool) → `echo <id>/<area> > .claude/state/scope`
-  → edit (files auto-claim; rivals blocked) → `tic.sh <id> lead handoff "done" <ref> green` →
-  `tic.sh <id> '*' section done <area>` (frees the lane) → pull the next. Scale out by adding workers.
-- **Joint-forces (peers, no fixed lead).** Offer work to the pool with `delegate to '*'`, pass a
-  slice you can't finish with `handoff to '*'`, summon help with `need`; first toucher claims it.
-  `tics todo` shows what's open for you + the pool to grab; `tics conductor` is the live picture.
-  `tics conductor` is the shared live picture.
-
-Worktree-per-session is only a niche escape valve for genuinely INDEPENDENT efforts (which isn't
-cooperation); `tics … --all` (default) still unions their buses when `TIC_STORE=spool`.
+## Parallel work — one git worktree per track (ADR 0015, supersedes 0002/0003/0004)
+Run parallel tracks as **separate git worktrees**, not multiple sessions on one tree: git isolates
+each worktree's tree, index, and `.claude/state` for free — no shared `phase`/`suite-status` to
+entangle, no in-tree session protocol needed. The tic bus is the shared **observer** across them:
+point every worktree at ONE spool bus (`TIC_STORE=spool` +
+`TICS_DIR="$(git rev-parse --git-common-dir)/tics-bus"`), and the reader merges them by default
+(`loadTicsAll`) so `tics conductor`/`board`/`claims` correlate across worktrees and a peer
+worktree's `claim` is visible and **blocks** an overlapping edit. Coordinate seams with
+coupling-tics exactly as within one tree — `contract` (publish a seam), `need` (request),
+`claim`/`release` (own a file). **Git isolates; the bus observes.** See `docs/tdd/sectioning.md`.
 
 ## Red-storm breaker
 A long run of red suites usually means the failing TEST is over-constrained or contradictory,

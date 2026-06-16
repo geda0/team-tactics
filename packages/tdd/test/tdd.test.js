@@ -88,19 +88,6 @@ test("the gate NEVER blocks the loop's control plane (.claude/state/) — writin
   } finally { fs.rmSync(d, { recursive: true, force: true }); }
 });
 
-test("MS2: under MULTI_SESSION=1 the guard refuses an UNSCOPED edit (forces a scope so claims coordinate)", () => {
-  const d = inst();
-  try {
-    ph(d, "green");
-    fs.writeFileSync(path.join(d, ".claude", "state", "scope"), "");                 // no scope
-    assert.strictEqual(fire(d, "guard-edit-scope.sh", edit("src/x.js")).status, 0, "single-session (default): unscoped edit allowed");
-    fs.appendFileSync(path.join(d, ".claude", "tdd.config"), "\nMULTI_SESSION=1\n");
-    assert.strictEqual(fire(d, "guard-edit-scope.sh", edit("src/x.js")).status, 2, "multi-session: an UNSCOPED edit is BLOCKED");
-    fs.writeFileSync(path.join(d, ".claude", "state", "scope"), "sessA/feature\n");   // scope it
-    assert.strictEqual(fire(d, "guard-edit-scope.sh", edit("src/x.js")).status, 0, "multi-session + scoped: allowed (claims now engage)");
-  } finally { fs.rmSync(d, { recursive: true, force: true }); }
-});
-
 test("the gate lets docs/ADRs be edited in red (they have no failing test to write first)", () => {
   const d = inst();
   try {

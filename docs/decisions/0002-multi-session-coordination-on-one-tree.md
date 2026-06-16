@@ -1,6 +1,7 @@
 # 0002 — Multi-session coordination on one working tree (concurrent sessions, one repo)
 
-- Status: Proposed — **superseded in part by ADR 0003.** The safety substrate (§1
+- Status: **Superseded by ADR 0015** (parallel isolation via git worktrees). Historical context
+  below. Was: Proposed — superseded in part by ADR 0003. The safety substrate (§1
   session identity, §2 release lock + pre-commit claim-check, §3 release-on-stop +
   TTL, §4 fail-closed) STANDS and is the floor 0003 builds on. The **worktree-per-session
   recommendation** (§Boundary, §Alternatives, and the MS6 doc) is **REVERSED** by 0003:

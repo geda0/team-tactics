@@ -170,83 +170,23 @@ function ticsSections(targetDir, all) {
   }
   return 0;
 }
-// Sessions (ADR 0002): who is active on this repo and where. Groups the bus by the `session` field
-// (set via TICS_SESSION / .claude/state/session). The cross-session coordination surface — two
-// sessions on one tree each appear with their scopes + claims, so collisions are visible.
-function ticsSessions(targetDir, all) {
-  const t = loadFor(targetDir, all);
-  const sess = {};
-  for (const x of t) {
-    const id = x.session || "";
-    if (!id) continue;
-    const e = sess[id] || (sess[id] = { tics: 0, scopes: {}, claims: 0, status: "active", last: "" });
-    e.tics++;
-    if (x.scope && x.scope !== "*") e.scopes[x.scope] = 1;
-    if (x.kind === "claim") e.claims++;
-    if (x.kind === "release") e.claims--;
-    if (x.kind === "session" && x.result) e.status = x.result;   // open|closed — append order, latest wins
-    if ((x.ts || "") > e.last) e.last = x.ts || "";
-  }
-  const ids = Object.keys(sess).sort();
-  if (!ids.length) { console.log("No sessions yet — identify one with: echo <id> > .claude/state/session (or TICS_SESSION=<id>)."); return 0; }
-  console.log("Sessions (live, from the bus):");
-  for (const id of ids) {
-    const e = sess[id];
-    console.log("  " + id.padEnd(16) + ("[" + (e.status || "active") + "]").padEnd(10) + "scopes: " + (Object.keys(e.scopes).join(", ") || "-") + "  | claims " + Math.max(0, e.claims) + "  (last " + (e.last || "").slice(11, 19) + ")");
-  }
-  return 0;
-}
-// `tics todo [<session>]` — the cooperation "what should I pick up?" (ADR 0003 C2/C3). Sugar over
-// the bus verbs: your OPEN assignments (a `delegate` to your session with no matching `handoff`) +
-// the joint-forces pool (`delegate` offered to `*`) + open help requests (`need`).
-function ticsTodo(targetDir, session) {
-  const tics = loadFor(targetDir, true);
-  if (!session) { try { session = fs.readFileSync(path.join(targetDir, ".claude", "state", "session"), "utf8").trim(); } catch (e) { session = ""; } }
-  const handedOff = new Set();
-  for (const x of tics) if (x.kind === "handoff" && x.ref) handedOff.add(x.ref);
-  const mine = [], pool = [], needs = [];
-  for (const x of tics) {
-    if (x.kind === "delegate" && x.ref && !handedOff.has(x.ref)) {
-      if (session && x.to === session) mine.push(x);
-      else if (x.to === "*") pool.push(x);
-    } else if (x.kind === "need") needs.push(x);
-  }
-  const row = (x) => "  " + (x.ref ? x.ref + "  " : "") + (x.msg || "") + "  (from " + (x.from || "?") + ")";
-  console.log("Todo" + (session ? " — " + session : "") + ":");
-  if (mine.length) { console.log(" Assigned to you (open):"); mine.forEach((x) => console.log(row(x))); }
-  if (pool.length) { console.log(" Pool — grab one (delegate -> *):"); pool.forEach((x) => console.log(row(x))); }
-  if (needs.length) { console.log(" Help wanted (need):"); needs.forEach((x) => console.log(row(x))); }
-  if (!mine.length && !pool.length && !needs.length) console.log("  nothing open — pull a section or ask the lead.");
-  return 0;
-}
 // Active claims = claim minus release, MINUS any whose section (scope's first component) is
 // marked `done` — a closed section auto-releases its claims so the partition frees up for
 // reassignment (release-on-done). The single source of truth for every claim consumer.
-function activeClaims(tics, opts) {
-  opts = opts || {};
+function activeClaims(tics) {
   const active = new Map();
   const status = new Map();       // section name -> latest lifecycle status (open|done)
-  const sessClosed = new Set();   // sessions that have closed -> their claims free (a leaving worker frees its lane)
-  const sessLatest = new Map();   // session -> latest tic ts (for stale-TTL: a dead session's claims expire)
   for (const x of tics) {
-    if (x.session) { const t = x.ts || ""; if (t > (sessLatest.get(x.session) || "")) sessLatest.set(x.session, t); }
     if (x.kind === "section" && x.ref && x.result) status.set(x.ref, x.result);
-    if (x.kind === "session" && x.session) { if (x.result === "close" || x.result === "closed") sessClosed.add(x.session); else sessClosed.delete(x.session); }
     if (x.kind === "claim" && x.ref) active.set(x.ref, x);
     else if (x.kind === "release" && x.ref) active.delete(x.ref);
   }
-  const ttlMs = (opts.ttlSec || 0) * 1000, now = opts.nowMs || 0;   // MS5 stale-TTL; ttlSec=0 disables
   for (const [ref, x] of active) {
-    if (status.get((x.scope || "").split("/")[0]) === "done") { active.delete(ref); continue; }   // release-on-section-done
-    if (x.session && sessClosed.has(x.session)) { active.delete(ref); continue; }                  // release-on-session-close (ADR 0003)
-    if (ttlMs > 0 && now > 0 && x.session) {                                                        // release-on-stale: a dead session's claim expires
-      const last = Date.parse(sessLatest.get(x.session) || "") || 0;
-      if (last > 0 && (now - last) > ttlMs) active.delete(ref);
-    }
+    if (status.get((x.scope || "").split("/")[0]) === "done") active.delete(ref);   // release-on-section-done
   }
   return active;
 }
-// Read a numeric setting from tdd.config (e.g. CLAIMS_TTL), default if absent/unreadable.
+// Read a numeric setting from tdd.config (e.g. LIVENESS_IDLE_SEC), default if absent/unreadable.
 function cfgNum(targetDir, key, def) {
   try { const m = fs.readFileSync(path.join(targetDir, ".claude", "tdd.config"), "utf8").match(new RegExp("^\\s*" + key + "\\s*=\\s*(\\d+)", "m")); return m ? parseInt(m[1], 10) : def; }
   catch (e) { return def; }
@@ -294,9 +234,9 @@ function livenessTier(lastTs, nowMs, idleSec, staleSec) {
   if (age <= staleSec) return "idle";
   return "stale";
 }
-// Active claims for a target dir, with the stale-TTL applied (CLAIMS_TTL seconds from tdd.config;
-// 0 = off). The single entry every claim consumer uses, so release-on-stale is uniform.
-function claimsFor(targetDir, tics) { return activeClaims(tics, { nowMs: Date.now(), ttlSec: cfgNum(targetDir, "CLAIMS_TTL", 0) }); }
+// Active claims for a target dir (claim minus release, minus release-on-section-done).
+// The single entry every claim consumer uses.
+function claimsFor(targetDir, tics) { return activeClaims(tics); }
 // Fleet model: fold the bus into members grouped by held scope, with liveness tiers.
 // opts.nowMs injectable for tests; idleSec/staleSec come from tdd.config with defaults.
 function fleetModel(targetDir, tics, opts) {
@@ -304,24 +244,13 @@ function fleetModel(targetDir, tics, opts) {
   const nowMs = opts.nowMs != null ? opts.nowMs : Date.now();
   const idleSec = cfgNum(targetDir, "LIVENESS_IDLE_SEC", 300);
   const staleSec = cfgNum(targetDir, "LIVENESS_STALE_SEC", 900);
-  const ttlMs = cfgNum(targetDir, "CLAIMS_TTL", 0) * 1000;
-  // One pass here builds sessLatest, the raw claim ledger, section status, closed sessions, and
-  // the per-scope session sets; claimsFor (below) folds the bus again to apply the release/TTL filters.
+  // One pass here builds sessLatest and the per-scope session sets (for collision detection);
+  // claimsFor (below) folds the bus again to apply the release filters.
   const sessLatest = new Map();
-  const rawLedger = new Map();   // ref -> tic (claim minus release, no drops)
-  const secStatus = new Map();   // section name -> latest lifecycle result
-  const sessClosed = new Set();
   const scopeSessions = new Map(); // scope -> Set of distinct sessions (for collision detection)
   for (const x of tics) {
     const id = x.session || "";
     if (id) { const ts = x.ts || ""; if (ts > (sessLatest.get(id) || "")) sessLatest.set(id, ts); }
-    if (x.kind === "section" && x.ref && x.result) secStatus.set(x.ref, x.result);
-    if (x.kind === "session" && x.session) {
-      if (x.result === "close" || x.result === "closed") sessClosed.add(x.session);
-      else sessClosed.delete(x.session);
-    }
-    if (x.kind === "claim" && x.ref) rawLedger.set(x.ref, x);
-    else if (x.kind === "release" && x.ref) rawLedger.delete(x.ref);
     const sc = x.scope || "";
     if (sc && sc !== "*" && id && id !== "*") { let s = scopeSessions.get(sc); if (!s) { s = new Set(); scopeSessions.set(sc, s); } s.add(id); }
   }
@@ -345,27 +274,12 @@ function fleetModel(targetDir, tics, opts) {
   }
   const tally = { live: 0, idle: 0, stale: 0, unknown: 0 };
   for (const m of members) tally[m.liveness] = (tally[m.liveness] || 0) + 1;
-  // Orphans: raw-ledger claims NOT in active set, dropped due to session death (not section-done).
-  const orphans = [];
-  for (const [ref, x] of rawLedger.entries()) {
-    if (activeCls.has(ref)) continue;
-    if (secStatus.get((x.scope || "").split("/")[0]) === "done") continue;
-    const sess = x.session || "";
-    if (!sess) continue;
-    const isClosedSess = sessClosed.has(sess);
-    let isTtlStale = false;
-    if (ttlMs > 0 && nowMs > 0) {
-      const last = Date.parse(sessLatest.get(sess) || "") || 0;
-      if (last > 0 && (nowMs - last) > ttlMs) isTtlStale = true;
-    }
-    if (isClosedSess || isTtlStale) orphans.push({ scope: x.scope || "*", ref, session: sess, reason: isClosedSess ? "closed" : "stale" });
-  }
   // Collisions: scopes touched by >=2 distinct sessions.
   const collisions = [];
   for (const [sc, sessSet] of scopeSessions.entries()) {
     if (sessSet.size >= 2) collisions.push({ scope: sc, sessions: [...sessSet].sort() });
   }
-  return { members, byScope, tally, orphans, collisions };
+  return { members, byScope, tally, collisions };
 }
 // Roster view (ADR 0010): one row per standard role showing the configured MODEL_<ROLE> or "(default)".
 function ticsRoster(targetDir) {
@@ -416,12 +330,6 @@ function ticsBoard(targetDir, all) {
       const when = (m.lastTs || "").slice(11, 19);
       const stuckMark = m.stuck ? "  STUCK" : "";
       console.log("    " + m.session.padEnd(16) + m.liveness.padEnd(8) + when + stuckMark);
-    }
-  }
-  if (model.orphans.length) {
-    console.log("Orphaned claims (holder gone — closed or stale):");
-    for (const o of model.orphans) {
-      console.log("  orphan: " + o.scope + "  ref=" + o.ref + "  session=" + o.session + "  reason=" + o.reason);
     }
   }
   if (model.collisions.length) {
@@ -512,7 +420,7 @@ function ticsCycle(targetDir) {
   const fm = fleetModel(targetDir, t);
   const stuck = fm.members.filter((m) => m.stuck).length;
   const tl = fm.tally;
-  console.log("  Fleet: " + stuck + " stuck, " + fm.orphans.length + " orphan, " + fm.collisions.length + " collisions | live " + tl.live + " idle " + tl.idle + " stale " + tl.stale + " unknown " + tl.unknown);
+  console.log("  Fleet: " + stuck + " stuck, " + fm.collisions.length + " collisions | live " + tl.live + " idle " + tl.idle + " stale " + tl.stale + " unknown " + tl.unknown);
   return 0;
 }
 function verdictOutcome(x) {
@@ -612,7 +520,6 @@ function main(argv, defaultRoot) {
   const cfScope = cmd === "claim-check" ? (rest.shift() || scope || "") : null;
   const coFile = cmd === "claim-owner" ? rest.shift() : null;
   const csFile = cmd === "claim-session" ? rest.shift() : null;
-  const tdSession = cmd === "todo" ? rest.shift() : null;
   const soName = cmd === "section-status" ? rest.shift() : null;
   const foSpec = cmd === "fan-out" ? rest.shift() : null;
   const ansHandle = cmd === "answer" ? rest.shift() : null;
@@ -625,8 +532,6 @@ function main(argv, defaultRoot) {
     case "conductor": return ticsConductor(target, all);
     case "claims": return ticsClaims(target, all);
     case "sections": return ticsSections(target, all);
-    case "sessions": return ticsSessions(target, all);
-    case "todo": return ticsTodo(target, tdSession);
     case "cycle": return ticsCycle(target);
     case "gate": return ticsGate(target, all);
     case "claim-check": return claimCheckCli(target, cfFile, cfScope);
@@ -638,7 +543,7 @@ function main(argv, defaultRoot) {
     case "roster": return ticsRoster(target);
     case "review": return ticsReview(target, scope, all);
     case "answer": return ticsAnswer(target, ansHandle, ansText, fromRole, all);
-    default: console.error("usage: tics <log [--scope S] | inbox <role> [--scope S] | conductor | claims | sections | sessions | board | roster | review | answer <handle> \"<text>\" | claim-check <file> <scope> | claim-owner <file> | section-status <name> | fan-out <spec>] [--all]>"); return 2;
+    default: console.error("usage: tics <log [--scope S] | inbox <role> [--scope S] | conductor | claims | sections | board | roster | review | answer <handle> \"<text>\" | claim-check <file> <scope> | claim-owner <file> | section-status <name> | fan-out <spec>] [--all]>"); return 2;
   }
 }
 if (require.main === module) {
@@ -726,4 +631,4 @@ function toolTally(tics) {
   }
   return out;
 }
-module.exports = { loadTics, loadSignalEvents, ticsLog, ticsInbox, ticsConductor, ticsClaims, ticsSections, ticsSessions, ticsTodo, ticsCycle, ticsGate, claimCheck, claimCheckCli, claimOwner, claimOwnerCli, claimSession, claimSessionCli, sectionStatus, sectionStatusCli, livenessTier, fleetModel, ticsBoard, ticsRoster, ticsReview, ticsAnswer, fanOut, greenAttestation, attestationTally, isHookSignedRed, cfgStr, evidenceFor, openNeeds, main, toolTally };
+module.exports = { loadTics, loadSignalEvents, ticsLog, ticsInbox, ticsConductor, ticsClaims, ticsSections, ticsCycle, ticsGate, claimCheck, claimCheckCli, claimOwner, claimOwnerCli, claimSession, claimSessionCli, sectionStatus, sectionStatusCli, livenessTier, fleetModel, ticsBoard, ticsRoster, ticsReview, ticsAnswer, fanOut, greenAttestation, attestationTally, isHookSignedRed, cfgStr, evidenceFor, openNeeds, main, toolTally };

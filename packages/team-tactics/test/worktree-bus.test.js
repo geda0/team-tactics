@@ -126,52 +126,8 @@ test("tics log merges every worktree's bus BY DEFAULT (whole picture); --here re
   } finally { try { git(d, "worktree", "remove", "--force", wt); } catch (e) {} fs.rmSync(d, { recursive: true, force: true }); fs.rmSync(wt, { recursive: true, force: true }); }
 });
 
-// --- MS3/MS4 (ADR 0002): the pre-commit is the cross-session choke-point ---
+// emitAs: emit a tic as a given session/scope (used by the cross-worktree claim-visibility test).
 const emitAs = (d, sid, scope, args) => cp.spawnSync("bash", ["-c", `. "${d}/.claude/hooks/tics-lib.sh"; export TICS_SESSION='${sid}' TICS_SCOPE='${scope}'; emit_tic ${args}`], { cwd: d, env: ENV });
-
-test("MS3: pre-commit blocks committing a file CLAIMED BY ANOTHER live session; own claim is fine", () => {
-  const d = gitInstall();
-  try {
-    assert.strictEqual(node("install-hooks", d).status, 0);
-    fs.writeFileSync(path.join(d, ".claude", "state", "session"), "sessA\n");   // I am sessA
-    emitAs(d, "sessB", "ui/S2", "b '*' claim app.js app.js");                    // sessB owns app.js
-    fs.writeFileSync(path.join(d, "app.js"), "// edit\n"); git(d, "add", "app.js");
-    const blocked = git(d, "commit", "-m", "touch app.js");
-    assert.notStrictEqual(blocked.status, 0, "blocked: app.js held by sessB");
-    assert.match(blocked.stdout + blocked.stderr, /sessB|another session/i, "names the holding session");
-    git(d, "reset", "-q");
-    emitAs(d, "sessA", "auth/S1", "a '*' claim mine.js mine.js");                // I own mine.js
-    fs.writeFileSync(path.join(d, "mine.js"), "// mine\n"); git(d, "add", "mine.js");
-    assert.strictEqual(git(d, "commit", "-m", "my file").status, 0, "my own claim doesn't block me");
-  } finally { fs.rmSync(d, { recursive: true, force: true }); }
-});
-
-test("MS4: pre-commit honors the RELEASE lock — another session's RELEASE blocks a release commit", () => {
-  const d = gitInstall();
-  try {
-    assert.strictEqual(node("install-hooks", d).status, 0);
-    fs.writeFileSync(path.join(d, ".claude", "state", "session"), "sessA\n");
-    emitAs(d, "sessB", "*", "b '*' claim RELEASE RELEASE");                       // sessB holds the release lock
-    fs.writeFileSync(path.join(d, "package.json"), '{"name":"x","version":"9.9.9"}\n'); git(d, "add", "package.json");
-    const blocked = git(d, "commit", "-m", "bump");
-    assert.notStrictEqual(blocked.status, 0, "release-shaped commit blocked while sessB holds RELEASE");
-    assert.match(blocked.stdout + blocked.stderr, /RELEASE|sessB/i, "names the lock/holder");
-  } finally { fs.rmSync(d, { recursive: true, force: true }); }
-});
-
-test("C1: SessionStart auto-announces the session (a session/open beacon) only under MULTI_SESSION=1", () => {
-  const beacons = (d) => { const f = path.join(d, ".claude", "state", "tics.jsonl"); if (!fs.existsSync(f)) return []; return fs.readFileSync(f, "utf8").trim().split("\n").map((l) => { try { return JSON.parse(l); } catch (e) { return {}; } }).filter((x) => x.kind === "session" && x.result === "open"); };
-  const d = gitInstall(); const d2 = gitInstall();
-  try {
-    fs.writeFileSync(path.join(d, ".claude", "state", "session"), "sessW\n");
-    fs.appendFileSync(path.join(d, ".claude", "tdd.config"), "\nMULTI_SESSION=1\n");
-    sgc(d);
-    assert.ok(beacons(d).some((x) => x.session === "sessW"), "MULTI_SESSION=1: a session/open beacon for sessW lands (join is automatic)");
-    fs.writeFileSync(path.join(d2, ".claude", "state", "session"), "solo\n");   // no MULTI_SESSION
-    sgc(d2);
-    assert.strictEqual(beacons(d2).length, 0, "single-session: no auto-announce beacon (ergonomics unchanged)");
-  } finally { fs.rmSync(d, { recursive: true, force: true }); fs.rmSync(d2, { recursive: true, force: true }); }
-});
 
 test("N1 pt2: a claim in one worktree is VISIBLE + BLOCKS across worktrees (cross-worktree enforcement)", () => {
   const d = gitInstall(); const wt = d + "-pt2";
