@@ -378,6 +378,26 @@ function ticsRoster(targetDir) {
   }
   return 0;
 }
+// Review view (ADR 0012): navigator queue — open needs grouped by addressable (has ref) vs unaddressable.
+function ticsReview(targetDir, scopeFilter, all) {
+  let opens = openNeeds(loadFor(targetDir, all));
+  if (scopeFilter) opens = opens.filter((x) => scopeMatch(x.scope, scopeFilter));
+  if (!opens.length) { console.log("No open needs — the navigator queue is clear."); return 0; }
+  const addressable = opens.filter((x) => x.ref);
+  const unaddressable = opens.filter((x) => !x.ref);
+  console.log("Open needs (navigator queue):");
+  for (const n of addressable) {
+    console.log("  " + (n.handle || n.ref).padEnd(16) + (n.from || "?") + " -> " + (n.to || "*") + "  [" + (n.scope || "*") + "]  " + (n.msg || ""));
+  }
+  if (unaddressable.length) {
+    console.log("  --- unaddressable (no ref) — re-ask with a ref to make them answerable ---");
+    for (const n of unaddressable) {
+      console.log("  " + (n.handle).padEnd(16) + (n.from || "?") + " -> " + (n.to || "*") + "  [" + (n.scope || "*") + "]  " + (n.msg || ""));
+    }
+  }
+  console.log("Answer with: tics answer <handle> \"<text>\"");
+  return 0;
+}
 // Board view (ADR 0008): fleet at a glance — members grouped by held scope with liveness tier.
 function ticsBoard(targetDir, all) {
   const tics = loadFor(targetDir, all);
@@ -583,8 +603,8 @@ function fanOut(targetDir, specPath) {
   return 0;
 }
 function main(argv, defaultRoot) {
-  let scope = null, all = true; const rest = [];   // whole-picture by default (merge every worktree's bus); --here restricts to the local bus
-  for (let i = 0; i < argv.length; i++) { const a = argv[i]; if (a === "--scope") scope = argv[++i] || ""; else if (a === "--all") all = true; else if (a === "--here") all = false; else rest.push(a); }
+  let scope = null, all = true, fromRole = null; const rest = [];   // whole-picture by default (merge every worktree's bus); --here restricts to the local bus
+  for (let i = 0; i < argv.length; i++) { const a = argv[i]; if (a === "--scope") scope = argv[++i] || ""; else if (a === "--all") all = true; else if (a === "--here") all = false; else if (a === "--from") fromRole = argv[++i] || null; else rest.push(a); }
   const cmd = rest.shift();
   const role = cmd === "inbox" ? rest.shift() : null;
   const cfFile = cmd === "claim-check" ? rest.shift() : null;
@@ -594,6 +614,9 @@ function main(argv, defaultRoot) {
   const tdSession = cmd === "todo" ? rest.shift() : null;
   const soName = cmd === "section-status" ? rest.shift() : null;
   const foSpec = cmd === "fan-out" ? rest.shift() : null;
+  const ansHandle = cmd === "answer" ? rest.shift() : null;
+  const ansText = cmd === "answer" ? rest.join(" ") : null;
+  if (cmd === "answer") { rest.length = 0; }
   const target = rest[0] ? path.resolve(rest[0]) : (defaultRoot || process.cwd());
   switch (cmd) {
     case "log": return ticsLog(target, scope, all);
@@ -612,7 +635,9 @@ function main(argv, defaultRoot) {
     case "fan-out": return fanOut(target, foSpec);
     case "board": return ticsBoard(target, all);
     case "roster": return ticsRoster(target);
-    default: console.error("usage: tics <log [--scope S] | inbox <role> [--scope S] | conductor | claims | sections | sessions | board | roster | claim-check <file> <scope> | claim-owner <file> | section-status <name> | fan-out <spec>] [--all]>"); return 2;
+    case "review": return ticsReview(target, scope, all);
+    case "answer": return ticsAnswer(target, ansHandle, ansText, fromRole, all);
+    default: console.error("usage: tics <log [--scope S] | inbox <role> [--scope S] | conductor | claims | sections | sessions | board | roster | review | answer <handle> \"<text>\" | claim-check <file> <scope> | claim-owner <file> | section-status <name> | fan-out <spec>] [--all]>"); return 2;
   }
 }
 if (require.main === module) {
@@ -655,4 +680,36 @@ function evidenceFor(targetDir, tics) {
   }
   return { scopes, anyGreen, anyNotTestFirst };
 }
-module.exports = { loadTics, loadSignalEvents, ticsLog, ticsInbox, ticsConductor, ticsClaims, ticsSections, ticsSessions, ticsTodo, ticsCycle, ticsGate, claimCheck, claimCheckCli, claimOwner, claimOwnerCli, claimSession, claimSessionCli, sectionStatus, sectionStatusCli, livenessTier, fleetModel, ticsBoard, ticsRoster, fanOut, greenAttestation, attestationTally, isHookSignedRed, cfgStr, evidenceFor, main };
+// Answer an open need: emit a msg+answered tic to the asker.
+function ticsAnswer(targetDir, handle, text, fromRole, all) {
+  if (!handle || !text) { console.error("usage: tics answer <handle> \"<text>\""); return 2; }
+  const opens = openNeeds(loadFor(targetDir, all));
+  const want = handle;
+  const need = opens.find(function(n) { return n.handle === want || ("n" + n.seq) === want || String(n.seq) === want; });
+  if (!need) { console.error("no open need with handle '" + handle + "'"); return 2; }
+  const asker = need.from || "*";
+  const token = need.handle;
+  const from = fromRole || "navigator";
+  const ticsh = path.join(targetDir, ".claude", "hooks", "tic.sh");
+  try {
+    cp.execFileSync(ticsh, [from, asker, "msg", text, token, "answered"], { cwd: targetDir, stdio: "ignore" });
+  } catch (e) { console.error("answer: could not emit (" + (e && e.message) + ")"); return 2; }
+  console.log("answered " + token + " -> " + asker + ": " + text);
+  return 0;
+}
+// Pure fold: returns the subset of `need` tics that have not yet been answered.
+// A need is settled when a `msg` tic with `result==="answered"` references its token
+// (ref if present, else "n"+seq). A bare-ref msg without result=answered never settles a need.
+function openNeeds(tics) {
+  if (!Array.isArray(tics)) return [];
+  const answered = new Set();
+  for (const x of tics) if (x && x.kind === "msg" && x.result === "answered" && x.ref) answered.add(x.ref);
+  const out = [];
+  for (const x of tics) {
+    if (!x || x.kind !== "need") continue;
+    const handle = x.ref ? x.ref : ("n" + x.seq);
+    if (!answered.has(handle)) out.push(Object.assign({}, x, { handle }));
+  }
+  return out;
+}
+module.exports = { loadTics, loadSignalEvents, ticsLog, ticsInbox, ticsConductor, ticsClaims, ticsSections, ticsSessions, ticsTodo, ticsCycle, ticsGate, claimCheck, claimCheckCli, claimOwner, claimOwnerCli, claimSession, claimSessionCli, sectionStatus, sectionStatusCli, livenessTier, fleetModel, ticsBoard, ticsRoster, ticsReview, ticsAnswer, fanOut, greenAttestation, attestationTally, isHookSignedRed, cfgStr, evidenceFor, openNeeds, main };

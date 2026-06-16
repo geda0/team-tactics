@@ -79,6 +79,8 @@ tics inbox <role>              # tics addressed to <role> or broadcast (to = *)
 tics cycle                     # current phase/layer/scope + last suite + cycles since last critic
 tics board                     # scope-grouped fleet board: members + liveness + STUCK/orphan/collision
 tics roster                    # the configured model per role (MODEL_<ROLE> in tdd.config) — ADR 0010
+tics review                    # OPEN needs awaiting an answer (the navigator queue) — ADR 0012
+tics answer <handle> <text>    # answer an open need: guidance msg to the asker, settles the need (--from <role>)
 tics gate                      # release gate: product-owner + tdd-critic (+ qa) verdicts must pass
 ```
 

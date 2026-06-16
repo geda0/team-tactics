@@ -749,6 +749,136 @@ test("E10-1b: evidenceFor folds per-scope red-before-green (honored vs not-test-
   assert.deepStrictEqual(TV.evidenceFor("/tmp/x", null), { scopes: [], anyGreen: false, anyNotTestFirst: false });
 });
 
+test("E11-1: openNeeds folds needs open until a msg+result=answered references the token; a bare-ref msg never settles; n<seq> fallback; degrade-safe", () => {
+  const TV = require(path.join(__dirname, "..", "kit", "hooks", "tics-view.cjs"));
+  const handles = (r) => r.map((n) => n.handle);
+  // Arrange — two open needs: one guard-style WITH ref, one ref-less manual need (n<seq> fallback).
+  const needWithRef = { kind: "need", from: "guard", to: "*", scope: "auth/S1", ref: "app/login.ts", msg: "claim conflict on app/login.ts", seq: 1 };
+  const needNoRef = { kind: "need", from: "peer", to: "architect", msg: "need the StockLevel contract", seq: 2 };
+  const open = [needWithRef, needNoRef];
+  // Act + Assert — both needs are open; the ref-need resolves its ref as handle, the ref-less one falls back to n<seq>.
+  assert.deepStrictEqual(handles(TV.openNeeds(open)).sort(), ["app/login.ts", "n2"], "both needs open; handle = ref when present, else n<seq>");
+  assert.ok(TV.openNeeds(open).some((n) => n.handle === "app/login.ts"), "the guard-style need resolves handle to its ref");
+  assert.ok(TV.openNeeds(open).some((n) => n.handle === "n2"), "the ref-less need falls back to n<seq>");
+
+  // Arrange — append a real ANSWER (msg + result=answered) referencing the first need's token.
+  const answered = open.concat([
+    { kind: "msg", from: "navigator", to: "guard", ref: "app/login.ts", result: "answered", msg: "use scope auth/S1", seq: 3 },
+  ]);
+  // Act + Assert — the answered need is settled (gone); the other need is still open.
+  assert.ok(!TV.openNeeds(answered).some((n) => n.handle === "app/login.ts"), "a msg with result=answered referencing the token settles the need (removed)");
+  assert.ok(TV.openNeeds(answered).some((n) => n.handle === "n2"), "the unanswered need stays open");
+
+  // Arrange — the sentinel: an ORDINARY msg reusing the second need's token but NO result=answered.
+  const bareRef = answered.concat([
+    { kind: "msg", from: "x", to: "peer", ref: "n2", msg: "chatter", seq: 4 },
+  ]);
+  // Act + Assert — the load-bearing guard: a bare-ref msg does NOT settle the need (answered-set keys on result=answered).
+  assert.ok(TV.openNeeds(bareRef).some((n) => n.handle === "n2"), "a bare-ref msg (no result=answered) must NOT settle the need — answered-set keys on result=answered, not bare ref");
+  assert.ok(!TV.openNeeds(bareRef).some((n) => n.handle === "app/login.ts"), "the genuinely-answered need stays settled");
+
+  // Arrange — contract guard #1 (no self-settle): a need that carries its OWN result=answered.
+  // The answered-set admits ONLY kind=msg tics, so a need can't answer itself.
+  const selfResult = bareRef.concat([
+    { kind: "need", from: "x", to: "*", ref: "selfX", msg: "self-result need", result: "answered", seq: 5 },
+  ]);
+  // Act + Assert — the need stays OPEN: a need carrying result=answered must NOT settle itself.
+  assert.ok(TV.openNeeds(selfResult).some((n) => n.handle === "selfX"), "a need carrying its own result=answered must NOT self-settle — answered-set admits only kind=msg tics");
+
+  // Arrange — contract guard #2 (no cross-close): a need plus a handoff reusing its token.
+  // A handoff closes delegates in ticsTodo (a SEPARATE fold) — it must not reach the needs fold.
+  const crossClose = selfResult.concat([
+    { kind: "need", from: "y", to: "*", ref: "crossY", msg: "cross-close need", seq: 6 },
+    { kind: "handoff", from: "impl", to: "*", ref: "crossY", result: "green", seq: 7 },
+  ]);
+  // Act + Assert — the crossY need stays OPEN: a handoff (even result=green on the token) does not close a need.
+  assert.ok(TV.openNeeds(crossClose).some((n) => n.handle === "crossY"), "a handoff sharing the need's token must NOT settle the need — answered-set keys on kind=msg && result=answered");
+
+  // Degrade-safe — empty / non-array inputs return [], never throw.
+  assert.deepStrictEqual(TV.openNeeds([]), [], "empty list -> [] (no throw)");
+  assert.deepStrictEqual(TV.openNeeds(undefined), [], "non-array (undefined) -> [] (guard, no throw)");
+});
+
+test("E11-2: tics review lists open needs (handle/asker/scope/question), groups ref-less as unaddressable, hides settled needs; empty bus exits 0", () => {
+  const d = inst();
+  const e = inst();
+  try {
+    // Arrange — a populated bus: a guard-style need WITH a ref (handle=ref) and a ref-less manual
+    // need (handle=n<seq>). Direct-write deterministic seqs/ts (the openNeeds fold is seq-keyed).
+    const ts = "2026-06-16T00:00:00Z";
+    fs.writeFileSync(path.join(d, ".claude", "state", "tics.jsonl"),
+      JSON.stringify({ kind: "need", from: "guard", to: "*", scope: "auth/S1", ref: "app/login.ts", msg: "claim conflict on app/login.ts", seq: 1, ts }) + "\n" +
+      JSON.stringify({ kind: "need", from: "peer", to: "architect", msg: "need the StockLevel contract", seq: 2, ts }) + "\n");
+
+    // Act + Assert — review renders the open needs.
+    const r = read(d, "review");
+    assert.strictEqual(r.status, 0, "review renders a populated bus: " + r.stderr);
+    // the keyed need shows its handle, asker, scope, and question text.
+    const keyed = r.stdout.split("\n").find((l) => l.includes("app/login.ts")) || "";
+    assert.match(keyed, /app\/login\.ts/, "the keyed need shows its handle (the ref)");
+    assert.match(keyed, /guard/, "the keyed need names the asker (from)");
+    assert.match(keyed, /auth\/S1/, "the keyed need shows its scope");
+    assert.match(r.stdout, /claim conflict/, "the keyed need shows the question text");
+    // the ref-less need is grouped under an unaddressable (no ref) note with its n<seq> handle.
+    assert.match(r.stdout, /unaddressable|no ref/i, "ref-less needs are grouped under an unaddressable (no ref) note");
+    assert.match(r.stdout, /peer/, "the ref-less need names its asker (peer)");
+    assert.match(r.stdout, /StockLevel/, "the ref-less need shows its question text");
+    assert.match(r.stdout, /n2/, "the ref-less need shows its n<seq> handle");
+
+    // Arrange — append a SETTLING answer (msg + result=answered) referencing the first need's token.
+    fs.appendFileSync(path.join(d, ".claude", "state", "tics.jsonl"),
+      JSON.stringify({ kind: "msg", from: "navigator", to: "guard", ref: "app/login.ts", result: "answered", msg: "use auth/S1", seq: 3, ts }) + "\n");
+
+    // Act + Assert — the answered need is gone; the unanswered ref-less need still appears.
+    const r2 = read(d, "review");
+    assert.strictEqual(r2.status, 0, "review still exits 0 after a settle: " + r2.stderr);
+    assert.doesNotMatch(r2.stdout, /app\/login\.ts/, "a settled (result=answered) need no longer appears");
+    assert.match(r2.stdout, /n2/, "the still-open ref-less need stays listed");
+
+    // Empty bus: friendly indicator, still exits 0 (degrade-safe).
+    const eb = read(e, "review");
+    assert.strictEqual(eb.status, 0, "an empty bus still exits 0: " + eb.stderr);
+    assert.match(eb.stdout, /no .*open .*need/i, "prints a friendly no-open-needs line");
+  } finally {
+    fs.rmSync(d, { recursive: true, force: true });
+    fs.rmSync(e, { recursive: true, force: true });
+  }
+});
+
+test("E11-3: tics answer emits a msg+answered to the asker (settles the need + lands in inbox); unknown/closed handle exits 2 and emits nothing", () => {
+  const d = inst();
+  try {
+    // Arrange — one open guard-style need WITH a ref (handle = ref). asker = its `from`.
+    const ts = "2026-06-16T00:00:00Z";
+    fs.writeFileSync(path.join(d, ".claude", "state", "tics.jsonl"),
+      JSON.stringify({ kind: "need", from: "test-writer", to: "architect", scope: "auth/S1", ref: "app/login.ts", msg: "which error contract for expired tokens?", seq: 1, ts }) + "\n");
+
+    // Act — answer the need by its handle (the ref).
+    const r = read(d, "answer", "app/login.ts", "use the AuthError contract");
+
+    // Assert — answer succeeds and emits exactly ONE settling msg directed at the asker.
+    assert.strictEqual(r.status, 0, "answer exits 0 on a matched open need: " + r.stderr);
+    const settled = ticsOf(d).filter((x) => x.kind === "msg" && x.result === "answered");
+    assert.strictEqual(settled.length, 1, "exactly one msg+answered tic was appended");
+    assert.strictEqual(settled[0].to, "test-writer", "the answer is directed at the asker (the need's from)");
+    assert.strictEqual(settled[0].ref, "app/login.ts", "the answer references the resolved token (the need's handle)");
+    assert.strictEqual(settled[0].result, "answered", "the answer carries result=answered (settles the need)");
+    assert.match(settled[0].msg, /use the AuthError contract/, "the answer carries the answer text");
+
+    // Assert — it lands in the asker's inbox.
+    assert.match(read(d, "inbox", "test-writer").stdout, /use the AuthError contract/, "the answer lands in the asker's inbox");
+
+    // Assert — the need is now settled (gone from the open review queue).
+    assert.doesNotMatch(read(d, "review").stdout, /app\/login\.ts/, "the answered need is removed from the open queue");
+
+    // Act + Assert — a no-match handle is idempotent: exit 2, emits NOTHING.
+    const before = ticsOf(d).length;
+    const bad = read(d, "answer", "n999", "nope");
+    assert.notStrictEqual(bad.status, 0, "answering an unknown/closed handle exits non-zero (2)");
+    assert.strictEqual(ticsOf(d).length, before, "a no-match answer emits no tic (can't double-answer or answer a nonexistent need)");
+  } finally { fs.rmSync(d, { recursive: true, force: true }); }
+});
+
 test("E10-2: tics gate surfaces a no-red-before-green warning (flag-only, still exit 0) for a not-test-first green; silent when the green is evidenced", () => {
   // Passing PO + critic verdicts keep the VERDICT gate CLEAR (exit 0), isolating the EVIDENCE effect.
   // The evidence SURFACE is flag-only by default: it warns but must NOT change the exit code
