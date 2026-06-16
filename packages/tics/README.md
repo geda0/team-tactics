@@ -77,6 +77,8 @@ The installed reader is `.claude/hooks/tics` (full command set). The same reader
 tics log                       # the thread, newest last (consecutive run-suite signals fold to xN)
 tics inbox <role>              # tics addressed to <role> or broadcast (to = *)
 tics cycle                     # current phase/layer/scope + last suite + cycles since last critic
+tics board                     # scope-grouped fleet board: members + liveness + STUCK/orphan/collision
+tics roster                    # the configured model per role (MODEL_<ROLE> in tdd.config) — ADR 0010
 tics gate                      # release gate: product-owner + tdd-critic (+ qa) verdicts must pass
 ```
 

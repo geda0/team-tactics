@@ -7,7 +7,7 @@ const { TV, PKG, installTics } = require("../index.js");
 const argv = process.argv.slice(2);
 let scope = null, all = true; const rest = [];   // whole-picture by default (merge every worktree's bus); --here restricts to the local bus
 for (let i = 0; i < argv.length; i++) { const a = argv[i]; if (a === "--scope") scope = argv[++i] || ""; else if (a === "--all") all = true; else if (a === "--here") all = false; else rest.push(a); }
-const KNOWN = ["log", "inbox", "conductor", "claims", "sections", "sessions", "board", "todo", "cycle", "gate", "claim-check", "init", "install", "update", "selftest", "help"];
+const KNOWN = ["log", "inbox", "conductor", "claims", "sections", "sessions", "board", "roster", "todo", "cycle", "gate", "claim-check", "init", "install", "update", "selftest", "help"];
 const cmd = KNOWN.indexOf(rest[0]) !== -1 ? rest.shift() : "help";
 const role = cmd === "inbox" ? rest.shift() : null;
 const cfFile = cmd === "claim-check" ? rest.shift() : null;
@@ -25,6 +25,7 @@ if (cmd === "todo") process.exit(TV.ticsTodo(target, tdSession));
 if (cmd === "cycle") process.exit(TV.ticsCycle(target));
 if (cmd === "gate") process.exit(TV.ticsGate(target, all));
 if (cmd === "board") process.exit(TV.ticsBoard(target, all));
+if (cmd === "roster") process.exit(TV.ticsRoster(target));
 if (cmd === "claim-check") process.exit(TV.claimCheckCli(target, cfFile, cfScope));
 if (cmd === "selftest") process.exit(selftest(target));
 if (cmd === "init" || cmd === "install" || cmd === "update") { installTics(target); console.log("@ttics/tics " + PKG.version + " installed in " + target); process.exit(0); }

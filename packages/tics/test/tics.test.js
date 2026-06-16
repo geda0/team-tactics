@@ -635,6 +635,51 @@ test("E8-3b: tics gate hard-blocks under ATTEST_ENFORCE when all greens are self
   }
 });
 
+test("E9-1: cfgStr reads an uncommented string config value (quotes stripped), ignores commented/missing keys, degrade-safe default", () => {
+  const TV = require(path.join(__dirname, "..", "kit", "hooks", "tics-view.cjs"));
+  const d = inst();
+  try {
+    // Arrange — model-tiering lines: uncommented (plain + double-quoted), and two commented variants
+    // (leading-whitespace-then-`#`, and `#`-with-leading-spaces) that must NOT match (the F1 line-anchor lesson).
+    fs.appendFileSync(path.join(d, ".claude", "tdd.config"),
+      "\nMODEL_IMPLEMENTER=fast-model\nMODEL_ARCHITECT=\"claude-capable\"\n#   MODEL_TDD_CRITIC=should-be-ignored\n   #MODEL_PRODUCT_OWNER=also-ignored\n");
+    // Act + Assert
+    assert.strictEqual(TV.cfgStr(d, "MODEL_IMPLEMENTER", "DEF"), "fast-model", "an uncommented KEY=value returns the trimmed value");
+    assert.strictEqual(TV.cfgStr(d, "MODEL_ARCHITECT", "DEF"), "claude-capable", "surrounding double-quotes are stripped");
+    assert.strictEqual(TV.cfgStr(d, "MODEL_TDD_CRITIC", "DEF"), "DEF", "a `#`-commented line (leading spaces) is ignored — line-anchored, not read");
+    assert.strictEqual(TV.cfgStr(d, "MODEL_PRODUCT_OWNER", "DEF"), "DEF", "leading-whitespace-then-`#` is also ignored");
+    assert.strictEqual(TV.cfgStr(d, "MODEL_MISSING", "DEF"), "DEF", "an absent key returns the default");
+    // degrade-safe: a missing dir/file returns the default, never throws.
+    assert.strictEqual(TV.cfgStr("/tmp/nonexistent-e9-" + Date.now(), "MODEL_IMPLEMENTER", "DEF"), "DEF", "missing dir/file -> default, never throws");
+  } finally { fs.rmSync(d, { recursive: true, force: true }); }
+});
+
+test("E9-1: tics roster lists each standard role with its configured MODEL_<ROLE> (or (default) when unset); degrade-safe", () => {
+  const d = inst();
+  const e = inst();
+  try {
+    // Arrange — configure two roles; the role->key mapping uppercases + hyphen->underscore
+    // (implementer -> MODEL_IMPLEMENTER, test-writer -> MODEL_TEST_WRITER). architect is left unset.
+    fs.appendFileSync(path.join(d, ".claude", "tdd.config"), "\nMODEL_IMPLEMENTER=fast-model\nMODEL_TEST_WRITER=capable-model\n");
+
+    // Act + Assert — configured roster shows each role beside its model.
+    const r = read(d, "roster");
+    assert.strictEqual(r.status, 0, "roster exits 0 on a configured install: " + r.stderr);
+    const rowOf = (name) => r.stdout.split("\n").find((l) => l.includes(name)) || "";
+    assert.match(rowOf("implementer"), /fast-model/, "implementer shows its configured MODEL_IMPLEMENTER");
+    assert.match(rowOf("test-writer"), /capable-model/, "test-writer shows its configured MODEL_TEST_WRITER (hyphen->underscore key)");
+    assert.match(rowOf("architect"), /\(default\)/i, "an unset role (no MODEL_ARCHITECT) shows the (default) marker");
+
+    // Degrade-safe — a fresh empty install: every role unset -> (default), still exits 0, never crashes.
+    const er = read(e, "roster");
+    assert.strictEqual(er.status, 0, "roster exits 0 on a fresh empty install (degrade-safe): " + er.stderr);
+    assert.match(er.stdout, /\(default\)/, "with no MODEL_* set, every role shows (default)");
+  } finally {
+    fs.rmSync(d, { recursive: true, force: true });
+    fs.rmSync(e, { recursive: true, force: true });
+  }
+});
+
 test("selftest passes (emit + read round-trip)", () => {
   assert.strictEqual(node("selftest").status, 0);
 });

@@ -250,6 +250,15 @@ function cfgNum(targetDir, key, def) {
   try { const m = fs.readFileSync(path.join(targetDir, ".claude", "tdd.config"), "utf8").match(new RegExp("^\\s*" + key + "\\s*=\\s*(\\d+)", "m")); return m ? parseInt(m[1], 10) : def; }
   catch (e) { return def; }
 }
+function cfgStr(targetDir, key, def) {
+  try {
+    const m = fs.readFileSync(path.join(targetDir, ".claude", "tdd.config"), "utf8").match(new RegExp("^\\s*" + key + "\\s*=\\s*(.+?)\\s*$", "m"));
+    if (!m) return def;
+    let v = m[1].trim();
+    if ((v.startsWith('"') && v.endsWith('"')) || (v.startsWith("'") && v.endsWith("'"))) v = v.slice(1, -1);
+    return v;
+  } catch (e) { return def; }
+}
 // Classify a green signal as hook-signed (objective) or self-reported (role), null otherwise.
 function greenAttestation(tic) {
   if (!tic) return null;
@@ -351,6 +360,18 @@ function fleetModel(targetDir, tics, opts) {
     if (sessSet.size >= 2) collisions.push({ scope: sc, sessions: [...sessSet].sort() });
   }
   return { members, byScope, tally, orphans, collisions };
+}
+// Roster view (ADR 0010): one row per standard role showing the configured MODEL_<ROLE> or "(default)".
+function ticsRoster(targetDir) {
+  const ROLES = ["test-writer", "implementer", "architect", "tdd-critic", "product-owner", "qa-verifier", "project-manager", "dev-ops"];
+  console.log("Model roster (MODEL_<ROLE> in tdd.config):");
+  for (const role of ROLES) {
+    const key = "MODEL_" + role.toUpperCase().replace(/-/g, "_");
+    const model = cfgStr(targetDir, key, "");
+    const shown = model || "(default)";
+    console.log("  " + role.padEnd(16) + shown);
+  }
+  return 0;
 }
 // Board view (ADR 0008): fleet at a glance — members grouped by held scope with liveness tier.
 function ticsBoard(targetDir, all) {
@@ -576,10 +597,11 @@ function main(argv, defaultRoot) {
     case "section-status": return sectionStatusCli(target, soName);
     case "fan-out": return fanOut(target, foSpec);
     case "board": return ticsBoard(target, all);
-    default: console.error("usage: tics <log [--scope S] | inbox <role> [--scope S] | conductor | claims | sections | sessions | board | claim-check <file> <scope> | claim-owner <file> | section-status <name> | fan-out <spec>] [--all]>"); return 2;
+    case "roster": return ticsRoster(target);
+    default: console.error("usage: tics <log [--scope S] | inbox <role> [--scope S] | conductor | claims | sections | sessions | board | roster | claim-check <file> <scope> | claim-owner <file> | section-status <name> | fan-out <spec>] [--all]>"); return 2;
   }
 }
 if (require.main === module) {
   process.exit(main(process.argv.slice(2), path.join(__dirname, "..", "..")) || 0);
 }
-module.exports = { loadTics, loadSignalEvents, ticsLog, ticsInbox, ticsConductor, ticsClaims, ticsSections, ticsSessions, ticsTodo, ticsCycle, ticsGate, claimCheck, claimCheckCli, claimOwner, claimOwnerCli, claimSession, claimSessionCli, sectionStatus, sectionStatusCli, livenessTier, fleetModel, ticsBoard, fanOut, greenAttestation, attestationTally, main };
+module.exports = { loadTics, loadSignalEvents, ticsLog, ticsInbox, ticsConductor, ticsClaims, ticsSections, ticsSessions, ticsTodo, ticsCycle, ticsGate, claimCheck, claimCheckCli, claimOwner, claimOwnerCli, claimSession, claimSessionCli, sectionStatus, sectionStatusCli, livenessTier, fleetModel, ticsBoard, ticsRoster, fanOut, greenAttestation, attestationTally, cfgStr, main };
