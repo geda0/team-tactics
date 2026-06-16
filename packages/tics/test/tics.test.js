@@ -376,10 +376,13 @@ test("E7-3: tics board flags STUCK only for a held scope that is stale — never
     assert.match(b.stdout, /STUCK/, "a STUCK call-out token is shown");
     const stuckText = b.stdout.split("\n").filter((l) => /STUCK/i.test(l)).join("\n");
     assert.match(stuckText, /sessStuck|pay\/S1/, "STUCK names the held-and-stale member (sessStuck / pay/S1)");
-    assert.doesNotMatch(stuckText, /sessLive/, "a live holder is never STUCK (no false alarm)");
-    assert.doesNotMatch(stuckText, /sessGhostNoScope/, "a stale member holding no scope is never STUCK (no false alarm)");
-    assert.doesNotMatch(stuckText, /sessIdleHeld/, "an idle holder is never STUCK (no false alarm)");
-    assert.doesNotMatch(stuckText, /sessUnknownHeld/, "an unknown-liveness holder is never STUCK (no false alarm)");
+    // No false alarms: assert each non-(held+stale) member's OWN board row carries no STUCK marker
+    // (stronger than scanning the joined STUCK blob — pins the detector's per-member output directly).
+    const rowOf = (name) => b.stdout.split("\n").find((l) => l.includes(name)) || "";
+    assert.doesNotMatch(rowOf("sessLive"), /STUCK/, "a live holder is never STUCK (no false alarm)");
+    assert.doesNotMatch(rowOf("sessGhostNoScope"), /STUCK/, "a stale member holding no scope is never STUCK (no false alarm)");
+    assert.doesNotMatch(rowOf("sessIdleHeld"), /STUCK/, "an idle holder is never STUCK (no false alarm)");
+    assert.doesNotMatch(rowOf("sessUnknownHeld"), /STUCK/, "an unknown-liveness holder is never STUCK (no false alarm)");
   } finally { fs.rmSync(d, { recursive: true, force: true }); }
 });
 
@@ -496,6 +499,28 @@ test("F1b: a commented RED_STREAK_LIMIT is inactive (tics cycle uses the default
     assert.match(c, /red-streak.*3|3 reds/i, "shows the current streak");
     assert.doesNotMatch(c, /over-constrained|contradictory|red-storm|reconsider/i, "a COMMENTED RED_STREAK_LIMIT must be inactive — default limit (5) applies, so streak 3 is not a red-storm");
   } finally { fs.rmSync(d, { recursive: true, force: true }); }
+});
+
+test("G1: fleetModel collision ignores the '*' wildcard session (no false collision) but still flags 2 real sessions", () => {
+  const TV = require(path.join(__dirname, "..", "kit", "hooks", "tics-view.cjs"));
+  const now = Date.UTC(2026, 5, 16, 0, 0, 0);
+  const ts = new Date(now - 5000).toISOString();
+  // hot/S1: one REAL session + a wildcard-session tic (session "*") on the SAME scope.
+  // dup/S2: two REAL distinct sessions (positive control).
+  const tics = [
+    { seq: 1, kind: "note", from: "a", to: "*", session: "sessReal", scope: "hot/S1", ts },
+    { seq: 2, kind: "note", from: "b", to: "*", session: "*", scope: "hot/S1", ts },
+    { seq: 3, kind: "note", from: "c", to: "*", session: "sessX", scope: "dup/S2", ts },
+    { seq: 4, kind: "note", from: "d", to: "*", session: "sessY", scope: "dup/S2", ts },
+  ];
+  const { collisions } = TV.fleetModel("/tmp/nonexistent-g1", tics, { nowMs: now });
+  // hot/S1 has only ONE real distinct session — the "*" wildcard is the reserved `to` token, not a session.
+  const hot = collisions.find((c) => c.scope === "hot/S1");
+  assert.strictEqual(hot, undefined, 'hot/S1 must NOT be a collision: the "*" wildcard is not a real session');
+  assert.ok(!collisions.some((c) => c.sessions.includes("*")), 'no collision may list the "*" wildcard as a session');
+  // Positive control: dup/S2 has two REAL distinct sessions — it IS a collision.
+  const dup = collisions.find((c) => c.scope === "dup/S2");
+  assert.deepStrictEqual(dup && dup.sessions, ["sessX", "sessY"], "two real distinct sessions on a scope is a genuine collision");
 });
 
 test("selftest passes (emit + read round-trip)", () => {

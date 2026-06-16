@@ -271,7 +271,8 @@ function fleetModel(targetDir, tics, opts) {
   const idleSec = cfgNum(targetDir, "LIVENESS_IDLE_SEC", 300);
   const staleSec = cfgNum(targetDir, "LIVENESS_STALE_SEC", 900);
   const ttlMs = cfgNum(targetDir, "CLAIMS_TTL", 0) * 1000;
-  // Single pass: sessLatest, raw claim ledger, section status, closed sessions.
+  // One pass here builds sessLatest, the raw claim ledger, section status, closed sessions, and
+  // the per-scope session sets; claimsFor (below) folds the bus again to apply the release/TTL filters.
   const sessLatest = new Map();
   const rawLedger = new Map();   // ref -> tic (claim minus release, no drops)
   const secStatus = new Map();   // section name -> latest lifecycle result
@@ -288,7 +289,7 @@ function fleetModel(targetDir, tics, opts) {
     if (x.kind === "claim" && x.ref) rawLedger.set(x.ref, x);
     else if (x.kind === "release" && x.ref) rawLedger.delete(x.ref);
     const sc = x.scope || "";
-    if (sc && sc !== "*" && id) { let s = scopeSessions.get(sc); if (!s) { s = new Set(); scopeSessions.set(sc, s); } s.add(id); }
+    if (sc && sc !== "*" && id && id !== "*") { let s = scopeSessions.get(sc); if (!s) { s = new Set(); scopeSessions.set(sc, s); } s.add(id); }
   }
   const activeCls = claimsFor(targetDir, tics);
   const sessScope = new Map();

@@ -95,9 +95,13 @@ increment plan is the planner's; the shape and the rules below are the locked co
   still degrade-safe.
 - **Thresholds** come from `tdd.config` via `cfgNum`, default-safe when absent:
   - `LIVENESS_IDLE_SEC` — **default 300** (5 min): ticked within the last 5 min ⇒ `live`.
-  - `LIVENESS_STALE_SEC` — **default 900** (15 min): silent > 15 min ⇒ `stale`. (Aligns
-    with the `CLAIMS_TTL=900` example, so when an adopter turns claim-TTL on, liveness-stale
-    and claim-expiry coincide.)
+  - `LIVENESS_STALE_SEC` — **default 900** (15 min): silent > 15 min ⇒ `stale`. **Amended
+    (v0.46.0):** the original ADR aligned the `CLAIMS_TTL` example *with* this window (both
+    900) and called the coincidence intentional. That was a footgun (F2) — uncommenting the
+    documented `CLAIMS_TTL=900` made claim-expiry fire at the same instant a holder went
+    stale, TTL-expiring it into an *orphan* before STUCK could surface. The shipped example
+    is now `CLAIMS_TTL=1800` (above the stale window), so STUCK is observable even with
+    claim-TTL on. The two knobs stay distinct by design (display vs expiry). See Consequences.
 - **`unknown` is never STUCK and never orphan-by-liveness.** The reader never throws on a
   malformed/empty bus and never invents a tier.
 
@@ -196,6 +200,22 @@ when absent (the implementer adds the commented example; the values above are th
 - Invariants upheld: zero runtime deps, pure Node CommonJS, Node ≥16; `node --test` stays
   green; `selftest` passes; the kit reader (`kit/`) is authoritative (the installed
   `.claude/hooks/tics` re-derives on the next dogfood install — a release step).
+- **Behavioral change (v0.46.0), adopter-facing.** Dogfooding E7 exposed a pre-existing
+  `cfgNum` parse bug (F1, fixed in v0.45.0): the regex matched the *commented* example
+  `#   CLAIMS_TTL=900`, so every full install silently ran `CLAIMS_TTL=900` instead of the
+  documented `0 = off`. Fixing the parse (line-anchored regex) flips the **effective**
+  default from 900 back to 0 — so a wedged/abandoned multi-session claim that previously
+  self-healed after 15 min now persists until an explicit `session close`. Blast radius is
+  limited to multi-session/sectioned use (a solo claim carries no `session` field and never
+  TTL-expired either way). Adopters who *want* the old auto-expiry should set an explicit
+  `CLAIMS_TTL` in `tdd.config` (the shipped example is now `1800`). The config comment carries
+  this note so it reaches adopters, who do not receive ADRs.
+- **F2 resolved (v0.46.0).** The shipped `CLAIMS_TTL` example was decoupled from
+  `LIVENESS_STALE_SEC` (1800 vs 900) so enabling claim-TTL no longer pre-empts STUCK. STUCK
+  and orphan remain mechanically disjoint (active vs dropped claim); the example value change
+  just keeps the *windows* from coinciding in the common case. A future knob could fully
+  separate the STUCK liveness window from `CLAIMS_TTL`; deferred unless the default proves
+  insufficient.
 
 ## Out of scope (do NOT pull into E7)
 

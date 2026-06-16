@@ -26,5 +26,5 @@ node_modules/
 /docs/tdd/conventions.md
 /AGENTS.md
 /CLAUDE.md
-/KICKOFF.md
+/.claude/KICKOFF.md
 /docs/tics/tic-protocol.md
