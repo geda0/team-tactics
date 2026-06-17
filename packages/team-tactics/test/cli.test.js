@@ -163,3 +163,15 @@ test("MCC-2: a fresh install grants the Bash-less inner-pair agents narrow tics 
     }
   } finally { fs.rmSync(d, { recursive: true, force: true }); }
 });
+
+test("GI-1: the managed .gitignore ignores the machine-specific MCP configs (.mcp.json + .cursor/mcp.json)", () => {
+  const d = fs.mkdtempSync(path.join(os.tmpdir(), "gi1-"));
+  try {
+    const r = run(["init", d]);
+    assert.strictEqual(r.status, 0, r.stderr);
+    const gi = fs.readFileSync(path.join(d, ".gitignore"), "utf8");
+    const block = gi.slice(gi.indexOf(">>> team-tactics"), gi.indexOf("<<< team-tactics"));
+    assert.match(block, /(^|\/)\.mcp\.json\s*$/m, ".mcp.json is gitignored in the managed block");
+    assert.match(block, /\.cursor\/mcp\.json/, ".cursor/mcp.json is gitignored in the managed block");
+  } finally { fs.rmSync(d, { recursive: true, force: true }); }
+});

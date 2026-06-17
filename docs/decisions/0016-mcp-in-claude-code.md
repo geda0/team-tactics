@@ -1,9 +1,13 @@
 # 0016 — The tics MCP server inside Claude Code: convenience + capability OVER the hooks, never a second enforcement path
 
-- Status: **Proposed** (will be implemented this epic — through the red→green gate. Phase-0
-  facts below are verified against the official Claude Code docs (code.claude.com/docs,
-  2026-06-16) and against the shipped kit at HEAD; the end-to-end "spawn a Bash-less subagent,
-  watch its tic land" smoke is flagged as Phase-1 verification, not yet run in CC.)
+- Status: **Accepted** (shipped in v0.58.0 through the red→green gate; the Phase-1 end-to-end smoke
+  is now DONE. In a live Claude Code session the kit dogfooded itself: a Bash-less `test-writer`
+  subagent — which had no bus voice before — emitted a `handoff` over `mcp__tics__tic_emit` and the
+  tic LANDED on the shared bus (verified via `tics log`, #1007), and the orchestrator emits over MCP
+  too (#1004); a full delegate→handoff→delegate→handoff cycle ran over the framework's own tools
+  (#1005/#1007/#1010/#1012), with the Bash-having `implementer` correctly falling back to `tic.sh`
+  (it was not granted MCP — least privilege held). Phase-0 facts below were verified against the
+  official Claude Code docs (code.claude.com/docs, 2026-06-16) and the shipped kit at HEAD.)
 - Date: 2026-06-17
 - Deciders: navigator (wants the gate UNTOUCHED and the subagent grants kept NARROW — least
   privilege, not "inherit all MCP tools"; owns the invasive-vs-opt-in `.mcp.json`-on-fresh-install

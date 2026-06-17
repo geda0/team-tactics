@@ -244,6 +244,9 @@ function ensureGitignore(targetDir) {
     ".claude/**/*.bak\n" +
     ".claude/agents/*.md.kit-*\n" +
     "*.team-tactics.*\n" +
+    "# MCP server configs hold machine-specific absolute paths — never commit (re-generate via mcp-install).\n" +
+    ".mcp.json\n" +
+    ".cursor/mcp.json\n" +
     END;
   const LEGACY = [["# >>> teamentic (managed) >>>", "# <<< teamentic (managed) <<<"],
                   ["# >>> tdd-pairing (managed) >>>", "# <<< tdd-pairing (managed) <<<"]];
