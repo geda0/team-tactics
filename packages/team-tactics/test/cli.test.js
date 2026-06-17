@@ -134,3 +134,16 @@ test("S10: team-tactics meta-bin supports the tics MCP server — init installs 
     assert.ok(fs.existsSync(path.join(d, ".cursor", "rules", "tics.mdc")), "always-apply rule written");
   } finally { fs.rmSync(d, { recursive: true, force: true }); }
 });
+
+test("first-time init auto-installs the tics MCP server for Cursor (invasive default) — fresh ttics init writes .cursor/mcp.json (mcpServers.tics) + .cursor/rules/tics.mdc + surfaces the enable notice", () => {
+  const d = fs.mkdtempSync(path.join(os.tmpdir(), "tt-init-mcp-"));
+  try {
+    const r = run(["init", d]);
+    assert.strictEqual(r.status, 0, r.stderr);
+    const cfg = JSON.parse(fs.readFileSync(path.join(d, ".cursor", "mcp.json"), "utf8"));
+    assert.ok(cfg.mcpServers && cfg.mcpServers.tics, "fresh init writes mcpServers.tics");
+    assert.ok(Array.isArray(cfg.mcpServers.tics.args) && cfg.mcpServers.tics.args.length, "tics entry has args");
+    assert.ok(fs.existsSync(path.join(d, ".cursor", "rules", "tics.mdc")), "fresh init writes the always-apply rule");
+    assert.match(r.stdout, /enable|Tools & MCP|INERT|mcp/i, "init surfaces the MCP enable notice");
+  } finally { fs.rmSync(d, { recursive: true, force: true }); }
+});

@@ -1,6 +1,6 @@
 {
   "name": "ttics",
-  "version": "0.55.0",
+  "version": "0.56.0",
   "private": true,
   "description": "team-tactics monorepo — @ttics/tics (protocol) + @ttics/tdd (pairing) + team-tactics (product)",
   "workspaces": [

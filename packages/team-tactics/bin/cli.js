@@ -367,6 +367,13 @@ ensureDir(path.join(target, ".claude", ".team-tactics"));
 fs.writeFileSync(path.join(target, MANIFEST_REL),
   JSON.stringify({ kit: "team-tactics", kitVersion: PKG.version, configSchema: 2, preset: presetActive, updatedAt: new Date().toISOString(), files: manifestFiles }, null, 2) + "\n");
 say("manifest", MANIFEST_REL + (backups ? "  (" + backups + " local change(s) backed up to .bak)" : "") + (preserved ? "  ; " + preserved + " customized agent(s) preserved" : ""));
+// First-time install only (invasive default, ADR 0014): auto-wire the tics MCP server into
+// Cursor so a brand-new adopter gets cross-tool coordination out of the box. Merge-not-clobber
+// (preserves any existing .cursor/mcp.json); NEVER fires on update (priorManifest.kitVersion set).
+if (!priorManifest.kitVersion) {
+  try { tics.mcpInstall(target); }
+  catch (e) { console.error("  (tics mcp auto-install skipped: " + String((e && e.message) || e) + ")"); }
+}
 ensureGitignore(target);
 if (presetActive === "full-team")
   console.log("\n[full-team] outer-loop roles installed (product-owner, architect, qa-verifier, project-manager, dev-ops) — see docs/tdd/outer-loop.md.");

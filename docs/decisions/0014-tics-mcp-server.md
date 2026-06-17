@@ -285,6 +285,17 @@ server registration AND a rule that tells the Cursor agent to actually use it ea
    the bus is shared with an enforced CC fleet and your contributions are classified as
    unrefereed.*
 
+**Auto-installed on a FRESH install (the invasive default).** A first-time `ttics init` (detected by
+the absence of a prior team-tactics manifest) auto-runs `mcp-install`, writing both files above so a
+brand-new adopter gets the tics MCP server wired into Cursor out of the box — zero extra steps. This
+*invasive* default was chosen deliberately for discoverability: as the original opt-in the server
+shipped dormant and undiscoverable (a real adopter updated and never found it). It stays safe — the
+write is **merge-not-clobber** (an existing `.cursor/mcp.json` is preserved) and the server is
+**still inert until the user enables + approves it** in Cursor (the ceiling below is unchanged; we
+set up the config, Cursor still gates activation). **Updates do NOT auto-install** — an existing
+adopter who never enabled MCP is not re-imposed on; only the first-time path is invasive.
+`tics mcp-install` remains available to (re)write the config explicitly at any time.
+
 **The honest ceiling, restated at install.** The `mcp-install` nudge is a CONVENTION (a rule
 the agent is asked to follow), NOT a gate (nothing forces it). This is the same honest posture
 as the CC every-prompt directive (ADR 0005/0006): we make the right behavior the default,
