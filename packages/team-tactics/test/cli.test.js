@@ -211,3 +211,27 @@ test("CP-1b: update refreshes a stale MANAGED .cursor/rules/tics.mdc, never clob
     assert.ok(!fs.existsSync(ruleFile), "update does not force-install the Cursor rule when it is absent");
   } finally { fs.rmSync(target, { recursive: true, force: true }); }
 });
+
+test("MCPN: update nudges to run mcp-install when MCP is unwired, and stays silent when it is wired", () => {
+  const target = fs.mkdtempSync(path.join(os.tmpdir(), "mcpn-"));
+  try {
+    // Fresh install auto-wires MCP (writes .mcp.json + .cursor/mcp.json on first-time init).
+    const init = run(["init", target]);
+    assert.strictEqual(init.status, 0, init.stderr);
+    assert.ok(fs.existsSync(path.join(target, ".mcp.json")), "fresh init auto-wires .mcp.json");
+
+    // Unwired update -> nudge. Simulate a CC-only repo that never had Cursor/MCP wiring.
+    fs.rmSync(path.join(target, ".mcp.json"), { force: true });
+    fs.rmSync(path.join(target, ".cursor", "mcp.json"), { force: true });
+    const r = run([target]);  // manifest exists -> this is an UPDATE
+    const out = (r.stdout || "") + (r.stderr || "");
+    assert.match(out, /mcp-install/, "an unwired update names the mcp-install command to run");
+    assert.match(out, /MCP/i, "the nudge mentions MCP");
+
+    // Wired update -> silent. Re-create the wiring, then update again.
+    run(["mcp-install", target]);
+    const r2 = run([target]);  // update again, MCP now wired
+    const out2 = (r2.stdout || "") + (r2.stderr || "");
+    assert.ok(!/not wired/i.test(out2), "no 'not wired' nudge when MCP is already wired");
+  } finally { fs.rmSync(target, { recursive: true, force: true }); }
+});

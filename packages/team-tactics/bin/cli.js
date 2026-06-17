@@ -108,6 +108,16 @@ if (cmd === "mcp-install") { process.exit(tics.mcpInstall(target)); }
 // ---- helpers ------------------------------------------------------------
 function ensureDir(d) { fs.mkdirSync(d, { recursive: true }); }
 function say(action, file) { console.log("  " + action.padEnd(9) + file); }
+// Is the tics MCP server wired in this repo (either Claude Code's .mcp.json or Cursor's .cursor/mcp.json)?
+function mcpWired(target) {
+  for (const f of [".mcp.json", path.join(".cursor", "mcp.json")]) {
+    try {
+      const j = JSON.parse(fs.readFileSync(path.join(target, f), "utf8"));
+      if (j && j.mcpServers && j.mcpServers.tics) return true;
+    } catch (e) { /* missing or invalid -> not wired via this file */ }
+  }
+  return false;
+}
 function copy(src, dest) { ensureDir(path.dirname(dest)); fs.copyFileSync(src, dest); }
 function installHooks(target) {
   let cdir;
@@ -387,6 +397,9 @@ say("manifest", MANIFEST_REL + (backups ? "  (" + backups + " local change(s) ba
 if (!priorManifest.kitVersion) {
   try { tics.mcpInstall(target); }
   catch (e) { console.error("  (tics mcp auto-install skipped: " + String((e && e.message) || e) + ")"); }
+} else if (!mcpWired(target)) {
+  console.log("\n  note: the tics MCP server is not wired here (no .mcp.json / .cursor/mcp.json).");
+  console.log("        run `tics mcp-install` to enable cross-tool coordination (Cursor + Claude Code MCP).");
 }
 ensureGitignore(target);
 if (presetActive === "full-team")
