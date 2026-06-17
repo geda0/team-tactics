@@ -28,3 +28,6 @@ node_modules/
 /CLAUDE.md
 /.claude/KICKOFF.md
 /docs/tics/tic-protocol.md
+# MCP configs are machine-specific (absolute node + repo paths) — generated, local only.
+/.mcp.json
+/.cursor/
