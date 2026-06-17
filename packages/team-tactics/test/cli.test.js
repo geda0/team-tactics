@@ -147,3 +147,19 @@ test("first-time init auto-installs the tics MCP server for Cursor (invasive def
     assert.match(r.stdout, /enable|Tools & MCP|INERT|mcp/i, "init surfaces the MCP enable notice");
   } finally { fs.rmSync(d, { recursive: true, force: true }); }
 });
+
+test("MCC-2: a fresh install grants the Bash-less inner-pair agents narrow tics MCP tools (a bus voice without Bash)", () => {
+  const d = fs.mkdtempSync(path.join(os.tmpdir(), "mcc2-"));
+  try {
+    const init = run(["init", d]);
+    assert.strictEqual(init.status, 0, init.stderr);
+    for (const role of ["test-writer", "tdd-critic", "planner"]) {
+      const md = fs.readFileSync(path.join(d, ".claude", "agents", role + ".md"), "utf8");
+      const tools = (md.match(/^tools:.*$/m) || [""])[0];
+      assert.match(tools, /mcp__tics__tic_emit/, role + " can emit on the bus");
+      assert.match(tools, /mcp__tics__tics_inbox/, role + " can read its inbox");
+      assert.match(tools, /mcp__tics__tics_review/, role + " can see open needs");
+      assert.doesNotMatch(tools, /\bBash\b/, role + " stays Bash-less (narrow MCP grant, not arbitrary shell)");
+    }
+  } finally { fs.rmSync(d, { recursive: true, force: true }); }
+});

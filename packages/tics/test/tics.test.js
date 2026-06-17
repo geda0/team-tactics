@@ -979,3 +979,19 @@ test("IDENT-2: the always-apply rule tells each spawned sub-actor to stamp its o
     assert.match(rule, /distinct|distinguish|sub-?actor|background job|each (agent|actor|job|role)/i);
   } finally { fs.rmSync(d, {recursive:true,force:true}); }
 });
+
+test("MCC-1: tics mcp-install also writes a project .mcp.json (Claude Code) with mcpServers.tics, merge-not-clobber preserving foreign keys", () => {
+  const d = inst();
+  try {
+    fs.writeFileSync(path.join(d, ".mcp.json"),
+      JSON.stringify({ mcpServers: { other: { command: "node", args: ["other.js"] } }, topKey: 1 }, null, 2));
+    const r = cp.spawnSync("node", [BIN, "mcp-install", d], { encoding: "utf8" });
+    assert.strictEqual(r.status, 0, r.stderr);
+    const cfg = JSON.parse(fs.readFileSync(path.join(d, ".mcp.json"), "utf8"));
+    assert.ok(cfg.mcpServers && cfg.mcpServers.tics, ".mcp.json gains mcpServers.tics");
+    assert.ok(Array.isArray(cfg.mcpServers.tics.args) && cfg.mcpServers.tics.args.length, "tics entry has args");
+    assert.ok(cfg.mcpServers.other, "foreign server key preserved");
+    assert.strictEqual(cfg.mcpServers.other.args[0], "other.js");
+    assert.strictEqual(cfg.topKey, 1, "foreign top-level key preserved");
+  } finally { fs.rmSync(d, { recursive: true, force: true }); }
+});

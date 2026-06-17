@@ -328,9 +328,7 @@ function dispatch(request, ctx) {
   }
 }
 
-function writeCursorMcp(target) {
-  var dir = path.join(target, ".cursor");
-  var file = path.join(dir, "mcp.json");
+function writeMcpServerEntry(file, target) {
   var json = { mcpServers: {} };
   if (fs.existsSync(file)) {
     try {
@@ -347,9 +345,19 @@ function writeCursorMcp(target) {
     command: process.execPath,
     args: [ path.join(target, ".claude", "hooks", "tics-mcp.cjs"), target ]
   };
+  var dir = path.dirname(file);
   fs.mkdirSync(dir, { recursive: true });
   fs.writeFileSync(file, JSON.stringify(json, null, 2) + "\n");
   return file;
+}
+function writeCursorMcp(target) {
+  var dir = path.join(target, ".cursor");
+  var file = path.join(dir, "mcp.json");
+  return writeMcpServerEntry(file, target);
+}
+function writeProjectMcp(target) {
+  var file = path.join(target, ".mcp.json");
+  return writeMcpServerEntry(file, target);
 }
 function writeCursorRule(target) {
   var dir = path.join(target, ".cursor", "rules");
@@ -380,9 +388,11 @@ function writeCursorRule(target) {
 function mcpInstall(target) {
   target = path.resolve(target || process.cwd());
   writeCursorMcp(target);
+  writeProjectMcp(target);
   writeCursorRule(target);
-  console.log("tics MCP installed: .cursor/mcp.json (server entry) + .cursor/rules/tics.mdc (always-apply nudge).");
+  console.log("tics MCP installed: .cursor/mcp.json (server entry) + .cursor/rules/tics.mdc (always-apply nudge) + .mcp.json (Claude Code project entry).");
   console.log("NOTE: the server is INERT until you enable it and approve its tools in Cursor Settings -> Tools & MCP.");
+  console.log("NOTE: the tics server in .mcp.json must also be approved in Claude Code on next launch before it becomes active.");
   return 0;
 }
 
@@ -410,6 +420,6 @@ function serve(ctx) {
 }
 function start() { return serve(makeCtx()); }
 
-module.exports = { dispatch, handleLine, makeCtx, resolveVersion, resolveTargetDir, TOOL_DESCRIPTORS, EMITTABLE_KINDS, handleToolsCall, callEmit, callInbox, callBoard, callReview, callLog, callAnswer, emit, runReader, toolText, toolError, serve, start, writeCursorMcp, writeCursorRule, mcpInstall };
+module.exports = { dispatch, handleLine, makeCtx, resolveVersion, resolveTargetDir, TOOL_DESCRIPTORS, EMITTABLE_KINDS, handleToolsCall, callEmit, callInbox, callBoard, callReview, callLog, callAnswer, emit, runReader, toolText, toolError, serve, start, writeMcpServerEntry, writeCursorMcp, writeProjectMcp, writeCursorRule, mcpInstall };
 
 if (require.main === module) { serve(makeCtx({ target: process.argv[2] ? path.resolve(process.argv[2]) : undefined })); }
