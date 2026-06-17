@@ -127,12 +127,13 @@ const TOOL_DESCRIPTORS = [
       type: "object",
       additionalProperties: false,
       properties: {
-        from:   { type: "string" },
-        to:     { type: "string" },
-        kind:   { type: "string", enum: EMITTABLE_KINDS },
-        msg:    { type: "string" },
-        ref:    { type: "string" },
-        result: { type: "string" },
+        from:    { type: "string" },
+        to:      { type: "string" },
+        kind:    { type: "string", enum: EMITTABLE_KINDS },
+        msg:     { type: "string" },
+        ref:     { type: "string" },
+        result:  { type: "string" },
+        session: { type: "string" },
       },
       required: ["from","to","kind","msg"],
     },
@@ -161,10 +162,10 @@ function toolError(id, text) {
   return rpcResult(id, { content: [{ type: "text", text: String(text) }], isError: true });
 }
 
-function emit(targetDir, argv) {
+function emit(targetDir, argv, env) {
   try {
     const out = cp.execFileSync(path.join(targetDir, ".claude", "hooks", "tic.sh"), argv, {
-      cwd: targetDir, encoding: "utf8", stdio: ["ignore", "pipe", "pipe"], env: process.env,
+      cwd: targetDir, encoding: "utf8", stdio: ["ignore", "pipe", "pipe"], env: (env || process.env),
     });
     return { ok: true, stdout: out, stderr: "", status: 0 };
   } catch (e) {
@@ -199,7 +200,11 @@ function callEmit(id, args, ctx) {
     argv.push(ref);
   }
   // 5. Shell tic.sh
-  const r = ctx.emit(ctx.target, argv);
+  var env = process.env;
+  if (typeof args.session === "string" && args.session) {
+    env = Object.assign({}, process.env, { TICS_SESSION: args.session });
+  }
+  const r = ctx.emit(ctx.target, argv, env);
   if (!r.ok) return toolError(id, "tic.sh failed: " + (r.stderr || r.status));
   return toolText(id, r.stdout || ("emitted " + args.kind));
 }
@@ -361,6 +366,7 @@ function writeCursorRule(target) {
     "- Call `tics_inbox` (your role) and `tics_board` to see what is addressed to you and the fleet state.\n" +
     "- Check `tics_review` for open needs you can answer; settle one with `tics_answer`.\n" +
     "- Contribute honestly with `tic_emit` (handoff/need/verdict/note/claim/etc.).\n" +
+    "- If you spawn sub-actors / background jobs (one per role or slice), give EACH a **distinct `session`** and pass it on every `tic_emit` (the optional `session` arg) — otherwise they all merge into one indistinguishable actor on the bus (`session=\"\"`). A self-set `session` is provenance, not authentication, just like `from`.\n" +
     "\n" +
     "The ceiling, stated plainly: this is a **convention, not a gate**. The phase x layer TDD referee\n" +
     "**does not run in Cursor** — nothing here forces these calls. Emit truthfully: the bus is shared with an\n" +

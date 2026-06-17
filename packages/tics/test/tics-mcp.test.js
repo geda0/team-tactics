@@ -250,3 +250,42 @@ test("S4b: tic_emit forwards ref and result positionally to tic.sh — both land
     assert.strictEqual(t[0].result, "pass");
   } finally { fs.rmSync(d, {recursive:true,force:true}); }
 });
+
+test("IDENT-1: tic_emit threads an optional session onto the bus (concurrent sub-actors become distinguishable); omitted session stays empty (back-compat)", () => {
+  const d = inst();
+  try {
+    dispatch({ jsonrpc:"2.0", id:1, method:"tools/call",
+      params:{ name:"tic_emit", arguments:{ from:"test-writer", to:"orchestrator", kind:"handoff", msg:"red confirmed", result:"red", session:"job-A" } } }, { target:d });
+    dispatch({ jsonrpc:"2.0", id:2, method:"tools/call",
+      params:{ name:"tic_emit", arguments:{ from:"implementer", to:"orchestrator", kind:"handoff", msg:"green", result:"green", session:"job-B" } } }, { target:d });
+    dispatch({ jsonrpc:"2.0", id:3, method:"tools/call",
+      params:{ name:"tic_emit", arguments:{ from:"orchestrator", to:"*", kind:"note", msg:"no session here" } } }, { target:d });
+    const t = ticsOf(d);
+    assert.strictEqual(t.length, 3);
+    assert.strictEqual(t[0].session, "job-A");
+    assert.strictEqual(t[1].session, "job-B");
+    assert.notStrictEqual(t[0].session, t[1].session);          // two sub-actors are distinguishable
+    assert.strictEqual(t[2].session, "", "omitted session stays empty (back-compat)");
+  } finally { fs.rmSync(d, {recursive:true,force:true}); }
+});
+
+test("IDENT-3: the session arg is a LABEL, not an enforcement lever — it cannot smuggle a forbidden kind, and never alters from/kind", () => {
+  const d = inst();
+  try {
+    const before = fs.existsSync(path.join(d,".claude","state","tics.jsonl")) ? ticsOf(d).length : 0;
+    for (const bad of ["signal","commit","session","block"]) {
+      const r = dispatch({ jsonrpc:"2.0", id:1, method:"tools/call",
+        params:{ name:"tic_emit", arguments:{ from:"x", to:"*", kind:bad, msg:"forge", session:"job-X" } } }, { target:d });
+      assert.strictEqual(r.result.isError, true, bad + " + a session arg must STILL be rejected");
+    }
+    const after = fs.existsSync(path.join(d,".claude","state","tics.jsonl")) ? ticsOf(d).length : 0;
+    assert.strictEqual(after, before, "a session arg cannot smuggle a forbidden kind onto the bus");
+    // a valid emit carrying a session keeps from/kind EXACTLY (session is inert wrt identity/kind)
+    dispatch({ jsonrpc:"2.0", id:2, method:"tools/call",
+      params:{ name:"tic_emit", arguments:{ from:"test-writer", to:"orchestrator", kind:"handoff", msg:"ok", session:"job-X" } } }, { target:d });
+    const t = ticsOf(d).filter((x) => x.session === "job-X" && x.kind === "handoff");
+    assert.strictEqual(t.length, 1);
+    assert.strictEqual(t[0].from, "test-writer");
+    assert.strictEqual(t[0].kind, "handoff");
+  } finally { fs.rmSync(d, {recursive:true,force:true}); }
+});

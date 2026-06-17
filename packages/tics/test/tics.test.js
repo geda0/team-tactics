@@ -968,3 +968,14 @@ test("S8b: mcp-install on a MALFORMED .cursor/mcp.json backs it up to .bak and r
     assert.ok(cfg.mcpServers && cfg.mcpServers.tics, "re-initialized with the tics entry");
   } finally { fs.rmSync(d, {recursive:true,force:true}); }
 });
+
+test("IDENT-2: the always-apply rule tells each spawned sub-actor to stamp its own distinct session on tic_emit (so the bus distinguishes concurrent sub-actors)", () => {
+  const d = inst();
+  try {
+    const r = cp.spawnSync("node", [BIN, "mcp-install", d], { encoding:"utf8" });
+    assert.strictEqual(r.status, 0, r.stderr);
+    const rule = fs.readFileSync(path.join(d,".cursor","rules","tics.mdc"), "utf8");
+    assert.match(rule, /session/i);
+    assert.match(rule, /distinct|distinguish|sub-?actor|background job|each (agent|actor|job|role)/i);
+  } finally { fs.rmSync(d, {recursive:true,force:true}); }
+});

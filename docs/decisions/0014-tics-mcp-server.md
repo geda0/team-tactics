@@ -252,6 +252,26 @@ gate — because the three hook-signed kinds (`signal`/`block`/`commit`) and the
 `session` are not in the enum, and everything it CAN emit is classified by the shipped
 attestation as the unrefereed contribution it is.**
 
+### 3a. Sub-actor identity — `tic_emit`'s optional `session` arg (provenance, not authentication)
+
+A single Cursor workspace runs **one shared stdio MCP server process** (verified: stdio is single-session
+by the MCP spec; Cursor reuses one `tics-mcp.cjs` subprocess across the main agent, in-chat subagents, and
+parallel agents — none of which carry any per-call caller identity the server could read). So when a capable
+model (Opus) or a complex task makes the Cursor agent spawn real sub-actors, the bus could not tell them
+apart from one agent narrating roles — every tic landed `session=""`. `tic_emit` therefore takes an OPTIONAL
+**`session`** argument: when present, the server sets `TICS_SESSION` on that one `tic.sh` call, so `emit_tic`
+stamps the bus `session` field (the existing seam — no `tic.sh`/`tics-lib.sh` change). Each sub-actor passes
+its own `session`, so concurrent sub-actors become **distinguishable** on the board/conductor.
+
+Two boundaries hold (tested): (1) the `session` **argument** is NOT the excluded `session` **kind** — they
+never touch the same code; a `session` arg cannot smuggle a forbidden kind past the §3 allow-list, and never
+alters `from`/`kind` (it rides the env, orthogonal to the positional argv). (2) It is **provenance, not
+authentication** — self-asserted, exactly like `from`: it makes honest sub-actors distinguishable, it does
+NOT make a dishonest one impossible (one chat can still stamp several `session` values). Real per-agent
+enforcement would need a credential Cursor does not expose; the only future cross-check is the
+conversation-id Cursor delivers to *hooks via STDIN*. The `.cursor/rules/tics.mdc` nudge tells each
+sub-actor to self-stamp.
+
 ### 4. `tics mcp-install` — register the server + nudge the agent (convention, not a gate)
 
 MCP *surfaces* tools but does not *compel* their use. So `tics mcp-install` writes BOTH the
