@@ -223,3 +223,18 @@ test("GT-2b: pre-push fails CLOSED on a v* tag push when RELEASE_GATE_ENFORCE=1 
     assert.strictEqual(advisoryNoReader.status, 0, "advisory mode (no enforce) must not block a push just because the reader isn't installed");
   } finally { fs.rmSync(d, { recursive: true, force: true }); }
 });
+
+test("GT-2c: RELEASE_GATE=0 set in tdd.config skips the release gate (config-settable, not env-only) — even under RELEASE_GATE_ENFORCE=1 with a BLOCKED gate", () => {
+  const d = fs.mkdtempSync(path.join(os.tmpdir(), "prepush-skip-"));
+  try {
+    const sh = path.join(d, ".claude", "hooks");
+    fs.mkdirSync(sh, { recursive: true });
+    fs.copyFileSync(path.join(require("@ttics/tdd").KIT, "githooks", "pre-push"), path.join(d, "pre-push"));
+    fs.writeFileSync(path.join(sh, "tics"), "#!/bin/sh\nexit 1\n"); // release gate ALWAYS reports BLOCKED
+    fs.chmodSync(path.join(sh, "tics"), 0o755);
+    fs.writeFileSync(path.join(d, ".claude", "tdd.config"), 'LAYERS="app"\nRELEASE_GATE=0\n'); // skip knob set in CONFIG, not env
+    const refline = "refs/tags/v1.0.0 1111111111111111111111111111111111111111 refs/tags/v1.0.0 1111111111111111111111111111111111111111\n";
+    const r = cp.spawnSync("sh", [path.join(d, "pre-push"), "origin", "https://example/repo.git"], { cwd: d, input: refline, encoding: "utf8", env: Object.assign({}, process.env, { RELEASE_GATE_ENFORCE: "1" }) });
+    assert.strictEqual(r.status, 0, "RELEASE_GATE=0 in tdd.config must skip the gate entirely — the documented config knob must actually work, even under enforce + a BLOCKED gate");
+  } finally { fs.rmSync(d, { recursive: true, force: true }); }
+});

@@ -18,23 +18,26 @@ while read lref lsha rref rsha; do
   fi
 done
 # Release gate (tics): on a v* tag push, surface product-owner-accept + tdd-critic-PASS.
-# Advisory by default; set RELEASE_GATE_ENFORCE=1 (or RELEASE_GATE=0 to skip) to block.
-if [ "$pushing_tag" = "1" ] && [ "${RELEASE_GATE:-1}" = "1" ]; then
+# Advisory by default; set RELEASE_GATE_ENFORCE=1 to block, or RELEASE_GATE=0 to skip (both
+# honored from tdd.config or env — tdd.config is sourced before either is read).
+if [ "$pushing_tag" = "1" ]; then
   ROOT=$(git rev-parse --show-toplevel 2>/dev/null); [ -n "$ROOT" ] || ROOT=$(pwd)
   [ -f "$ROOT/.claude/tdd.config" ] && . "$ROOT/.claude/tdd.config"
-  GATE="$ROOT/.claude/hooks/tics"
-  if [ -x "$GATE" ]; then
-    if ! "$GATE" gate "$ROOT" >&2; then
-      if [ "${RELEASE_GATE_ENFORCE:-0}" = "1" ]; then
-        printf '[team-tactics] PUSH BLOCKED — release gate not satisfied (RELEASE_GATE_ENFORCE=1).\n  Need product-owner accept + tdd-critic PASS on the bus. Bypass: git push --no-verify.\n' >&2
-        rc=1
-      else
-        printf '[team-tactics] NOTE — release gate not satisfied (advisory). Set RELEASE_GATE_ENFORCE=1 in tdd.config to block tag pushes until product-owner accept + tdd-critic PASS.\n' >&2
+  if [ "${RELEASE_GATE:-1}" = "1" ]; then
+    GATE="$ROOT/.claude/hooks/tics"
+    if [ -x "$GATE" ]; then
+      if ! "$GATE" gate "$ROOT" >&2; then
+        if [ "${RELEASE_GATE_ENFORCE:-0}" = "1" ]; then
+          printf '[team-tactics] PUSH BLOCKED — release gate not satisfied (RELEASE_GATE_ENFORCE=1).\n  Need product-owner accept + tdd-critic PASS on the bus. Bypass: git push --no-verify.\n' >&2
+          rc=1
+        else
+          printf '[team-tactics] NOTE — release gate not satisfied (advisory). Set RELEASE_GATE_ENFORCE=1 in tdd.config to block tag pushes until product-owner accept + tdd-critic PASS.\n' >&2
+        fi
       fi
+    elif [ "${RELEASE_GATE_ENFORCE:-0}" = "1" ]; then
+      printf '[team-tactics] PUSH BLOCKED — release gate cannot run: no .claude/hooks/tics reader installed, and RELEASE_GATE_ENFORCE=1 (fail-closed). Install the team-tactics kit reader, or push with RELEASE_GATE_ENFORCE=0 / git push --no-verify.\n' >&2
+      rc=1
     fi
-  elif [ "${RELEASE_GATE_ENFORCE:-0}" = "1" ]; then
-    printf '[team-tactics] PUSH BLOCKED — release gate cannot run: no .claude/hooks/tics reader installed, and RELEASE_GATE_ENFORCE=1 (fail-closed). Install the team-tactics kit reader, or push with RELEASE_GATE_ENFORCE=0 / git push --no-verify.\n' >&2
-    rc=1
   fi
 fi
 exit $rc

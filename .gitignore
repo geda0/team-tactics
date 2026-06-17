@@ -11,6 +11,9 @@ node_modules/
 .claude/**/*.bak
 .claude/agents/*.md.kit-*
 *.team-tactics.*
+# MCP server configs hold machine-specific absolute paths — never commit (re-generate via mcp-install).
+.mcp.json
+.cursor/mcp.json
 # <<< team-tactics (managed) <<<
 
 # team-tactics dogfoods itself: the .claude/ harness + method-doc copies are GENERATED
