@@ -875,3 +875,96 @@ test("E10-3: tics gate hard-blocks under EVIDENCE_ENFORCE for a not-test-first g
 test("selftest passes (emit + read round-trip)", () => {
   assert.strictEqual(node("selftest").status, 0);
 });
+
+test("S7: tics mcp boots the stdio server (dispatch, not help) — every stdout line is a JSON-RPC frame (I2 stdout purity)", () => {
+  const d = inst();
+  try {
+    const reqs = [
+      JSON.stringify({ jsonrpc:"2.0", id:1, method:"initialize", params:{ protocolVersion:"2025-11-25", capabilities:{} } }),
+      JSON.stringify({ jsonrpc:"2.0", id:2, method:"tools/list", params:{} }),
+    ].join("\n") + "\n";
+    const r = cp.spawnSync("node", [BIN, "mcp"], { input: reqs, encoding:"utf8", timeout:8000, cwd:d });
+    assert.doesNotMatch(r.stdout, /TDD pairing|usage: tics|Unknown command|README/i, "dispatched to the server, not the help banner");
+    const lines = r.stdout.split("\n").filter((s) => s.trim() !== "");
+    assert.ok(lines.length >= 2, "one JSON-RPC response frame per request");
+    let init = null, list = null;
+    for (const ln of lines) {
+      const obj = JSON.parse(ln);              // every stdout line MUST parse — I2 purity (no presenter/log text on fd1)
+      assert.strictEqual(obj.jsonrpc, "2.0");
+      if (obj.id === 1) init = obj;
+      if (obj.id === 2) list = obj;
+    }
+    assert.ok(init && init.result && init.result.protocolVersion === "2025-11-25", "handshake frame present");
+    assert.ok(list && list.result && Array.isArray(list.result.tools) && list.result.tools.length === 6, "tools/list frame present");
+  } finally { fs.rmSync(d, {recursive:true,force:true}); }
+});
+
+test("S8: tics mcp-install writes mcpServers.tics into .cursor/mcp.json and PRESERVES a pre-existing foreign server key + a foreign top-level key (merge, not clobber)", () => {
+  const d = inst();
+  try {
+    fs.mkdirSync(path.join(d,".cursor"), {recursive:true});
+    fs.writeFileSync(path.join(d,".cursor","mcp.json"),
+      JSON.stringify({ mcpServers:{ other:{ command:"node", args:["other.js"] } }, someTopKey:1 }, null, 2));
+    const r = cp.spawnSync("node", [BIN, "mcp-install", d], { encoding:"utf8" });
+    assert.strictEqual(r.status, 0, r.stderr);
+    const cfg = JSON.parse(fs.readFileSync(path.join(d,".cursor","mcp.json"),"utf8"));
+    assert.ok(cfg.mcpServers.tics);
+    assert.ok(typeof cfg.mcpServers.tics.command === "string" && cfg.mcpServers.tics.command);
+    assert.ok(Array.isArray(cfg.mcpServers.tics.args) && cfg.mcpServers.tics.args.length);
+    assert.ok(cfg.mcpServers.other, "foreign server key preserved");
+    assert.strictEqual(cfg.mcpServers.other.args[0], "other.js");
+    assert.strictEqual(cfg.someTopKey, 1, "foreign top-level key preserved");
+    assert.doesNotMatch(r.stdout, /Installing team-tactics/i, "mcp-install does NOT run the full installer");
+  } finally { fs.rmSync(d, {recursive:true,force:true}); }
+});
+
+test("S9: tics mcp-install writes .cursor/rules/tics.mdc as an alwaysApply rule carrying the per-turn directive AND the convention-not-a-gate ceiling note (and no legacy .cursorrules)", () => {
+  const d = inst();
+  try {
+    const r = cp.spawnSync("node", [BIN, "mcp-install", d], { encoding:"utf8" });
+    assert.strictEqual(r.status, 0, r.stderr);
+    const rule = fs.readFileSync(path.join(d,".cursor","rules","tics.mdc"), "utf8");
+    assert.match(rule, /alwaysApply:\s*true/);
+    assert.match(rule, /tics_inbox/);
+    assert.match(rule, /tics_board/);
+    assert.match(rule, /tics_review|answer|need/i);
+    assert.match(rule, /tic_emit|emit/i);
+    assert.match(rule, /convention|not a gate|not enforced|unrefereed|does not run in Cursor/i);
+    assert.ok(!fs.existsSync(path.join(d,".cursorrules")), "no legacy root .cursorrules");
+    assert.match(r.stdout, /INERT|enable|Tools & MCP/i, "prints the inert-until-enabled note");
+  } finally { fs.rmSync(d, {recursive:true,force:true}); }
+});
+
+test("I2: tics mcp stdout stays pure across a read tools/call + a tic_emit — every fd1 line is a JSON-RPC frame, no presenter text leaks", () => {
+  const d = inst();
+  try {
+    fs.writeFileSync(path.join(d,".claude","state","tics.jsonl"),
+      JSON.stringify({kind:"delegate",from:"orchestrator",to:"architect",msg:"hi arch",ref:"X",scope:"*",seq:1,ts:"2026-06-16T00:00:00Z"})+"\n");
+    const reqs = [
+      JSON.stringify({ jsonrpc:"2.0", id:1, method:"initialize", params:{ protocolVersion:"2025-11-25", capabilities:{} } }),
+      JSON.stringify({ jsonrpc:"2.0", id:2, method:"tools/call", params:{ name:"tics_inbox", arguments:{ role:"architect" } } }),
+      JSON.stringify({ jsonrpc:"2.0", id:3, method:"tools/call", params:{ name:"tic_emit", arguments:{ from:"navigator", to:"architect", kind:"handoff", msg:"done" } } }),
+    ].join("\n") + "\n";
+    const r = cp.spawnSync("node", [BIN, "mcp"], { input: reqs, encoding:"utf8", timeout:8000, cwd:d });
+    const lines = r.stdout.split("\n").filter((s) => s.trim() !== "");
+    assert.ok(lines.length >= 3, "a JSON-RPC frame per request");
+    for (const ln of lines) { const o = JSON.parse(ln); assert.strictEqual(o.jsonrpc, "2.0"); }
+    assert.doesNotMatch(r.stdout, /^Inbox for/m, "presenter text never starts a raw stdout line");
+    assert.doesNotMatch(r.stdout, /^Fleet board/m, "presenter text never starts a raw stdout line");
+    const inbox = lines.map((l) => JSON.parse(l)).find((o) => o.id === 2);
+    assert.match(inbox.result.content[0].text, /Inbox for architect/);
+  } finally { fs.rmSync(d, {recursive:true,force:true}); }
+});
+
+test("S8b: mcp-install on a MALFORMED .cursor/mcp.json backs it up to .bak and re-inits (never silently clobbers)", () => {
+  const d = inst();
+  try {
+    fs.mkdirSync(path.join(d,".cursor"), {recursive:true});
+    fs.writeFileSync(path.join(d,".cursor","mcp.json"), "{ this is : not json ]");
+    const r = cp.spawnSync("node", [BIN, "mcp-install", d], { encoding:"utf8" });
+    assert.strictEqual(r.status, 0, r.stderr);
+    assert.ok(fs.existsSync(path.join(d,".cursor","mcp.json.bak")), "malformed original backed up to .bak");
+    const cfg = JSON.parse(fs.readFileSync(path.join(d,".cursor","mcp.json"),"utf8"));
+    assert.ok(cfg.mcpServers && cfg.mcpServers.tics, "re-initialized with the tics entry");
+  } finally { fs.rmSync(d, {recursive:true,force:true}); }
+});

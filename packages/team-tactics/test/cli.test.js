@@ -119,3 +119,18 @@ test("0.7: install ships the tic-protocol spec + an executable tic.sh", () => {
     assert.ok((fs.statSync(ticsh).mode & 0o111) !== 0, "tic.sh executable");
   } finally { fs.rmSync(d, { recursive: true, force: true }); }
 });
+
+test("S10: team-tactics meta-bin supports the tics MCP server — init installs tics-mcp.cjs (I5), and mcp-install merges .cursor/mcp.json + writes the rule WITHOUT running the full installer", () => {
+  const d = fs.mkdtempSync(path.join(os.tmpdir(), "tt-mcp-"));
+  try {
+    const init = run(["init", d]);
+    assert.strictEqual(init.status, 0, init.stderr);
+    assert.ok(fs.existsSync(path.join(d, ".claude", "hooks", "tics-mcp.cjs")), "init installs the MCP server hook (I5)");
+    const r = run(["mcp-install", d], d);
+    assert.strictEqual(r.status, 0, r.stderr);
+    assert.doesNotMatch(r.stdout, /Installing team-tactics|Next steps/i, "mcp-install must NOT fall through to the full installer");
+    const cfg = JSON.parse(fs.readFileSync(path.join(d, ".cursor", "mcp.json"), "utf8"));
+    assert.ok(cfg.mcpServers && cfg.mcpServers.tics && Array.isArray(cfg.mcpServers.tics.args), "mcpServers.tics written");
+    assert.ok(fs.existsSync(path.join(d, ".cursor", "rules", "tics.mdc")), "always-apply rule written");
+  } finally { fs.rmSync(d, { recursive: true, force: true }); }
+});

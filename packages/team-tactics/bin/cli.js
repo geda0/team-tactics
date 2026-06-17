@@ -64,7 +64,7 @@ if (preset !== null && preset !== "full-team" && preset !== "none" && preset !==
   process.exit(2);
 }
 let cmd = "init";
-if (["init", "update", "help", "version", "selftest", "report", "validate", "log", "inbox", "conductor", "claims", "sections", "claim-check", "claim-session", "claim-owner", "install-hooks", "cycle", "gate"].includes(rest[0])) cmd = rest.shift();
+if (["init", "update", "help", "version", "selftest", "report", "validate", "log", "inbox", "conductor", "claims", "sections", "claim-check", "claim-session", "claim-owner", "install-hooks", "cycle", "gate", "mcp", "mcp-install"].includes(rest[0])) cmd = rest.shift();
 const role = cmd === "inbox" ? rest.shift() : null;
 const cfFile = cmd === "claim-check" ? rest.shift() : null;
 const cfScope = cmd === "claim-check" ? (rest.shift() || scope || "") : null;
@@ -99,6 +99,11 @@ if (cmd === "claim-check") { process.exit(TV.claimCheckCli(target, cfFile, cfSco
 if (cmd === "claim-session") { process.exit(TV.claimSessionCli(target, cmFile)); }
 if (cmd === "claim-owner") { process.exit(TV.claimOwnerCli(target, cmFile)); }
 if (cmd === "install-hooks") { process.exit(installHooks(target)); }
+if (cmd === "mcp") {
+  tics.serve().then(function () { process.exit(0); }, function (e) { process.stderr.write(String(e) + "\n"); process.exit(1); });
+  return;
+}
+if (cmd === "mcp-install") { process.exit(tics.mcpInstall(target)); }
 
 // ---- helpers ------------------------------------------------------------
 function ensureDir(d) { fs.mkdirSync(d, { recursive: true }); }
@@ -319,7 +324,7 @@ for (const h of ["guard-edit-scope", "run-suite", "require-green-to-stop", "sess
 }
 // @ttics/tics — protocol files sourced from the tics package (composite); team-tactics' refresh
 // keeps the non-destructive backup + manifest, just pointing the source at @ttics/tics' kit.
-for (const h of ["tics-lib.sh", "tic.sh", "tics", "tics-view.cjs"]) refresh(path.join(tics.KIT, "hooks", h), path.join(".claude", "hooks", h));
+for (const h of ["tics-lib.sh", "tic.sh", "tics", "tics-view.cjs", "tics-mcp.cjs"]) refresh(path.join(tics.KIT, "hooks", h), path.join(".claude", "hooks", h));
 for (const h of ["tics-lib.sh", "tic.sh", "tics"]) { try { fs.chmodSync(path.join(target, ".claude", "hooks", h), 0o755); } catch (e) {} }
 try { fs.unlinkSync(path.join(target, ".claude", "hooks", "tics-view.js")); } catch (e) {} // migrate stale .js reader -> .cjs
 refreshGitHooks(target);   // N5: keep already-installed portable git hooks current (no silent rot); never installs/clobbers

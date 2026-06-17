@@ -1,9 +1,12 @@
 # 0014 — The tics MCP server (`tics mcp`): a Cursor / Claude-Desktop access path onto the shared tic bus (PARTICIPATION, not enforcement)
 
-- Status: **Proposed** (design finalized; verified against current Cursor + MCP-spec + npm facts
-  2026-06-16; ready to build — but NOT yet built, and nothing here ships until an epic implements
-  it, so this is not yet Accepted. A prior 0014 was reverted with the v0.54.0 slim-down; this ADR
-  starts clean against the post-slim-down kit and does not inherit it.)
+- Status: **Accepted — built & green** (implemented in E13 through the red→green gate: a hand-rolled
+  zero-dependency stdio JSON-RPC server, the tight 6-tool surface, the honesty-rule kind-exclusion,
+  and `tics mcp` / `tics mcp-install` wired into both bins. 192 tests pass across both packages and
+  an adversarial review re-verified invariants I1–I7, the honesty boundary, and ADR conformance on
+  2026-06-16. Design was verified against current Cursor + MCP-spec + npm facts the same day. A prior
+  0014 was reverted with the v0.54.0 slim-down; this ADR starts clean against the post-slim-down kit
+  and does not inherit it.)
 - Date: 2026-06-16
 - Deciders: navigator (reviews this ADR before any code; wants a TIGHT tool surface — the
   minimal viable participation loop, not a wrapper for every reader), architect (the transport
@@ -364,8 +367,8 @@ red→green; the final wiring/docs slice is a suite-green-gated additive change.
   prints that the server stays inert until the user enables it AND approves tool use in Cursor's
   Settings → Tools & MCP, so a freshly installed entry isn't mistaken for broken.
 - Invariants upheld: zero runtime deps, pure Node CommonJS, Node ≥16; `node --test` stays green
-  (the server is unit-testable over stdio); `selftest` passes; `kit/` authoritative. **Nothing
-  in this ADR is built yet — Status: Proposed.**
+  (the server is unit-testable over stdio); `selftest` passes; `kit/` authoritative. **Built in E13;
+  192 tests green; Status: Accepted.**
 
 ## Out of scope (explicitly rejected or deferred)
 

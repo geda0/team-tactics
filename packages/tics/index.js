@@ -5,6 +5,7 @@ const fs = require("fs"), path = require("path");
 const KIT = path.join(__dirname, "kit");
 const PKG = require("./package.json");
 const TV = require(path.join(KIT, "hooks", "tics-view.cjs"));
+const MCP = require(path.join(KIT, "hooks", "tics-mcp.cjs"));
 
 function ensureDir(d) { fs.mkdirSync(d, { recursive: true }); }
 function copy(src, dest) { ensureDir(path.dirname(dest)); fs.copyFileSync(src, dest); }
@@ -22,11 +23,11 @@ function installTics(target, manifest) {
   const H = path.join(target, ".claude", "hooks");
   ensureDir(H); ensureDir(path.join(target, ".claude", "state"));
   const laid = [];
-  for (const f of ["tics-lib.sh", "tic.sh", "tics", "tics-view.cjs"]) { copy(path.join(KIT, "hooks", f), path.join(H, f)); laid.push(path.join(".claude", "hooks", f)); }
+  for (const f of ["tics-lib.sh", "tic.sh", "tics", "tics-view.cjs", "tics-mcp.cjs"]) { copy(path.join(KIT, "hooks", f), path.join(H, f)); laid.push(path.join(".claude", "hooks", f)); }
   for (const f of ["tics-lib.sh", "tic.sh", "tics"]) { try { fs.chmodSync(path.join(H, f), 0o755); } catch (e) {} }
   copy(path.join(KIT, "docs", "tic-protocol.md"), path.join(target, "docs", "tics", "tic-protocol.md")); laid.push(path.join("docs", "tics", "tic-protocol.md"));
   ensureGitignore(target);
   if (manifest) for (const rel of laid) manifest[rel] = { class: "mechanism", pkg: "@ttics/tics", version: PKG.version };
   return laid;
 }
-module.exports = { KIT, PKG, TV, installTics, ensureGitignore, postCommitHook: path.join(KIT, "githooks", "post-commit") };
+module.exports = { KIT, PKG, TV, installTics, ensureGitignore, postCommitHook: path.join(KIT, "githooks", "post-commit"), serve: MCP.serve, mcpInstall: MCP.mcpInstall };
