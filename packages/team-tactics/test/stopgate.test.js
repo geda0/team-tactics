@@ -140,3 +140,86 @@ test("N10: solo-drift backstop trips on full-team + cycles + 0 handoffs; silent 
     assert.strictEqual(r.status, 0, "(e) non-blocking");
   } finally { fs.rmSync(d, { recursive: true, force: true }); }
 });
+
+test("GT-1: solo-drift NOTE fires on NARRATED handoffs — it must count REAL subagent handoffs (from=subagent), not orchestrator-narrated ones", () => {
+  const d = fs.mkdtempSync(path.join(os.tmpdir(), "drift-"));
+  try {
+    const sh = path.join(d, ".claude", "hooks"), st = path.join(d, ".claude", "state"), ag = path.join(d, ".claude", "agents");
+    fs.mkdirSync(sh, { recursive: true }); fs.mkdirSync(st, { recursive: true }); fs.mkdirSync(ag, { recursive: true });
+    for (const h of ["lib", "solo-drift-check"]) fs.copyFileSync(path.join(KIT_HOOKS, h + ".sh"), path.join(sh, h + ".sh")); // solo-drift needs lib.sh; lib sources tics-lib conditionally (absent here = fine)
+    fs.writeFileSync(path.join(d, ".claude", "tdd.config"), 'LAYERS="app"\nALL_TEST_CMD="true"\nTEST_CMD_app="true"\n');
+    fs.writeFileSync(path.join(ag, "product-owner.md"), "x");                 // full team installed
+    fs.writeFileSync(path.join(st, "session-started"), "2026-06-17T00:00:00Z");
+    const ts = "2026-06-17T01:00:00Z", tics = [];
+    for (let i = 0; i < 4; i++) tics.push({ kind: "signal", from: "run-suite", to: "*", result: "green", ts });
+    for (let i = 0; i < 3; i++) tics.push({ kind: "handoff", from: (i % 2 ? "test-writer" : "orchestrator"), to: "orchestrator", result: "green", ts }); // NARRATED, zero real subagent handoffs
+    fs.writeFileSync(path.join(st, "tics.jsonl"), tics.map((t) => JSON.stringify(t)).join("\n") + "\n");
+    const r = cp.spawnSync("bash", [path.join(sh, "solo-drift-check.sh")], { encoding: "utf8", input: "" });
+    assert.strictEqual(r.status, 0, "advisory hook always exits 0");
+    assert.match(r.stderr, /wasn't engaged/i, "NARRATED handoffs must NOT satisfy the detector — the NOTE must fire");
+    fs.appendFileSync(path.join(st, "tics.jsonl"), JSON.stringify({ kind: "handoff", from: "subagent", to: "orchestrator", result: "green", ts }) + "\n");
+    const r2 = cp.spawnSync("bash", [path.join(sh, "solo-drift-check.sh")], { encoding: "utf8", input: "" });
+    assert.doesNotMatch(r2.stderr, /wasn't engaged/i, "a REAL subagent handoff means the team WAS engaged — no NOTE");
+  } finally { fs.rmSync(d, { recursive: true, force: true }); }
+});
+
+test("GT-2: pre-push surfaces the release gate on a v* tag push — RELEASE_GATE_ENFORCE=1 blocks a failing gate; default warns (exit 0); a passing gate never blocks", () => {
+  const d = fs.mkdtempSync(path.join(os.tmpdir(), "prepush-"));
+  try {
+    const sh = path.join(d, ".claude", "hooks");
+    fs.mkdirSync(sh, { recursive: true });
+    fs.copyFileSync(path.join(require("@ttics/tdd").KIT, "githooks", "pre-push"), path.join(d, "pre-push"));
+    // a fake release-gate CLI: exits with $FAKE_GATE_RC (1 = BLOCKED) regardless of args
+    fs.writeFileSync(path.join(sh, "tics"), "#!/bin/sh\nexit ${FAKE_GATE_RC:-0}\n");
+    fs.chmodSync(path.join(sh, "tics"), 0o755);
+    fs.writeFileSync(path.join(d, ".claude", "tdd.config"), 'LAYERS="app"\n');
+    const refline = "refs/tags/v1.0.0 1111111111111111111111111111111111111111 refs/tags/v1.0.0 1111111111111111111111111111111111111111\n";
+    const run = (env) => cp.spawnSync("sh", [path.join(d, "pre-push"), "origin", "https://example/repo.git"], { cwd: d, input: refline, encoding: "utf8", env: Object.assign({}, process.env, env) });
+    const blocked = run({ FAKE_GATE_RC: "1", RELEASE_GATE_ENFORCE: "1" });
+    assert.notStrictEqual(blocked.status, 0, "RELEASE_GATE_ENFORCE=1 + a BLOCKED gate must block the tag push");
+    assert.match(blocked.stderr, /release gate/i, "blocked push must explain the release gate");
+    const warned = run({ FAKE_GATE_RC: "1" });
+    assert.strictEqual(warned.status, 0, "default is advisory — a BLOCKED gate warns but does not block the push");
+    assert.match(warned.stderr, /release gate/i, "advisory path must still mention the release gate");
+    const ok = run({ FAKE_GATE_RC: "0", RELEASE_GATE_ENFORCE: "1" });
+    assert.strictEqual(ok.status, 0, "a satisfied gate never blocks, even with enforce on");
+  } finally { fs.rmSync(d, { recursive: true, force: true }); }
+});
+
+test("GT-3: guard-edit-scope blocks edits to SECURITY_GLOB-matching files even in phase=off, unless SECURITY_REVIEW=1", () => {
+  const d = fs.mkdtempSync(path.join(os.tmpdir(), "secguard-"));
+  try {
+    const sh = path.join(d, ".claude", "hooks"), st = path.join(d, ".claude", "state");
+    fs.mkdirSync(sh, { recursive: true }); fs.mkdirSync(st, { recursive: true });
+    for (const h of ["lib", "guard-edit-scope"]) fs.copyFileSync(path.join(KIT_HOOKS, h + ".sh"), path.join(sh, h + ".sh"));
+    fs.writeFileSync(path.join(sh, "tics-lib.sh"), "emit_tic() { :; }\n"); // stub the bus emitter — GT-3 tests the security glob, not emission
+    fs.writeFileSync(path.join(d, ".claude", "tdd.config"), 'LAYERS="app"\nTEST_GLOB="\\\\.test\\\\."\nSECURITY_GLOB="(^|/)(auth|secrets)/"\n');
+    fs.writeFileSync(path.join(st, "phase"), "off\n");   // gate DISARMED — security must still apply
+    fs.writeFileSync(path.join(st, "layer"), "app\n");
+    const payload = (file) => JSON.stringify({ tool_name: "Edit", tool_input: { file_path: file } });
+    const run = (file, env) => cp.spawnSync("bash", [path.join(sh, "guard-edit-scope.sh")], { cwd: d, input: payload(file), encoding: "utf8", env: Object.assign({}, process.env, env) });
+    const blocked = run("src/auth/login.js", {});
+    assert.strictEqual(blocked.status, 2, "a SECURITY_GLOB match must be blocked even in phase=off");
+    assert.match(blocked.stderr, /security/i, "the block must name the security surface");
+    const reviewed = run("src/auth/login.js", { SECURITY_REVIEW: "1" });
+    assert.strictEqual(reviewed.status, 0, "SECURITY_REVIEW=1 permits the sensitive edit");
+    const ok = run("src/util/format.js", {});
+    assert.strictEqual(ok.status, 0, "non-sensitive paths are untouched by the security guard");
+  } finally { fs.rmSync(d, { recursive: true, force: true }); }
+});
+
+test("GT-2b: pre-push fails CLOSED on a v* tag push when RELEASE_GATE_ENFORCE=1 but no .claude/hooks/tics reader is present (no silent fail-open); default stays exit 0", () => {
+  const d = fs.mkdtempSync(path.join(os.tmpdir(), "prepush-noreader-"));
+  try {
+    fs.mkdirSync(path.join(d, ".claude", "hooks"), { recursive: true });
+    fs.copyFileSync(path.join(require("@ttics/tdd").KIT, "githooks", "pre-push"), path.join(d, "pre-push"));
+    fs.writeFileSync(path.join(d, ".claude", "tdd.config"), 'LAYERS="app"\n'); // note: NO .claude/hooks/tics installed
+    const refline = "refs/tags/v1.0.0 1111111111111111111111111111111111111111 refs/tags/v1.0.0 1111111111111111111111111111111111111111\n";
+    const run = (env) => cp.spawnSync("sh", [path.join(d, "pre-push"), "origin", "https://example/repo.git"], { cwd: d, input: refline, encoding: "utf8", env: Object.assign({}, process.env, env) });
+    const enforcedNoReader = run({ RELEASE_GATE_ENFORCE: "1" });
+    assert.notStrictEqual(enforcedNoReader.status, 0, "RELEASE_GATE_ENFORCE=1 with no release-gate reader must FAIL CLOSED, not silently pass");
+    assert.match(enforcedNoReader.stderr, /release gate/i, "the fail-closed block must explain the missing release gate");
+    const advisoryNoReader = run({});
+    assert.strictEqual(advisoryNoReader.status, 0, "advisory mode (no enforce) must not block a push just because the reader isn't installed");
+  } finally { fs.rmSync(d, { recursive: true, force: true }); }
+});

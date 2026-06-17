@@ -4,9 +4,11 @@
 # Mismatch → nonzero exit naming the drift. Bypass: git push --no-verify or TAGGATE=0.
 [ "${TAGGATE:-1}" = "1" ] || exit 0
 rc=0
+pushing_tag=0
 while read lref lsha rref rsha; do
   case "$rref" in refs/tags/v*) ;; *) continue ;; esac
   case "$lsha" in 0000000000000000000000000000000000000000) continue ;; esac
+  pushing_tag=1
   tagver="${rref#refs/tags/v}"
   commitver=$(git show "$lsha:package.json" 2>/dev/null | sed -n 's/.*"version"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' | head -1)
   [ -n "$commitver" ] || continue
@@ -15,4 +17,24 @@ while read lref lsha rref rsha; do
     rc=1
   fi
 done
+# Release gate (tics): on a v* tag push, surface product-owner-accept + tdd-critic-PASS.
+# Advisory by default; set RELEASE_GATE_ENFORCE=1 (or RELEASE_GATE=0 to skip) to block.
+if [ "$pushing_tag" = "1" ] && [ "${RELEASE_GATE:-1}" = "1" ]; then
+  ROOT=$(git rev-parse --show-toplevel 2>/dev/null); [ -n "$ROOT" ] || ROOT=$(pwd)
+  [ -f "$ROOT/.claude/tdd.config" ] && . "$ROOT/.claude/tdd.config"
+  GATE="$ROOT/.claude/hooks/tics"
+  if [ -x "$GATE" ]; then
+    if ! "$GATE" gate "$ROOT" >&2; then
+      if [ "${RELEASE_GATE_ENFORCE:-0}" = "1" ]; then
+        printf '[team-tactics] PUSH BLOCKED — release gate not satisfied (RELEASE_GATE_ENFORCE=1).\n  Need product-owner accept + tdd-critic PASS on the bus. Bypass: git push --no-verify.\n' >&2
+        rc=1
+      else
+        printf '[team-tactics] NOTE — release gate not satisfied (advisory). Set RELEASE_GATE_ENFORCE=1 in tdd.config to block tag pushes until product-owner accept + tdd-critic PASS.\n' >&2
+      fi
+    fi
+  elif [ "${RELEASE_GATE_ENFORCE:-0}" = "1" ]; then
+    printf '[team-tactics] PUSH BLOCKED — release gate cannot run: no .claude/hooks/tics reader installed, and RELEASE_GATE_ENFORCE=1 (fail-closed). Install the team-tactics kit reader, or push with RELEASE_GATE_ENFORCE=0 / git push --no-verify.\n' >&2
+    rc=1
+  fi
+fi
 exit $rc
