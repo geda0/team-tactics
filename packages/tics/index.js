@@ -30,4 +30,4 @@ function installTics(target, manifest) {
   if (manifest) for (const rel of laid) manifest[rel] = { class: "mechanism", pkg: "@ttics/tics", version: PKG.version };
   return laid;
 }
-module.exports = { KIT, PKG, TV, installTics, ensureGitignore, postCommitHook: path.join(KIT, "githooks", "post-commit"), serve: MCP.serve, mcpInstall: MCP.mcpInstall };
+module.exports = { KIT, PKG, TV, installTics, ensureGitignore, postCommitHook: path.join(KIT, "githooks", "post-commit"), serve: MCP.serve, mcpInstall: MCP.mcpInstall, writeCursorRule: MCP.writeCursorRule };

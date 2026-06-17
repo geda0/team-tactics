@@ -21,6 +21,10 @@ count_since() {
     | wc -l | tr -d ' '
 }
 
+# Count REAL delegations: handoffs stamped from=subagent, emitted ONLY by the SubagentStop hook
+# (subagent-handoff.sh, via emit_tic). Agents cannot forge this — `subagent` is in RESERVED_FROM, so
+# tic_emit/tic.sh reject it (ADR 0018); narrated delegate/handoff tics carry a role `from`, not subagent.
+# (This is a per-CC-session backstop: a cross-tool Cursor `from=cursor` handoff is intentionally not counted.)
 count_real_handoffs() {
   { cat "$TF" 2>/dev/null; cat "$TD"/*.json 2>/dev/null; } \
     | grep '"kind":"handoff"' | grep '"from":"subagent"' \

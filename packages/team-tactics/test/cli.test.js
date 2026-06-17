@@ -175,3 +175,39 @@ test("GI-1: the managed .gitignore ignores the machine-specific MCP configs (.mc
     assert.match(block, /\.cursor\/mcp\.json/, ".cursor/mcp.json is gitignored in the managed block");
   } finally { fs.rmSync(d, { recursive: true, force: true }); }
 });
+
+test("CP-1b: update refreshes a stale MANAGED .cursor/rules/tics.mdc, never clobbers a foreign rule, never creates it on update", () => {
+  const target = fs.mkdtempSync(path.join(os.tmpdir(), "cp1b-"));
+  const ruleFile = path.join(target, ".cursor", "rules", "tics.mdc");
+  try {
+    // Fresh install lays the Cursor rule down (mcpInstall fires on first-time init only).
+    const init = run(["init", target]);
+    assert.strictEqual(init.status, 0, init.stderr);
+    assert.ok(fs.existsSync(ruleFile), "fresh init writes the managed Cursor rule");
+
+    // (1) Refresh a STALE-but-managed rule on update. Keep the managed sentinel, strip the body
+    //     (crucially no AGENTS.md / install-hooks). The manifest exists now, so run([target]) is an UPDATE.
+    fs.writeFileSync(ruleFile, "<!-- team-tactics: managed -->\nstale old rule\n");
+    const upd1 = run([target]);
+    assert.strictEqual(upd1.status, 0, upd1.stderr);
+    const refreshed = fs.readFileSync(ruleFile, "utf8");
+    assert.match(refreshed, /AGENTS\.md/, "update refreshed the stale managed rule back to current kit content");
+    assert.match(refreshed, /install-hooks/, "the refreshed rule carries the current install-hooks recommendation");
+
+    // (2) Never clobber a FOREIGN rule (no managed sentinel) — it must survive byte-for-byte.
+    const foreign = "my own cursor rule, hands off\n";
+    fs.writeFileSync(ruleFile, foreign);
+    const upd2 = run([target]);
+    assert.strictEqual(upd2.status, 0, upd2.stderr);
+    const after = fs.readFileSync(ruleFile, "utf8");
+    assert.strictEqual(after, foreign, "a foreign rule is left untouched");
+    assert.match(after, /hands off/);
+    assert.doesNotMatch(after, /AGENTS\.md/, "the foreign rule was not overwritten with kit content");
+
+    // (3) Never CREATE the rule on update when absent — the Cursor surface stays a fresh-init opt-in.
+    fs.rmSync(ruleFile);
+    const upd3 = run([target]);
+    assert.strictEqual(upd3.status, 0, upd3.stderr);
+    assert.ok(!fs.existsSync(ruleFile), "update does not force-install the Cursor rule when it is absent");
+  } finally { fs.rmSync(target, { recursive: true, force: true }); }
+});

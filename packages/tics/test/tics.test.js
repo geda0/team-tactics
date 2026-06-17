@@ -980,6 +980,30 @@ test("IDENT-2: the always-apply rule tells each spawned sub-actor to stamp its o
   } finally { fs.rmSync(d, {recursive:true,force:true}); }
 });
 
+test("CP-1a: writeCursorRule body carries the managed sentinel + method pointer (AGENTS.md) + install-hooks recommendation + GT-3 security honesty (v0.61 Cursor-parity), keeping session/convention-not-a-gate", () => {
+  const d = inst();
+  try {
+    const r = cp.spawnSync("node", [BIN, "mcp-install", d], { encoding: "utf8" });
+    assert.strictEqual(r.status, 0, r.stderr);
+    const rule = fs.readFileSync(path.join(d, ".cursor", "rules", "tics.mdc"), "utf8");
+    // (1) frontmatter unchanged
+    assert.match(rule, /alwaysApply:\s*true/);
+    // (2) managed-by-kit sentinel so the updater recognizes a kit-owned rule
+    assert.match(rule, /team-tactics: managed/);
+    // (3) pointer to the canonical method (don't teach the TDD method inline)
+    assert.match(rule, /AGENTS\.md/);
+    // (4) portable-referee recommendation — Cursor users CAN get the git-hook gate
+    assert.match(rule, /install-hooks/);
+    // (5) GT-3 honesty — the security guard does NOT run in Cursor
+    assert.match(rule, /security/i);
+    assert.match(rule, /not run in Cursor|does NOT run/i);
+    // (6) the distinct-session guidance survives
+    assert.match(rule, /session/);
+    // (7) the honesty boundary survives
+    assert.match(rule, /unrefereed|self-reported|convention, not a gate/i);
+  } finally { fs.rmSync(d, { recursive: true, force: true }); }
+});
+
 test("MCC-1: tics mcp-install also writes a project .mcp.json (Claude Code) with mcpServers.tics, merge-not-clobber preserving foreign keys", () => {
   const d = inst();
   try {

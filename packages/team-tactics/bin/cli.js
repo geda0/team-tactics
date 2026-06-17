@@ -155,6 +155,16 @@ function refreshGitHooks(target) {
   if (n) console.log("  githooks refreshed " + n + " portable hook(s) — kept current with the kit (N5)");
 }
 
+// Keep the Cursor always-apply rule current on every update (parity with refreshGitHooks): refresh ONLY a
+// kit-managed rule that's already present — never create it on update (fresh-init opt-in via mcpInstall),
+// never clobber a user's/foreign rule (no managed sentinel). This is the delivery vehicle for rule changes.
+function refreshCursorRule(target) {
+  const file = path.join(target, ".cursor", "rules", "tics.mdc");
+  if (!fs.existsSync(file)) return;                                                // not installed — respect the opt-in
+  if (fs.readFileSync(file, "utf8").indexOf("team-tactics: managed") === -1) return; // foreign — never clobber
+  tics.writeCursorRule(target);                                                    // rewrite to current kit content
+}
+
 // ---- manifest (P0-3): track kit-owned files so updates never silently clobber ----
 const PKG = require("../package.json");
 const MANIFEST_REL = path.join(".claude", ".team-tactics", "manifest.json");
@@ -331,6 +341,7 @@ for (const h of ["tics-lib.sh", "tic.sh", "tics", "tics-view.cjs", "tics-mcp.cjs
 for (const h of ["tics-lib.sh", "tic.sh", "tics"]) { try { fs.chmodSync(path.join(target, ".claude", "hooks", h), 0o755); } catch (e) {} }
 try { fs.unlinkSync(path.join(target, ".claude", "hooks", "tics-view.js")); } catch (e) {} // migrate stale .js reader -> .cjs
 refreshGitHooks(target);   // N5: keep already-installed portable git hooks current (no silent rot); never installs/clobbers
+refreshCursorRule(target);   // CP-1b: keep the Cursor rule current on update
 for (const d of ["tdd-workflow", "testing-philosophy", "conventions", "divide-and-conquer", "tool-support"])
   refresh(path.join(TDD, "docs", d + ".md"), path.join("docs", "tdd", d + ".md"));
 refresh(path.join(tics.KIT, "docs", "tic-protocol.md"), path.join("docs", "tics", "tic-protocol.md"));

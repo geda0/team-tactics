@@ -289,3 +289,114 @@ test("IDENT-3: the session arg is a LABEL, not an enforcement lever — it canno
     assert.strictEqual(t[0].kind, "handoff");
   } finally { fs.rmSync(d, {recursive:true,force:true}); }
 });
+
+test("CP-2: agents cannot self-assert a hook-only from identity (subagent/run-suite/guard/witness) — tic_emit + tic.sh reject it, write nothing; real roles still emit", () => {
+  const d = inst();
+  const tic = (...a) => cp.spawnSync(path.join(d,".claude","hooks","tic.sh"), a, { cwd:d, encoding:"utf8" });
+  const count = () => (fs.existsSync(path.join(d,".claude","state","tics.jsonl")) ? ticsOf(d).length : 0);
+  try {
+    // 1. MCP path — a hook-only `from` is REFUSED even with a perfectly emittable kind (handoff).
+    //    This is the GT-1 forgery: from=subagent kind=handoff is exactly the SubagentStop hook's signature.
+    const before = count(); // 0
+    for (const forged of ["subagent","run-suite","guard","witness"]) {
+      const r = dispatch({ jsonrpc:"2.0", id:1, method:"tools/call",
+        params:{ name:"tic_emit", arguments:{ from:forged, to:"orchestrator", kind:"handoff", msg:"forged" } } }, { target:d });
+      assert.strictEqual(r.result.isError, true, "from='" + forged + "' is a hook-only identity an agent must not self-assert");
+      assert.ok(!r.error, "from='" + forged + "' is a TOOL error, never a JSON-RPC error object");
+    }
+    assert.strictEqual(count(), before, "a forged hook-only from shells tic.sh NEVER — bus unchanged");
+
+    // 2. tic.sh path — the shell emit door is closed too (no MCP-only escape hatch).
+    assert.notStrictEqual(tic("subagent","orchestrator","handoff","forged").status, 0,
+      "tic.sh rejects from=subagent (a hook-only identity) — non-zero exit");
+    assert.strictEqual(count(), before, "tic.sh wrote nothing for the forged hook-only from");
+
+    // 3. Control — a REAL role name still emits cleanly (the reservation must not break legitimate roles).
+    const ok = dispatch({ jsonrpc:"2.0", id:2, method:"tools/call",
+      params:{ name:"tic_emit", arguments:{ from:"test-writer", to:"orchestrator", kind:"handoff", msg:"real" } } }, { target:d });
+    assert.ok(!ok.result.isError, callText(ok));
+    const appended = ticsOf(d);
+    assert.strictEqual(appended.length, before + 1, "a real role appends exactly one tic");
+    assert.deepStrictEqual([appended[0].from, appended[0].kind], ["test-writer","handoff"]);
+  } finally { fs.rmSync(d, {recursive:true,force:true}); }
+});
+
+test("CP-2b: the HOOK path (emit_tic) can still emit a reserved from=subagent handoff — the reservation is on the agent doors only, not the mechanism", () => {
+  // CP-2 proved the AGENT doors (tic_emit/tic.sh) reject from=subagent. But GT-1 solo-drift
+  // depends on the SubagentStop hook (subagent-handoff.sh) STILL emitting from=subagent via
+  // emit_tic. The reservation must live on the front doors, NOT on the mechanism — else a
+  // future refactor could move RESERVED_FROM into emit_tic and silently break GT-1. Pin it.
+  const d = inst();
+  const libsh = path.join(d, ".claude", "hooks", "tics-lib.sh");
+  const bus = path.join(d, ".claude", "state", "tics.jsonl");
+  const lines = () => (fs.existsSync(bus) ? ticsOf(d) : []);
+  try {
+    // The hook's own door: source tics-lib.sh and call emit_tic EXACTLY as subagent-handoff.sh does.
+    const r = cp.spawnSync("bash", ["-c",
+      '. "' + libsh + '"; emit_tic subagent orchestrator handoff "subagent returned" ref green'],
+      { cwd: d, encoding: "utf8" });
+    assert.strictEqual(r.status, 0, "emit_tic exits 0 — the mechanism has no from-filter: " + r.stderr);
+    const raw = fs.readFileSync(bus, "utf8");
+    assert.match(raw, /"kind":"handoff"/, "the hook path appended a handoff line");
+    assert.match(raw, /"from":"subagent"/, "emit_tic is NOT subject to RESERVED_FROM — from=subagent reached the bus");
+    const hooked = lines().find((t) => t.kind === "handoff" && t.from === "subagent");
+    assert.ok(hooked, "the appended line carries BOTH kind=handoff AND from=subagent (GT-1's countable signature)");
+
+    // Asymmetry, documented in one place: the AGENT door still rejects the very same emission.
+    const before = lines().length;
+    const door = cp.spawnSync(path.join(d, ".claude", "hooks", "tic.sh"),
+      ["subagent", "orchestrator", "handoff", "x"], { cwd: d, encoding: "utf8" });
+    assert.notStrictEqual(door.status, 0, "tic.sh (agent door) still rejects from=subagent — non-zero exit");
+    assert.strictEqual(lines().length, before, "the rejected agent-door emission appended nothing");
+  } finally { fs.rmSync(d, {recursive:true,force:true}); }
+});
+
+test("CP-3a: the MCP server-entry shape is pinned exactly (.mcp.json + .cursor/mcp.json — type=stdio, server path, target arg)", () => {
+  // realpath so the dir we pass equals what writeMcpServerEntry stamps into args[1] verbatim
+  // (macOS /var -> /private/var symlink would otherwise diverge).
+  const tmp = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), "tics-mcp-entry-")));
+  try {
+    M.writeProjectMcp(tmp);
+    M.writeCursorMcp(tmp);
+    const surfaces = {
+      ".mcp.json": path.join(tmp, ".mcp.json"),
+      ".cursor/mcp.json": path.join(tmp, ".cursor", "mcp.json"),
+    };
+    for (const [label, file] of Object.entries(surfaces)) {
+      const json = JSON.parse(fs.readFileSync(file, "utf8"));
+      const entry = json.mcpServers.tics;
+      assert.strictEqual(entry.type, "stdio", label + ": launches over stdio");
+      assert.ok(typeof entry.command === "string" && entry.command.length > 0,
+        label + ": command is a non-empty string");
+      assert.ok(Array.isArray(entry.args), label + ": args is an array");
+      assert.ok(entry.args[0].endsWith(path.join(".claude", "hooks", "tics-mcp.cjs")),
+        label + ": args[0] points at the kit-installed tics-mcp.cjs");
+      assert.strictEqual(entry.args[1], tmp, label + ": args[1] is the resolved target dir");
+    }
+  } finally { fs.rmSync(tmp, { recursive: true, force: true }); }
+});
+
+test("CP-3b: cross-surface honesty guard — the Cursor rule's hook-only-kind + from=subagent claims still match the code", () => {
+  // (a) The rule tells Cursor agents they cannot emit signal/block/commit. If one became
+  //     agent-emittable, that claim would silently lie — pin it against the real allow-list.
+  for (const hookOnly of ["signal", "block", "commit"]) {
+    assert.strictEqual(M.EMITTABLE_KINDS.indexOf(hookOnly), -1,
+      "'" + hookOnly + "' must stay hook-only — not agent-emittable");
+  }
+  // (b) GT-1's solo-drift signal stays unforgeable: from=subagent is reserved. RESERVED_FROM is
+  //     not exported, so assert via behavior (the CP-2 pattern): tic_emit rejects it, writes nothing.
+  const d = inst();
+  try {
+    const before = fs.existsSync(path.join(d, ".claude", "state", "tics.jsonl")) ? ticsOf(d).length : 0;
+    const r = dispatch({ jsonrpc:"2.0", id:1, method:"tools/call",
+      params:{ name:"tic_emit", arguments:{ from:"subagent", to:"orchestrator", kind:"handoff", msg:"forged" } } }, { target:d });
+    assert.strictEqual(r.result.isError, true, "from=subagent is a hook-only identity an agent must not self-assert");
+    const after = fs.existsSync(path.join(d, ".claude", "state", "tics.jsonl")) ? ticsOf(d).length : 0;
+    assert.strictEqual(after, before, "a forged from=subagent never reaches the bus");
+    // (c) The generated rule body still carries the honesty claims the agents rely on.
+    const ruleFile = M.writeCursorRule(d);
+    const rule = fs.readFileSync(ruleFile, "utf8");
+    assert.match(rule, /does NOT run in Cursor|not run in Cursor/i, "the referee-does-not-run-here claim survives");
+    assert.match(rule, /unrefereed|self-reported/i, "the unrefereed/self-reported honesty claim survives");
+  } finally { fs.rmSync(d, { recursive: true, force: true }); }
+});
