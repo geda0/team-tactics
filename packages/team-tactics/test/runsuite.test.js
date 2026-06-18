@@ -87,6 +87,62 @@ const witnessNotes = (d) => {
     .filter((t) => t.kind === "note" && t.from === "witness");
 };
 
+// RS-2: a hardened red-storm breaker. The old breaker emitted ONE `stuck` bus tic at exactly
+// the limit (an agent grinding 32 reds never saw it — a bus tic isn't the hook's output). The fix
+// surfaces an ESCALATING directive to the agent's OWN OUTPUT (stdout) every red AT/past the limit:
+// at the limit it routes to fixing the test; at 2x it escalates to STOP. A green run resets the
+// streak. We make the suite RESULT env-controllable (RSFAIL) so we can drive reds then a green,
+// and pass env through to `fire`. The state/red-streak file persists across fires in one sandbox,
+// so repeated fires build the streak.
+function rsSandbox() {
+  const d = sandbox();
+  fs.writeFileSync(path.join(d, ".claude", "tdd.config"),
+    'LAYERS="app"\nALL_TEST_CMD="sh -c \'exit ${RSFAIL:-1}\'"\nTEST_CMD_app="$ALL_TEST_CMD"\n');
+  return d;
+}
+function fireEnv(d, stdin, envObj) {
+  return cp.spawnSync("bash", [path.join(d, ".claude", "hooks", "run-suite.sh")],
+    { input: stdin, encoding: "utf8", env: Object.assign({}, process.env, envObj) });
+}
+const ROUTE = /test-writer|reconsider|over-constrained/i;
+
+test("RS-2: run-suite surfaces an escalating red-storm directive to the agent (limit -> route-to-test-writer, 2x -> STOP); green resets", () => {
+  // Arrange: a single sandbox; red-streak persists across fires so reds accumulate.
+  const d = rsSandbox();
+  try {
+    // Act: fire a RED run (RSFAIL=1) up to the limit (5).
+    let fifth;
+    for (let i = 0; i < 5; i++) fifth = fireEnv(d, edit("src/app.js"), { RSFAIL: "1" });
+    // Assert (1): the 5th red surfaces a route-to-test-writer directive TO THE AGENT'S STDOUT.
+    assert.match(fifth.stdout, ROUTE,
+      "at the red-streak limit the hook's stdout must surface a directive routing to the test (test-writer/reconsider/over-constrained)");
+
+    // Act: continue firing RED to 10 total (2x the limit).
+    let tenth;
+    for (let i = 0; i < 5; i++) tenth = fireEnv(d, edit("src/app.js"), { RSFAIL: "1" });
+    // Assert (2): at 2x the limit the directive ESCALATES to STOP.
+    assert.match(tenth.stdout, /STOP/,
+      "at 2x the red-streak limit the hook's stdout must escalate to STOP");
+  } finally { fs.rmSync(d, { recursive: true, force: true }); }
+
+  // Green-reset: a fresh sandbox — 5 reds (directive appears), ONE green (resets streak to 0),
+  // then 4 reds. The 4th post-green red is below the limit, so NO route directive yet.
+  const g = rsSandbox();
+  try {
+    let atLimit;
+    for (let i = 0; i < 5; i++) atLimit = fireEnv(g, edit("src/app.js"), { RSFAIL: "1" });
+    assert.match(atLimit.stdout, ROUTE, "directive appears at the limit before the green reset");
+
+    fireEnv(g, edit("src/app.js"), { RSFAIL: "0" }); // GREEN -> streak resets to 0
+
+    let postGreen;
+    for (let i = 0; i < 4; i++) postGreen = fireEnv(g, edit("src/app.js"), { RSFAIL: "1" });
+    // Assert (3): only 4 reds since the green reset (< limit) -> no route directive.
+    assert.doesNotMatch(postGreen.stdout, ROUTE,
+      "a green run resets the streak — 4 reds after green is below the limit, so no directive");
+  } finally { fs.rmSync(g, { recursive: true, force: true }); }
+});
+
 test("E12-3: tool-witness PostToolUse hook emits one note from=witness when TOOL_WITNESS=1; no-op when off (default)", () => {
   // ON: knob set -> exactly one witness note carrying the payload's tool_name.
   const on = witnessSandbox();

@@ -239,6 +239,34 @@ test("GT-2c: RELEASE_GATE=0 set in tdd.config skips the release gate (config-set
   } finally { fs.rmSync(d, { recursive: true, force: true }); }
 });
 
+test("RS-1: the guard does not treat /dev/null as a write target — 2>/dev/null is allowed in red; a real source redirect is still blocked", () => {
+  const d = fs.mkdtempSync(path.join(os.tmpdir(), "devnull-"));
+  try {
+    const sh = path.join(d, ".claude", "hooks"), st = path.join(d, ".claude", "state");
+    fs.mkdirSync(sh, { recursive: true }); fs.mkdirSync(st, { recursive: true });
+    for (const h of ["lib", "guard-edit-scope"]) fs.copyFileSync(path.join(KIT_HOOKS, h + ".sh"), path.join(sh, h + ".sh"));
+    fs.writeFileSync(path.join(sh, "tics-lib.sh"), "emit_tic() { :; }\n"); // stub the bus emitter — RS-1 tests redirect parsing, not emission
+    fs.writeFileSync(path.join(d, ".claude", "tdd.config"), 'LAYERS="app"\nTEST_GLOB="\\\\.test\\\\."\n');
+    fs.writeFileSync(path.join(st, "phase"), "red\n");   // the loop is in RED — only TEST files may be edited
+    fs.writeFileSync(path.join(st, "layer"), "app\n");
+    const payload = (cmd) => JSON.stringify({ tool_name: "Bash", tool_input: { command: cmd } });
+    const run = (cmd) => cp.spawnSync("bash", [path.join(sh, "guard-edit-scope.sh")], { cwd: d, input: payload(cmd), encoding: "utf8", env: Object.assign({}, process.env) });
+
+    // (1) `2>/dev/null` is an fd redirect to a SINK, not a source edit — the paper-cut: this is ALLOWED in red.
+    const r1 = run("npm test 2>/dev/null");
+    assert.strictEqual(r1.status, 0, "2>/dev/null is a sink, not a write target — running a command with it in red must be allowed:\n" + r1.stderr);
+
+    // (2) an explicit redirect to /dev/null is still a sink — ALLOWED in red.
+    const r2 = run("echo hi > /dev/null");
+    assert.strictEqual(r2.status, 0, "a redirect to /dev/null discards output — never a source edit, so red must allow it:\n" + r2.stderr);
+
+    // (3) CONTROL: a real source redirect in red is still REFUSED — proves the fix doesn't disable detection.
+    const r3 = run("echo x > src/app.js");
+    assert.strictEqual(r3.status, 2, "a redirect into source in red must still be blocked — /dev/* leniency must not blind the guard to real writes");
+    assert.match(r3.stderr, /BLOCKED|refused/i, "the real-source block must explain itself");
+  } finally { fs.rmSync(d, { recursive: true, force: true }); }
+});
+
 test("CTX-6: guard surfaces `tics where` crumbs at edit-time when CONTEXT_MAP=1 (advisory, never blocks)", () => {
   const d = fs.mkdtempSync(path.join(os.tmpdir(), "ctxmap-"));
   try {

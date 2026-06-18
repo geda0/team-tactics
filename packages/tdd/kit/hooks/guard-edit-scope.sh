@@ -90,7 +90,7 @@ extract_write_targets() {
     | grep -oE '[0-9]*>>?[[:space:]]*[^[:space:]&|;<>()`]+|(^|[[:space:]])tee([[:space:]]+-a)?[[:space:]]+[^[:space:]&|;<>()`-][^[:space:]&|;<>()`]*' \
     | sed -E 's/^[0-9]*>>?[[:space:]]*//; s/^[[:space:]]*tee([[:space:]]+-a)?[[:space:]]+//' \
     | sed -E "s/^[\"']//; s/[\"']\$//" \
-    | grep -vE '[$*?`]|^&|^[0-9]+$' || true
+    | grep -vE '[$*?`]|^&|^[0-9]+$|^/dev/' || true
 }
 
 # Sensitive-surface guard (opt-in): paths matching SECURITY_GLOB (set in tdd.config) require a
