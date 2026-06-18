@@ -89,3 +89,53 @@ What does **not** change:
 Net: the activation guarantee shifts from *proactive-by-default + reactive backstop* to
 *reactive-by-default + proactive opt-in*. The reactive path (0006) is the zero-config default; the
 proactive path (this Decision 2) is the opt-in enhancement.
+
+## Amendment 2 (2026-06-18) — the every-prompt directive returns to DEFAULT-ON (opt-out)
+
+The **core of 0005 still stands** (Decision 1 unchanged — full team installed by default;
+`--minimal` still the sticky opt-out). This re-flips **Decision 2's default** the other way:
+`prompt-directive.sh` (the `UserPromptSubmit` hook) moves from **default-OFF (opt-in, Amendment 1)**
+back to **default-ON (opt-out)** — set **`PROMPT_DIRECTIVE=0`** to silence it. The trigger is data:
+the opt-in default **did not deliver adherence in the wild**.
+
+Evidence (navigator-confirmed):
+
+- **A real adopter (gvp), on v0.64.0, with the "use the full framework" directive sitting in its
+  `AGENTS.md`, STILL did a whole new task solo** on the very next prompt — zero tests, single
+  perspective. The navigator had to correct it by hand: "USE THE FULL TEAM TACTICS FRAMEWORK." The
+  hook's own comment already recorded the failure mode — "gvp: obeyed 0/2 with SessionStart only."
+- **A once-read directive does not change behavior.** SessionStart / `AGENTS.md` is announced once
+  and fades (the same fade 0005 was built to defeat); only delivery **at the moment of decision —
+  per-prompt** — is obeyed. `PROMPT_DIRECTIVE` is that delivery, and it was off.
+- **The reactive solo-drift backstop fires too late.** ADR 0006 NOTEs at `Stop` — *after* the solo
+  work already shipped. As the *sole* default it surfaces drift but does not prevent it. Detection is
+  not delivery.
+
+Amendment 1's concern — *"default-on every-prompt injection is too invasive for shared/prod
+branches"* — is now **ADDRESSED, not ignored**:
+
+- **The injection is trimmed to ~2 lines** (was ~5), so the per-prompt cost that drove Amendment 1 is
+  mitigated — it informs without drowning the prompt.
+- **It auto-silences in CI** (the line-11 CI guard, unchanged).
+- **Shared/prod branches opt out explicitly with `PROMPT_DIRECTIVE=0`.** Amendment 1 was right that
+  a forgotten disable is a smell, but the data says the larger cost is the *adherence default-off
+  loses* — the trim is what tips the trade-off back. A heavy default-on was invasive; a *trimmed*
+  default-on is tolerable, and it is what actually delivers the directive.
+
+Be honest about the oscillation: this knob has now gone **default-on (0005) → opt-in (Amendment 1) →
+default-on (Amendment 2)**. What settles it is a wild data point, not preference — **off doesn't
+deliver** (gvp obeyed 0/2 with SessionStart-only; the navigator manually re-asserted the directive
+repeatedly), and the **~2-line trim is what makes default-on tolerable** where the original ~5-line
+version was not.
+
+This **completes ADR 0020** (TDD-discipline / full-framework drift is a *directive*, not a hook):
+0020 established the correction is a directive; the missing half is that a directive only works when
+it is **DELIVERED per-prompt, not merely documented**. Documenting "use the full framework" in
+`AGENTS.md` is the once-read announcement that demonstrably failed; `PROMPT_DIRECTIVE` on-by-default
+is the per-prompt delivery that makes 0020's directive land. It also records that **ADR 0006's
+reactive backstop is insufficient as the *sole* default** — it stays, as the at-`Stop` safety net
+beneath the now-proactive default, not in place of it.
+
+Net: the activation guarantee returns to *proactive-by-default + reactive backstop* — but with a
+**trimmed, CI-silent, single-line-opt-out** proactive default, so it recovers Amendment 1's
+adherence loss without re-incurring its invasiveness.

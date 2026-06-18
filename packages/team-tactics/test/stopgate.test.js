@@ -299,3 +299,45 @@ test("CTX-6: guard surfaces `tics where` crumbs at edit-time when CONTEXT_MAP=1 
     assert.strictEqual(off.status, 0, "the gated-off path never blocks");
   } finally { fs.rmSync(d, { recursive: true, force: true }); }
 });
+
+// PD-1 (ADR 0005, amended): the every-prompt full-framework directive flips to DEFAULT-ON (opt-out),
+// reversing the prior default-OFF. Real-adopter evidence drove it — a session obeyed the once-read
+// SessionStart directive 0/2 and had to be corrected by hand. So the UserPromptSubmit hook now injects
+// the directive EVERY prompt UNLESS opted out (PROMPT_DIRECTIVE=0, via env or tdd.config), while keeping
+// the CI auto-silence (no every-prompt noise in automated/non-interactive runs). The hook reads no stdin;
+// it sources <ROOT>/.claude/tdd.config and prints the directive to STDOUT. RED today: line 11 is
+// `[ "${PROMPT_DIRECTIVE:-0}" = "1" ] || exit 0` — unset PROMPT_DIRECTIVE exits silently, so stdout is empty.
+function pdSandbox(extraConfig) {
+  const d = fs.mkdtempSync(path.join(os.tmpdir(), "tdd-pd-"));
+  fs.mkdirSync(path.join(d, ".claude", "hooks"), { recursive: true });
+  fs.copyFileSync(path.join(KIT_HOOKS, "prompt-directive.sh"), path.join(d, ".claude", "hooks", "prompt-directive.sh"));
+  fs.writeFileSync(path.join(d, ".claude", "tdd.config"), 'LAYERS="app"\n' + (extraConfig || ""));
+  return d;
+}
+// CI:"" clears any ambient CI var so the test isn't auto-silenced by the CI guard.
+const firePD = (d, env) => cp.spawnSync("bash", [path.join(d, ".claude", "hooks", "prompt-directive.sh")],
+  { encoding: "utf8", input: "", env: Object.assign({}, process.env, { CI: "" }, env || {}) });
+
+test("PD-1: the every-prompt full-framework directive is DEFAULT-ON (opt-out); silent only on PROMPT_DIRECTIVE=0 or CI", () => {
+  const DIR = /full framework/i;
+  const dirs = [];
+  const mk = (extraConfig) => { const d = pdSandbox(extraConfig); dirs.push(d); return d; };
+  try {
+    // (1) DEFAULT ON: a sandbox with NO PROMPT_DIRECTIVE set, CI cleared -> the directive is injected.
+    const onByDefault = firePD(mk());
+    assert.match(onByDefault.stdout, DIR, "with PROMPT_DIRECTIVE unset, the directive must inject by DEFAULT");
+    assert.strictEqual(onByDefault.status, 0, "the directive hook is advisory — it exits 0:\n" + onByDefault.stderr);
+
+    // (2) OPT-OUT via env: PROMPT_DIRECTIVE=0 silences the injection.
+    const optOutEnv = firePD(mk(), { PROMPT_DIRECTIVE: "0" });
+    assert.doesNotMatch(optOutEnv.stdout, DIR, "PROMPT_DIRECTIVE=0 (env) must opt out — no directive");
+
+    // (3) OPT-OUT via config: PROMPT_DIRECTIVE=0 in tdd.config is honored the same way.
+    const optOutCfg = firePD(mk("PROMPT_DIRECTIVE=0\n"));
+    assert.doesNotMatch(optOutCfg.stdout, DIR, "PROMPT_DIRECTIVE=0 in tdd.config must opt out — no directive");
+
+    // (4) CI auto-silence: even default-on, an automated/non-interactive run injects nothing.
+    const inCI = firePD(mk(), { CI: "1" });
+    assert.doesNotMatch(inCI.stdout, DIR, "CI must auto-silence the every-prompt directive even when default-on");
+  } finally { for (const d of dirs) fs.rmSync(d, { recursive: true, force: true }); }
+});

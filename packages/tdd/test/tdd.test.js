@@ -16,26 +16,24 @@ test("installTdd composes the tics protocol + lays the gate, roles, docs", () =>
     assert.ok(fs.existsSync(path.join(d, "docs", "tdd", "tdd-workflow.md")));
   } finally { fs.rmSync(d, { recursive: true, force: true }); }
 });
-test("UserPromptSubmit: prompt-directive is OPT-IN — silent by default, fires under PROMPT_DIRECTIVE=1 (ADR 0005 amended)", () => {
+test("UserPromptSubmit: prompt-directive is DEFAULT-ON (opt-out); fires by default, silent under PROMPT_DIRECTIVE=0 (ADR 0005 amendment 2)", () => {
   const d = inst();
   try {
-    // NEW DEFAULT: no flag => silent (the every-prompt directive is opt-in, the reactive backstop is the default).
-    assert.strictEqual(fire(d, "prompt-directive.sh", "{}").stdout.trim(), "", "silent by default — opt-in");
-    // Opt in, and it fires with the full-framework reminder.
-    fs.appendFileSync(path.join(d, ".claude", "tdd.config"), "\nPROMPT_DIRECTIVE=1\n");
+    // DEFAULT-ON: no flag => fires with the full-framework reminder.
     const out = fire(d, "prompt-directive.sh", "{}").stdout;
-    assert.match(out, /team-tactics/i, "names the framework");
-    assert.match(out, /phase|tic|delegate|orchestrat/i, "reminds of the operating mode");
+    assert.match(out, /team-tactics/i, "names the framework by default");
+    assert.match(out, /phase|tic|delegate|orchestrat/i, "reminds of the operating mode by default");
+    // Opt out via config, and it goes silent.
+    fs.appendFileSync(path.join(d, ".claude", "tdd.config"), "\nPROMPT_DIRECTIVE=0\n");
+    assert.strictEqual(fire(d, "prompt-directive.sh", "{}").stdout.trim(), "", "PROMPT_DIRECTIVE=0 opts out — silent");
   } finally { fs.rmSync(d, { recursive: true, force: true }); }
 });
-test("UserPromptSubmit: prompt-directive — when opted in, still silent in CI; fires interactively", () => {
+test("UserPromptSubmit: prompt-directive — still silent in CI (default-ON); fires interactively", () => {
   const inst2 = inst();
   try {
-    // Opt in first — else default-OFF makes every assertion below vacuous/wrong.
-    fs.appendFileSync(path.join(inst2, ".claude", "tdd.config"), "\nPROMPT_DIRECTIVE=1\n");
     const inCI = cp.spawnSync("bash", [path.join(inst2, ".claude", "hooks", "prompt-directive.sh")], { input: "", cwd: inst2, encoding: "utf8", env: { ...process.env, CI: "1" } });
-    assert.strictEqual(inCI.stdout.trim(), "", "CI guard wins even when opted in");
-    assert.match(fire(inst2, "prompt-directive.sh", "{}").stdout, /team-tactics/i, "fires when opted in + interactive");
+    assert.strictEqual(inCI.stdout.trim(), "", "CI guard wins even when default-on");
+    assert.match(fire(inst2, "prompt-directive.sh", "{}").stdout, /team-tactics/i, "fires interactively by default");
   } finally { fs.rmSync(inst2, { recursive: true, force: true }); }
 });
 test("the gate enforces phase×layer", () => {
