@@ -360,6 +360,7 @@ refreshCursorRule(target);   // CP-1b: keep the Cursor rule current on update
 for (const d of ["tdd-workflow", "testing-philosophy", "conventions", "divide-and-conquer", "tool-support"])
   refresh(path.join(TDD, "docs", d + ".md"), path.join("docs", "tdd", d + ".md"));
 refresh(path.join(tics.KIT, "docs", "tic-protocol.md"), path.join("docs", "tics", "tic-protocol.md"));
+refresh(path.join(tics.KIT, "docs", "context-map.md"), path.join("docs", "tics", "context-map.md"));
 
 // 1b) Optional team preset (sticky) — outer-loop roles + method doc + state templates.
 if (presetActive === "full-team") {

@@ -235,3 +235,17 @@ test("MCPN: update nudges to run mcp-install when MCP is unwired, and stays sile
     assert.ok(!/not wired/i.test(out2), "no 'not wired' nudge when MCP is already wired");
   } finally { fs.rmSync(target, { recursive: true, force: true }); }
 });
+
+test("CTXDOC: install ships docs/tics/context-map.md (the context-map how-to)", () => {
+  // AGENTS.md, the Cursor rule, and tic-protocol.md all point at docs/tics/context-map.md,
+  // so a fresh install must actually lay the how-to down — not just tic-protocol.md.
+  const d = fs.mkdtempSync(path.join(os.tmpdir(), "ctxdoc-"));
+  try {
+    run([d]);
+    const doc = path.join(d, "docs", "tics", "context-map.md");
+    assert.ok(fs.existsSync(doc), "context-map.md installed");
+    const s = fs.readFileSync(doc, "utf8");
+    assert.match(s, /landmark/, "explains the landmark crumb");
+    assert.match(s, /tics map/, "references the `tics map` view");
+  } finally { fs.rmSync(d, { recursive: true, force: true }); }
+});

@@ -1,6 +1,6 @@
 {
   "name": "@ttics/tdd",
-  "version": "0.62.0",
+  "version": "0.62.1",
   "description": "Test-driven agent pairing — the phase×layer gate, the pair roles, the inner loop. Uses @ttics/tics.",
   "bin": {
     "tdd": "bin/tdd.js"
