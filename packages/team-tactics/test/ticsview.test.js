@@ -463,6 +463,209 @@ test("E12-1: tics report tallies per-tool usage from witness notes (from=witness
   } finally { fs.rmSync(noWitness, { recursive: true, force: true }); }
 });
 
+test("CTX-2: tics map folds landmark crumbs newest-per-ref, grouped by type, with retract tombstoning", () => {
+  // The context map (`tics map`) folds kind=landmark crumbs keyed by ref (newest-per-ref wins,
+  // append order), grouped by crumb TYPE (result: landmark|route|caveat); result=retract tombstones a ref.
+  const d = freshWithTics([
+    T({ seq: 1, ts: "2026-06-04T01:00:01Z", kind: "landmark", from: "navigator", to: "*", ref: "backend/src/feed/rank.ts", result: "landmark", msg: "rankFeed is the entry point" }),
+    T({ seq: 2, ts: "2026-06-04T01:00:02Z", kind: "landmark", from: "navigator", to: "*", ref: "area:feed", result: "route", msg: "add a source: register sources.ts then rank.ts" }),
+    T({ seq: 3, ts: "2026-06-04T01:00:03Z", kind: "landmark", from: "navigator", to: "*", ref: "backend/src/feed/dedup.ts", result: "caveat", msg: "rank.ts mutates input — clone first" }),
+    T({ seq: 4, ts: "2026-06-04T01:00:04Z", kind: "landmark", from: "navigator", to: "*", ref: "area:legacy", result: "landmark", msg: "OLD note about legacy" }),
+    T({ seq: 5, ts: "2026-06-04T01:00:05Z", kind: "landmark", from: "navigator", to: "*", ref: "area:legacy", result: "landmark", msg: "FRESH note supersedes it" }),
+    T({ seq: 6, ts: "2026-06-04T01:00:06Z", kind: "landmark", from: "navigator", to: "*", ref: "area:gone", result: "landmark", msg: "temporary" }),
+    T({ seq: 7, ts: "2026-06-04T01:00:07Z", kind: "landmark", from: "navigator", to: "*", ref: "area:gone", result: "retract", msg: "" }),
+  ]);
+  try {
+    const r = run(["map", d]);
+    assert.strictEqual(r.status, 0, r.stderr);
+    // the three live crumb messages appear
+    assert.match(r.stdout, /rankFeed is the entry point/);
+    assert.match(r.stdout, /add a source: register/);
+    assert.match(r.stdout, /rank\.ts mutates input/);
+    // grouping headers for the types in play
+    assert.match(r.stdout, /landmark/i, "groups landmark crumbs under a landmark header");
+    assert.match(r.stdout, /route/i, "groups route crumbs under a route header");
+    assert.match(r.stdout, /caveat/i, "groups caveat crumbs under a caveat header");
+    // supersession: newest-per-ref wins
+    assert.match(r.stdout, /FRESH note supersedes it/, "the newest crumb on area:legacy wins");
+    assert.doesNotMatch(r.stdout, /OLD note about legacy/, "the older crumb on the same ref is superseded");
+    // tombstone: a retract removes the ref from the map
+    assert.doesNotMatch(r.stdout, /area:gone/, "a retracted ref is gone from the map");
+    assert.doesNotMatch(r.stdout, /temporary/, "the retracted crumb's message is gone too");
+  } finally { fs.rmSync(d, { recursive: true, force: true }); }
+});
+
+test("CTX-3: tics where <path> and tics how <task> filter the landmark crumbs by path-overlap and by route-term", () => {
+  // `tics where <path>` -> landmark crumbs whose ref OVERLAPS <path> (bidirectional substring,
+  // newest-per-ref). `tics how <task>` -> result=route crumbs whose ref OR msg contains <task>
+  // (case-insensitive). Both are filtered folds of the same map crumbs.
+  const d = freshWithTics([
+    T({ seq: 1, ts: "2026-06-04T01:00:01Z", kind: "landmark", from: "navigator", to: "*", ref: "backend/src/feed/rank.ts", result: "landmark", msg: "RANK ENTRY rankFeed here" }),
+    T({ seq: 2, ts: "2026-06-04T01:00:02Z", kind: "landmark", from: "navigator", to: "*", ref: "backend/src/feed/dedup.ts", result: "caveat", msg: "DEDUP mutates input" }),
+    T({ seq: 3, ts: "2026-06-04T01:00:03Z", kind: "landmark", from: "navigator", to: "*", ref: "backend/src/auth/login.ts", result: "landmark", msg: "AUTH login handler" }),
+    T({ seq: 4, ts: "2026-06-04T01:00:04Z", kind: "landmark", from: "navigator", to: "*", ref: "area:feed", result: "route", msg: "ROUTE add a feed source: sources.ts then rank.ts" }),
+    T({ seq: 5, ts: "2026-06-04T01:00:05Z", kind: "landmark", from: "navigator", to: "*", ref: "area:auth", result: "route", msg: "ROUTE rotate auth secret via scripts/rotate" }),
+  ]);
+  try {
+    // `where`: exact ref overlap surfaces the matching crumb; a different path does not.
+    const exact = run(["where", "backend/src/feed/rank.ts", d]);
+    assert.strictEqual(exact.status, 0, exact.stderr);
+    assert.match(exact.stdout, /RANK ENTRY/, "the crumb whose ref overlaps the path is shown");
+    assert.doesNotMatch(exact.stdout, /AUTH login handler/, "a crumb on a different path is not shown");
+    // bidirectional overlap: a dir path is a substring of both feed refs -> both match.
+    const dir = run(["where", "backend/src/feed", d]);
+    assert.strictEqual(dir.status, 0, dir.stderr);
+    assert.match(dir.stdout, /RANK ENTRY/, "dir path overlaps rank.ts ref");
+    assert.match(dir.stdout, /DEDUP mutates/, "dir path overlaps dedup.ts ref (bidirectional substring)");
+
+    // `how`: routes matching the term are shown; a non-matching route and a non-route are not.
+    const how = run(["how", "feed", d]);
+    assert.strictEqual(how.status, 0, how.stderr);
+    assert.match(how.stdout, /add a feed source/, "a route matching 'feed' is shown");
+    assert.doesNotMatch(how.stdout, /rotate auth secret/, "a route not matching 'feed' is excluded");
+    assert.doesNotMatch(how.stdout, /RANK ENTRY/, "a non-route crumb is excluded even though its path matches 'feed'");
+  } finally { fs.rmSync(d, { recursive: true, force: true }); }
+});
+
+test("CTX-4: tics map retro-folds contract tics (ADRs) as a Decisions group — non-empty on day one", () => {
+  // `tics map` ALSO folds kind=contract tics (an architect auto-emits one per ADR) into a
+  // distinct `Decisions` group, keyed by ref newest-per-ref, alongside the landmark crumbs —
+  // so the map is non-empty before anyone leaves a hand crumb (the cold-start solve).
+  const d = freshWithTics([
+    T({ seq: 1, ts: "2026-06-04T01:00:01Z", kind: "contract", from: "architect", to: "*", ref: "docs/decisions/0017-judgment-gates.md", msg: "ADR 0017: judgment gates made mechanical" }),
+    T({ seq: 2, ts: "2026-06-04T01:00:02Z", kind: "contract", from: "architect", to: "*", ref: "docs/decisions/0018-cursor-parity.md", msg: "ADR 0018: three-tier Cursor parity" }),
+    T({ seq: 3, ts: "2026-06-04T01:00:03Z", kind: "landmark", from: "navigator", to: "*", ref: "backend/src/feed/rank.ts", result: "landmark", msg: "rankFeed is the entry point" }),
+  ]);
+  try {
+    const r = run(["map", d]);
+    assert.strictEqual(r.status, 0, r.stderr);
+    assert.match(r.stdout, /Decisions/, "contracts fold into a Decisions group header");
+    assert.match(r.stdout, /ADR 0017: judgment gates/, "the first ADR's message appears");
+    assert.match(r.stdout, /ADR 0018: three-tier/, "the second ADR's message appears");
+    assert.match(r.stdout, /rankFeed is the entry point/, "the normal landmark crumb still appears (folding contracts didn't break landmark folding)");
+  } finally { fs.rmSync(d, { recursive: true, force: true }); }
+
+  // Cold-start: ADRs alone (no landmark crumbs) still make the map non-empty.
+  const d2 = freshWithTics([
+    T({ seq: 1, ts: "2026-06-04T01:00:01Z", kind: "contract", from: "architect", to: "*", ref: "docs/decisions/0017-judgment-gates.md", msg: "ADR 0017: judgment gates made mechanical" }),
+    T({ seq: 2, ts: "2026-06-04T01:00:02Z", kind: "contract", from: "architect", to: "*", ref: "docs/decisions/0018-cursor-parity.md", msg: "ADR 0018: three-tier Cursor parity" }),
+  ]);
+  try {
+    const r = run(["map", d2]);
+    assert.strictEqual(r.status, 0, r.stderr);
+    assert.match(r.stdout, /ADR 0017/, "the map is non-empty from ADRs alone (cold-start)");
+  } finally { fs.rmSync(d2, { recursive: true, force: true }); }
+});
+
+test("CTX-5: tics map nudges '↻ verify' on a crumb whose path changed in git after its ts; fresh / non-path / non-repo get no nudge", () => {
+  // Freshness backstop: for a landmark crumb whose ref is a real repo PATH, if that path's last
+  // git commit time is AFTER the crumb's ts, the map appends a soft `/verify/i` marker (prompting
+  // re-emission) WITHOUT suppressing the crumb. A crumb newer than the last commit, a non-path ref
+  // (area:), and a non-git dir all get NO marker (the git call fails safe).
+  const d = freshWithTics([]);                 // installs .claude/; we overwrite the bus below
+  cp.execFileSync("git", ["-C", d, "init", "-q"]);
+  cp.execFileSync("git", ["-C", d, "config", "user.email", "t@t"]);
+  cp.execFileSync("git", ["-C", d, "config", "user.name", "t"]);
+  fs.mkdirSync(path.join(d, "src"), { recursive: true });
+  fs.writeFileSync(path.join(d, "src", "rank.ts"), "x");
+  fs.writeFileSync(path.join(d, "src", "dedup.ts"), "y");
+  cp.execFileSync("git", ["-C", d, "add", "src/rank.ts", "src/dedup.ts"]);
+  cp.execFileSync("git", ["-C", d, "commit", "-q", "-m", "seed"]);   // commit time ≈ now
+  fs.writeFileSync(path.join(d, ".claude", "state", "tics.jsonl"), [
+    T({ seq: 1, kind: "landmark", from: "navigator", to: "*", ref: "src/rank.ts", result: "landmark", msg: "RANK old crumb", ts: "2020-01-01T00:00:00Z" }),
+    T({ seq: 2, kind: "landmark", from: "navigator", to: "*", ref: "src/dedup.ts", result: "landmark", msg: "DEDUP fresh crumb", ts: "2099-01-01T00:00:00Z" }),
+    T({ seq: 3, kind: "landmark", from: "navigator", to: "*", ref: "area:feed", result: "route", msg: "AREA route crumb", ts: "2020-01-01T00:00:00Z" }),
+  ].map((l) => JSON.stringify(l)).join("\n") + "\n");
+  try {
+    const r = run(["map", d]);
+    assert.strictEqual(r.status, 0, r.stderr);
+    const lines = r.stdout.split("\n");
+    const lineFor = (m) => lines.find((l) => l.indexOf(m) !== -1);
+    const rankLine = lineFor("RANK old crumb");
+    assert.ok(rankLine, "the stale crumb still appears (never suppressed)");
+    assert.match(rankLine, /verify/i, "ts predates the last commit -> soft verify nudge");
+    assert.doesNotMatch(lineFor("DEDUP fresh crumb"), /verify/i, "ts newer than the last commit -> no nudge");
+    assert.doesNotMatch(lineFor("AREA route crumb"), /verify/i, "a non-path ref (area:) is never git-checked -> no nudge");
+  } finally { fs.rmSync(d, { recursive: true, force: true }); }
+
+  // Fail-safe: a non-git dir -> the git call fails safe, the crumb shows with no nudge, no crash.
+  const d2 = freshWithTics([
+    T({ seq: 1, kind: "landmark", from: "navigator", to: "*", ref: "src/whatever.ts", result: "landmark", msg: "NOREPO crumb", ts: "2020-01-01T00:00:00Z" }),
+  ]);
+  try {
+    const r = run(["map", d2]);
+    assert.strictEqual(r.status, 0, r.stderr);
+    const noRepoLine = r.stdout.split("\n").find((l) => l.indexOf("NOREPO crumb") !== -1);
+    assert.ok(noRepoLine, "the crumb shows even when the dir is not a git repo");
+    assert.doesNotMatch(noRepoLine, /verify/i, "no git repo -> git call fails safe -> no nudge");
+  } finally { fs.rmSync(d2, { recursive: true, force: true }); }
+});
+
+test("CTX-8: a landmark and a caveat on the same path coexist (supersede per ref+type), retract clears the ref", () => {
+  // Supersession is per (ref, type), not per ref alone: a landmark and a caveat on the SAME path
+  // must BOTH survive in the map (one under Landmarks, one under Caveats). A newer crumb of the
+  // SAME type on that ref supersedes only its own type. result=retract still clears the whole ref.
+  const d = freshWithTics([
+    T({ seq: 1, ts: "2026-06-04T01:00:01Z", kind: "landmark", from: "navigator", to: "*", ref: "backend/src/feed/rank.ts", result: "landmark", msg: "LANDMARK rankFeed is the entry point" }),
+    T({ seq: 2, ts: "2026-06-04T01:00:02Z", kind: "landmark", from: "navigator", to: "*", ref: "backend/src/feed/rank.ts", result: "caveat", msg: "CAVEAT rank.ts mutates input" }),
+    T({ seq: 3, ts: "2026-06-04T01:00:03Z", kind: "landmark", from: "navigator", to: "*", ref: "backend/src/feed/rank.ts", result: "landmark", msg: "LANDMARK-V2 rankFeed moved to ranker.ts" }),
+    T({ seq: 4, ts: "2026-06-04T01:00:04Z", kind: "landmark", from: "navigator", to: "*", ref: "area:gone", result: "landmark", msg: "TEMP gone soon" }),
+    T({ seq: 5, ts: "2026-06-04T01:00:05Z", kind: "landmark", from: "navigator", to: "*", ref: "area:gone", result: "retract", msg: "" }),
+  ]);
+  try {
+    const r = run(["map", d]);
+    assert.strictEqual(r.status, 0, r.stderr);
+    // the core fix: the caveat survives alongside the (re-emitted) landmark on the SAME ref
+    assert.match(r.stdout, /CAVEAT rank\.ts mutates input/, "the caveat coexists with the landmark on the same ref (supersede per ref+type)");
+    assert.match(r.stdout, /LANDMARK-V2 rankFeed moved/, "the landmark on the same ref also survives");
+    // within-type supersession still holds: V2 landmark replaces the V1 landmark on that ref+type
+    assert.doesNotMatch(r.stdout, /LANDMARK rankFeed is the entry point/, "the V1 landmark is superseded by V2 (same ref+type)");
+    // retract still tombstones the WHOLE ref (preserves CTX-2 behavior)
+    assert.doesNotMatch(r.stdout, /TEMP gone soon/, "the retracted crumb's message is gone");
+    assert.doesNotMatch(r.stdout, /area:gone/, "the retracted ref is gone from the map");
+  } finally { fs.rmSync(d, { recursive: true, force: true }); }
+});
+
+test("CTX-9: verify nudge compares real instants (tz-safe); retract spares ADR Decisions", () => {
+  // Fix A: verifyMark must compare WALL-CLOCK instants, not ISO strings. git --format=%cI carries a
+  // tz offset (e.g. +05:00) while the crumb ts is UTC Z, so a lexical `>` is wrong across offsets.
+  // Commit at 09:00 +05:00 (= 04:00 UTC); crumb ts 06:00 UTC. Real instants: commit (04:00 UTC) is
+  // BEFORE the crumb (06:00 UTC) -> the crumb is genuinely FRESH -> NO nudge. But the STRINGS disagree:
+  // "2026-06-18T09:00:00+05:00" sorts GREATER than "2026-06-18T06:00:00Z" ("09" > "06"), so the buggy
+  // string compare wrongly flags the fresh crumb as stale. Assert: no /verify/ nudge, crumb still shown.
+  const d = freshWithTics([]);
+  cp.execFileSync("git", ["-C", d, "init", "-q"]);
+  cp.execFileSync("git", ["-C", d, "config", "user.email", "t@t"]);
+  cp.execFileSync("git", ["-C", d, "config", "user.name", "t"]);
+  fs.mkdirSync(path.join(d, "src"), { recursive: true });
+  fs.writeFileSync(path.join(d, "src", "rank.ts"), "x");
+  cp.execFileSync("git", ["-C", d, "add", "src/rank.ts"]);
+  const env = Object.assign({}, process.env, { GIT_COMMITTER_DATE: "2026-06-18T09:00:00+05:00", GIT_AUTHOR_DATE: "2026-06-18T09:00:00+05:00" });
+  cp.execFileSync("git", ["-C", d, "commit", "-q", "-m", "seed"], { env });
+  fs.writeFileSync(path.join(d, ".claude", "state", "tics.jsonl"),
+    JSON.stringify(T({ seq: 1, kind: "landmark", from: "navigator", to: "*", ref: "src/rank.ts", result: "landmark", msg: "FRESH crumb after commit", ts: "2026-06-18T06:00:00Z" })) + "\n");
+  try {
+    const r = run(["map", d]);
+    assert.strictEqual(r.status, 0, r.stderr);
+    const freshLine = r.stdout.split("\n").find((l) => l.indexOf("FRESH crumb after commit") !== -1);
+    assert.ok(freshLine, "the crumb still appears (never suppressed)");
+    assert.doesNotMatch(freshLine, /verify/i, "crumb ts 06:00 UTC is AFTER the commit's real instant 04:00 UTC -> genuinely fresh -> no nudge (string compare wrongly nudges)");
+  } finally { fs.rmSync(d, { recursive: true, force: true }); }
+
+  // Fix B: a landmark `retract` must tombstone only landmark-family crumbs, NOT a Decision (ADR contract)
+  // on the SAME ref. The buggy retract loop deletes EVERY map key prefixed by `ref + " "`, including the
+  // `decision` key. Assert the ADR survives the retract.
+  const d2 = freshWithTics([
+    T({ seq: 1, ts: "2026-06-04T01:00:01Z", kind: "contract", from: "architect", to: "*", ref: "docs/decisions/0019-context-map.md", msg: "ADR 0019: the context map" }),
+    T({ seq: 2, ts: "2026-06-04T01:00:02Z", kind: "landmark", from: "navigator", to: "*", ref: "docs/decisions/0019-context-map.md", result: "retract", msg: "" }),
+  ]);
+  try {
+    const r = run(["map", d2]);
+    assert.strictEqual(r.status, 0, r.stderr);
+    assert.match(r.stdout, /ADR 0019: the context map/, "a landmark retract must NOT clear the Decision (ADR) keyed to the same ref");
+  } finally { fs.rmSync(d2, { recursive: true, force: true }); }
+});
+
 test("E12-2b: team-tactics log --witness parses + reveals witness notes (cli.js surface); default hides them", () => {
   const d = freshWithTics([
     T({ seq: 1, kind: "note", from: "witness", to: "*", msg: "used Read" }),

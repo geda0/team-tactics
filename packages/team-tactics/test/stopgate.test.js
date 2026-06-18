@@ -238,3 +238,36 @@ test("GT-2c: RELEASE_GATE=0 set in tdd.config skips the release gate (config-set
     assert.strictEqual(r.status, 0, "RELEASE_GATE=0 in tdd.config must skip the gate entirely — the documented config knob must actually work, even under enforce + a BLOCKED gate");
   } finally { fs.rmSync(d, { recursive: true, force: true }); }
 });
+
+test("CTX-6: guard surfaces `tics where` crumbs at edit-time when CONTEXT_MAP=1 (advisory, never blocks)", () => {
+  const d = fs.mkdtempSync(path.join(os.tmpdir(), "ctxmap-"));
+  try {
+    const sh = path.join(d, ".claude", "hooks"), st = path.join(d, ".claude", "state");
+    fs.mkdirSync(sh, { recursive: true }); fs.mkdirSync(st, { recursive: true });
+    for (const h of ["lib", "guard-edit-scope"]) fs.copyFileSync(path.join(KIT_HOOKS, h + ".sh"), path.join(sh, h + ".sh"));
+    fs.writeFileSync(path.join(sh, "tics-lib.sh"), "emit_tic() { :; }\n"); // stub the bus emitter — CTX-6 tests the hint, not emission
+    // FAKE reader: `tics where src/auth.ts` echoes a crumb; any other path echoes nothing. Never the real reader.
+    fs.writeFileSync(path.join(sh, "tics"), '#!/bin/sh\nif [ "$1" = "where" ]; then case "$2" in *auth*) echo "  caveat $2 — watch out W (clone first)";; esac; fi\nexit 0\n');
+    fs.chmodSync(path.join(sh, "tics"), 0o755);
+    fs.writeFileSync(path.join(d, ".claude", "tdd.config"), 'LAYERS="app"\nTEST_GLOB="\\\\.test\\\\."\n');
+    fs.writeFileSync(path.join(st, "phase"), "off\n");   // gate DISARMED — the edit itself is allowed; we test the hint
+    fs.writeFileSync(path.join(st, "layer"), "app\n");
+    const payload = (file) => JSON.stringify({ tool_name: "Edit", tool_input: { file_path: file } });
+    const run = (file, env) => cp.spawnSync("bash", [path.join(sh, "guard-edit-scope.sh")], { cwd: d, input: payload(file), encoding: "utf8", env: Object.assign({}, process.env, env) });
+
+    // (1) CONTEXT_MAP=1 + a path with a crumb -> the crumb is surfaced on stderr, and the hint never blocks.
+    const hinted = run("src/auth.ts", { CONTEXT_MAP: "1" });
+    assert.match(hinted.stderr, /watch out W/, "CONTEXT_MAP=1 must surface the `tics where` crumb for the edited path on stderr");
+    assert.strictEqual(hinted.status, 0, "the context hint is advisory — it must NEVER block the edit (exit 0)");
+
+    // (2) CONTEXT_MAP=1 + a path with NO crumb -> silent (the reader returns nothing).
+    const noCrumb = run("src/other.ts", { CONTEXT_MAP: "1" });
+    assert.doesNotMatch(noCrumb.stderr, /watch out W/, "a path with no crumb must stay silent");
+    assert.strictEqual(noCrumb.status, 0, "no crumb, no block");
+
+    // (3) CONTEXT_MAP unset -> gated off, silent even for a path that HAS a crumb.
+    const off = run("src/auth.ts", {});
+    assert.doesNotMatch(off.stderr, /watch out W/, "CONTEXT_MAP unset must gate the hint off entirely");
+    assert.strictEqual(off.status, 0, "the gated-off path never blocks");
+  } finally { fs.rmSync(d, { recursive: true, force: true }); }
+});

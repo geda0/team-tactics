@@ -895,7 +895,7 @@ test("S7: tics mcp boots the stdio server (dispatch, not help) — every stdout 
       if (obj.id === 2) list = obj;
     }
     assert.ok(init && init.result && init.result.protocolVersion === "2025-11-25", "handshake frame present");
-    assert.ok(list && list.result && Array.isArray(list.result.tools) && list.result.tools.length === 6, "tools/list frame present");
+    assert.ok(list && list.result && Array.isArray(list.result.tools) && list.result.tools.length === 7, "tools/list frame present");
   } finally { fs.rmSync(d, {recursive:true,force:true}); }
 });
 

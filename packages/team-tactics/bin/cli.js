@@ -64,11 +64,13 @@ if (preset !== null && preset !== "full-team" && preset !== "none" && preset !==
   process.exit(2);
 }
 let cmd = "init";
-if (["init", "update", "help", "version", "selftest", "report", "validate", "log", "inbox", "conductor", "claims", "sections", "claim-check", "claim-session", "claim-owner", "install-hooks", "cycle", "gate", "mcp", "mcp-install"].includes(rest[0])) cmd = rest.shift();
+if (["init", "update", "help", "version", "selftest", "report", "validate", "log", "inbox", "conductor", "claims", "sections", "map", "where", "how", "claim-check", "claim-session", "claim-owner", "install-hooks", "cycle", "gate", "mcp", "mcp-install"].includes(rest[0])) cmd = rest.shift();
 const role = cmd === "inbox" ? rest.shift() : null;
 const cfFile = cmd === "claim-check" ? rest.shift() : null;
 const cfScope = cmd === "claim-check" ? (rest.shift() || scope || "") : null;
 const cmFile = (cmd === "claim-session" || cmd === "claim-owner") ? rest.shift() : null;
+const whereArg = cmd === "where" ? rest.shift() : null;
+const howArg = cmd === "how" ? rest.shift() : null;
 const target = path.resolve(rest[0] || process.cwd());
 
 if (cmd === "version") {            // the single authoritative kit version (matches the manifest's kitVersion)
@@ -93,6 +95,9 @@ if (cmd === "inbox") { process.exit(TV.ticsInbox(target, role, scope)); }
 if (cmd === "conductor") { process.exit(TV.ticsConductor(target, all)); }
 if (cmd === "claims") { process.exit(TV.ticsClaims(target, all)); }
 if (cmd === "sections") { process.exit(TV.ticsSections(target, all)); }
+if (cmd === "map") { process.exit(TV.ticsLandmarks(target, all)); }
+if (cmd === "where") { process.exit(TV.ticsWhere(target, whereArg, all)); }
+if (cmd === "how") { process.exit(TV.ticsHow(target, howArg, all)); }
 if (cmd === "cycle") { process.exit(TV.ticsCycle(target)); }
 if (cmd === "gate") { process.exit(TV.ticsGate(target, all)); }
 if (cmd === "claim-check") { process.exit(TV.claimCheckCli(target, cfFile, cfScope)); }

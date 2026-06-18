@@ -42,13 +42,13 @@ test("S1: initialize negotiates protocolVersion (echoes a supported revision; fa
   assert.strictEqual(e.result.protocolVersion, "2025-11-25");
 });
 
-test("S2: tools/list returns exactly the 6 tools (inbox/board/review/log + emit/answer) each with name+description+inputSchema; tic_emit.kind.enum excludes signal/block/commit/session", () => {
+test("S2: tools/list returns exactly the 7 tools (inbox/board/review/log/map + emit/answer) each with name+description+inputSchema; tic_emit.kind.enum excludes signal/block/commit/session", () => {
   const resp = dispatch({ jsonrpc:"2.0", id:1, method:"tools/list", params:{} }, {});
   assert.strictEqual(resp.id, 1);
   const tools = resp.result.tools;
   assert.ok(Array.isArray(tools));
   assert.deepStrictEqual(tools.map(t=>t.name).sort(),
-    ["tic_emit","tics_answer","tics_board","tics_inbox","tics_log","tics_review"].sort());
+    ["tic_emit","tics_answer","tics_board","tics_inbox","tics_log","tics_map","tics_review"].sort());
   for (const t of tools) {
     assert.ok(typeof t.name === "string" && t.name);
     assert.ok(typeof t.description === "string" && t.description);
@@ -56,7 +56,7 @@ test("S2: tools/list returns exactly the 6 tools (inbox/board/review/log + emit/
   }
   const emit = tools.find(t=>t.name==="tic_emit");
   assert.deepStrictEqual(emit.inputSchema.properties.kind.enum,
-    ["delegate","handoff","stuck","verdict","msg","note","claim","release","contract","need","section"]);
+    ["delegate","handoff","stuck","verdict","msg","note","claim","release","contract","need","section","landmark"]);
 });
 
 test("S4: tic_emit shells tic.sh for an agent-emittable kind (handoff appends ONE tic) BUT rejects signal/block/commit/session with isError and writes NOTHING (honesty boundary, ADR §3)", () => {
@@ -374,6 +374,85 @@ test("CP-3a: the MCP server-entry shape is pinned exactly (.mcp.json + .cursor/m
       assert.strictEqual(entry.args[1], tmp, label + ": args[1] is the resolved target dir");
     }
   } finally { fs.rmSync(tmp, { recursive: true, force: true }); }
+});
+
+test("CTX-1: landmark is an agent-emittable kind — tic.sh and MCP tic_emit both append a landmark crumb", () => {
+  // A `landmark` crumb is the recall breadcrumb for a new context layer:
+  //   kind=landmark, ref=<path/area>, result=<crumb type: landmark|route|caveat>, msg=<recall sentence>.
+  // Both emit doors must accept it — the MCP tic_emit and the Bash tic.sh.
+  const d = inst();
+  const tic = (...a) => cp.spawnSync(path.join(d, ".claude", "hooks", "tic.sh"), a, { cwd: d, encoding: "utf8" });
+  const count = () => (fs.existsSync(path.join(d, ".claude", "state", "tics.jsonl")) ? ticsOf(d).length : 0);
+  try {
+    // 1. MCP door — a navigator drops a landmark crumb; not an isError, appends exactly one tic
+    //    carrying kind/ref/result/msg verbatim (modeled on the CP-2 real-role control + S4b ref/result).
+    const before = count(); // 0
+    const ok = dispatch({ jsonrpc:"2.0", id:1, method:"tools/call",
+      params:{ name:"tic_emit", arguments:{ from:"navigator", to:"*", kind:"landmark",
+        msg:"rankFeed() is the entry point", ref:"backend/src/feed/rank.ts", result:"landmark" } } }, { target:d });
+    assert.ok(!ok.result.isError, callText(ok));
+    const appended = ticsOf(d);
+    assert.strictEqual(appended.length, before + 1, "the MCP door appends exactly one landmark crumb");
+    assert.deepStrictEqual(
+      [appended[0].kind, appended[0].ref, appended[0].result, appended[0].msg],
+      ["landmark", "backend/src/feed/rank.ts", "landmark", "rankFeed() is the entry point"]);
+
+    // 2. Bash door — tic.sh accepts landmark too (no MCP-only escape hatch); exits 0, appends one
+    //    crumb with kind=landmark result=caveat (the recall sentence + crumb type land on the tic).
+    const r = tic("navigator", "*", "landmark", "rank.ts mutates its input — clone first", "backend/src/feed/rank.ts", "caveat");
+    assert.strictEqual(r.status, 0, "tic.sh accepts landmark — exit 0 (stderr: " + r.stderr + ")");
+    assert.strictEqual(count(), before + 2, "the Bash door appends a second landmark crumb");
+    const crumb = ticsOf(d).pop();
+    assert.deepStrictEqual([crumb.kind, crumb.result], ["landmark", "caveat"]);
+
+    // 3. Sanity — landmark is in the exported allow-list (the source of truth both doors honor).
+    assert.notStrictEqual(M.EMITTABLE_KINDS.indexOf("landmark"), -1,
+      "landmark is a first-class agent-emittable kind");
+  } finally { fs.rmSync(d, { recursive: true, force: true }); }
+});
+
+test("CTX-7: tics_map MCP tool returns the context map (and where/how by arg) — read-only, portable pull", () => {
+  // Cursor agents (any MCP client) must be able to PULL the learned context map over MCP, the same
+  // way `tics map`/`tics where`/`tics how` pull it from the shell. tics_map is a read-only reader
+  // tool (like tics_board/tics_log): no path/task -> the whole map (ticsLandmarks); path -> where;
+  // task -> how. Returns the reader text as tool content, never isError.
+  const d = inst();
+  try {
+    // Seed the bus with two landmark crumbs via the emit door (kind=landmark is agent-emittable, CTX-1):
+    //   a landmark on a concrete path, and a route keyed area:auth.
+    dispatch({ jsonrpc:"2.0", id:1, method:"tools/call",
+      params:{ name:"tic_emit", arguments:{ from:"navigator", to:"*", kind:"landmark",
+        msg:"rankFeed is the entry point", ref:"backend/src/feed/rank.ts", result:"landmark" } } }, { target:d });
+    dispatch({ jsonrpc:"2.0", id:2, method:"tools/call",
+      params:{ name:"tic_emit", arguments:{ from:"navigator", to:"*", kind:"landmark",
+        msg:"rotate the auth secret via scripts/rotate", ref:"area:auth", result:"route" } } }, { target:d });
+
+    // 1. No args -> the whole map (ticsLandmarks). Not isError; carries the landmark crumb.
+    const whole = dispatch({ jsonrpc:"2.0", id:3, method:"tools/call",
+      params:{ name:"tics_map", arguments:{} } }, { target:d });
+    assert.ok(!whole.result.isError, callText(whole));
+    assert.match(callText(whole), /rankFeed is the entry point/);
+
+    // 2. path arg -> where-filtered to the path (ticsWhere). The path-keyed landmark shows; the
+    //    area:auth route does NOT overlap this path, so it is excluded.
+    const where = dispatch({ jsonrpc:"2.0", id:4, method:"tools/call",
+      params:{ name:"tics_map", arguments:{ path:"backend/src/feed/rank.ts" } } }, { target:d });
+    assert.ok(!where.result.isError, callText(where));
+    assert.match(callText(where), /rankFeed is the entry point/);
+    assert.doesNotMatch(callText(where), /rotate the auth secret/);
+
+    // 3. task arg -> how-filtered to result=route crumbs matching the task term (ticsHow).
+    const how = dispatch({ jsonrpc:"2.0", id:5, method:"tools/call",
+      params:{ name:"tics_map", arguments:{ task:"auth" } } }, { target:d });
+    assert.ok(!how.result.isError, callText(how));
+    assert.match(callText(how), /rotate the auth secret/);
+
+    // 4. The descriptor is registered — tics_map appears in tools/list.
+    const list = dispatch({ jsonrpc:"2.0", id:6, method:"tools/list", params:{} }, { target:d });
+    assert.ok(Array.isArray(list.result.tools));
+    assert.ok(list.result.tools.map((t) => t.name).indexOf("tics_map") !== -1,
+      "tics_map is a registered read-only tool");
+  } finally { fs.rmSync(d, { recursive: true, force: true }); }
 });
 
 test("CP-3b: cross-surface honesty guard — the Cursor rule's hook-only-kind + from=subagent claims still match the code", () => {
