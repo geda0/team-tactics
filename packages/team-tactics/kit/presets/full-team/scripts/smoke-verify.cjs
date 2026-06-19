@@ -61,7 +61,7 @@ function findBrowser(opts) {
 
   return null;
 }
-function spawnRender(browser, args) { const r = child_process.spawnSync(browser, args, { encoding: 'utf8', maxBuffer: 64 * 1024 * 1024, timeout: 30000 }); if (r && (r.signal || (r.error && r.error.code === 'ETIMEDOUT'))) { return { timedOut: true }; } return (r && r.stdout) || ''; }
+function spawnRender(browser, args, deadlineMs) { const r = child_process.spawnSync(browser, args, { encoding: 'utf8', maxBuffer: 64 * 1024 * 1024, timeout: deadlineMs || 10000 }); const out = (r && r.stdout) || ''; if (out.trim()) { return out; } else if (r && (r.signal || (r.error && r.error.code === 'ETIMEDOUT'))) { return { timedOut: true }; } return ''; }
 
 function isLoopback(u) {
   try {
@@ -82,7 +82,7 @@ function renderDom(url, opts) {
   const mkProfile = opts.mkProfile || (function() { return require('fs').mkdtempSync(require('path').join(require('os').tmpdir(), 'tt-smoke-')); });
   try {
     const profileDir = mkProfile();
-    const args = ['--headless=new', '--disable-gpu', '--dump-dom', '--virtual-time-budget=' + budgetMs, '--user-data-dir=' + profileDir];
+    const args = ['--headless=new', '--disable-gpu', '--dump-dom', '--virtual-time-budget=' + budgetMs, '--user-data-dir=' + profileDir, '--disable-background-networking', '--no-first-run', '--disable-component-update', '--disable-default-apps', '--disable-sync', '--no-default-browser-check', '--disable-extensions', '--mute-audio'];
     if (isRoot()) args.push('--no-sandbox');
     args.push(url);
     const out = spawn(browser, args);

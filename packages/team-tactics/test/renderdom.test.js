@@ -171,3 +171,37 @@ test('returns the unobserved {dom:"", renderer:"render-error"} rung when profile
   // Assert
   assert.deepStrictEqual(result, { dom: '', renderer: 'render-error' });
 });
+
+test('passes --disable-background-networking and --no-first-run so virtual time can settle', () => {
+  // Arrange
+  const { renderDom } = require(SUT);
+  let captured;
+
+  // Act
+  renderDom('http://127.0.0.1:3000', {
+    findBrowser: () => '/x/chrome',
+    spawnRender: (cmd, args) => {
+      captured = args;
+      return '<h1>hi</h1>';
+    },
+  });
+
+  // Assert
+  assert.ok(captured.includes('--disable-background-networking'));
+  assert.ok(captured.includes('--no-first-run'));
+});
+
+test('returns the captured stdout when the process dumps DOM then hangs and is killed by the deadline', () => {
+  // Arrange — a stand-in "browser" that writes the DOM to stdout, then hangs forever.
+  const { spawnRender } = require(SUT);
+
+  // Act — the 1500ms deadline kills the hung process AFTER the dump is captured.
+  const out = spawnRender(
+    process.execPath,
+    ['-e', "process.stdout.write('<h1>dumped</h1>'); setInterval(function(){}, 1000);"],
+    1500
+  );
+
+  // Assert — the dump already happened, so the captured stdout must be returned, not a timeout.
+  assert.strictEqual(out, '<h1>dumped</h1>');
+});
