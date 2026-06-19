@@ -39,10 +39,12 @@ node .claude/scripts/smoke-verify.cjs <loopback-url> "<marker 1>" "<marker 2>" .
 ```
 - Markers are **distinctive acceptance phrases** taken from `design-notes.md` — not
   single common words (substring matching can collide: `"Live"` matches `"Olive"`).
-- The helper renders the DOM via a **system headless browser** the user already has
-  (with a `curl` SSR fallback), then prints the result and emits a `verdict` tic.
-  The headline names the render rung (`renderer=browser|curl-ssr|none`) and the
-  marker tally — so a curl-fallback or no-render run is never read as a browser pass.
+- The helper renders the DOM via a **system headless browser** the user already has,
+  then prints the result and emits a `verdict` tic. The headline names the render rung
+  (`renderer=browser` on a real render; or `none`/`timeout`/`render-error`/
+  `refused-nonloopback` when the app could not be observed — each downgraded to
+  `concerns`) and the marker tally — so a run that never observed the app is never
+  read as a browser pass.
 - URL must be **loopback** (`localhost`/`127.0.0.1`/`::1`) by default — a QA smoke
   check has no business driving a browser at an arbitrary remote URL.
 

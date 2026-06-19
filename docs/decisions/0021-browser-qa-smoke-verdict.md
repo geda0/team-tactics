@@ -1,8 +1,14 @@
 # 0021 — A zero-dependency browser-QA smoke verdict for `qa-verifier`: a PURE marker predicate over a SYSTEM-BROWSER render, with an honest no-browser path
 
-- **Status:** Proposed (spec only — no code written; shaped so the pure core lands red→green in
-  `packages/team-tactics/test/*.test.js` and the render seam ships as a full-team preset helper, with **zero
-  new dependencies**). Build queue: `.claude/state/plan.md`.
+- **Status:** **Accepted** — shipped in v0.66.0, built test-first through the phase×layer gate (suite green;
+  tdd-critic PASS; live-proven against a real running app). **SHIPPED rungs:** `browser` / `none` / `timeout` /
+  `render-error` / `refused-nonloopback` (every unobserved rung downgrades to `concerns`; never a false pass).
+  **DEFERRED to a follow-up (NOT in v0.66.0):** the **`curl` SSR fallback rung (`renderer=curl-ssr`)** of §2
+  below — the design records it, but it was deferred with the rest of the hardening (slices 4, 5, 16, 21);
+  where this ADR describes `curl-ssr` it describes intended design, not shipped behavior. Also added during the
+  build (not in the original §2): `--disable-background-networking` + companions and a "use the captured stdout
+  even past the deadline" rule in `spawnRender`, both found by driving the helper at a live app. Build queue:
+  `.claude/state/plan.md`.
 - **Date:** 2026-06-18
 - **Deciders:** architect (the load-bearing move — the **0020 visual-work split applied to QA**: a pure
   `evaluateMarkers(dom, expected)` predicate as the TDD-able core, and a thin irreducible render side-effect
