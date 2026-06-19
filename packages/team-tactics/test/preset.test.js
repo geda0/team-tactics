@@ -133,3 +133,22 @@ test("N8: a locally-modified agent is PRESERVED on update + the kit version park
     assert.match(upd.stdout + upd.stderr, /product-owner|preserv/i, "the run names the preserved agent");
   } finally { fs.rmSync(d, { recursive: true, force: true }); }
 });
+
+// ADR 0021 (slice 23): the browser-QA helper smoke-verify.cjs is part of the full-team preset — the
+// qa-verifier role invokes it. A full-team install must ship it at .claude/scripts/smoke-verify.cjs;
+// a --minimal install (no qa-verifier role) must NOT install it. The installer does not copy it yet,
+// so the full-team assertion is RED.
+test("full-team ships the browser-QA helper .claude/scripts/smoke-verify.cjs; --minimal does not", () => {
+  const d = fs.mkdtempSync(path.join(os.tmpdir(), "tdd-smoke-"));
+  const d2 = fs.mkdtempSync(path.join(os.tmpdir(), "tdd-smoke-min-"));
+  try {
+    run([d]);   // full-team is the default
+    assert.ok(has(d, ".claude", "scripts", "smoke-verify.cjs"), "browser-QA helper ships with the team");
+
+    run(["--minimal", d2]);
+    assert.ok(!has(d2, ".claude", "scripts", "smoke-verify.cjs"), "absent under minimal");
+  } finally {
+    fs.rmSync(d, { recursive: true, force: true });
+    fs.rmSync(d2, { recursive: true, force: true });
+  }
+});

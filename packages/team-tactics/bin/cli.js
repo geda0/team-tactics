@@ -371,6 +371,7 @@ if (presetActive === "full-team") {
   refresh(path.join(PRESET, "docs", "sectioning.md"), path.join("docs", "tdd", "sectioning.md"));
   for (const s of ["backlog.md", "releases.md", "sections.md"])
     seedOnce(path.join(PRESET, "state", s), path.join(".claude", "state", s));
+  refresh(path.join(PRESET, "scripts", "smoke-verify.cjs"), path.join(".claude", "scripts", "smoke-verify.cjs"));
 }
 
 // 2) Seeded — written once, never clobbered.
