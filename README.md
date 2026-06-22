@@ -10,8 +10,7 @@ In Claude Code / Cursor / etc., paste this one message — the agent installs te
 > `AGENTS.md` and `CLAUDE.md`, detect the stack and set `LAYERS` + the test
 > command(s) in `.claude/tdd.config`, and draft `docs/tdd/project-invariants.md` from
 > the code for me to confirm. If this is an existing codebase, **adopt it and bring it
-> up to standard** (characterization tests, green baseline, CI) before new work. Then
-> start the first feature with the red→green loop: **`<what you want built>`**.
+> up to standard** (characterization tests, green baseline, CI) before new work.
 
 ### From a terminal? (two steps)
 ```bash
