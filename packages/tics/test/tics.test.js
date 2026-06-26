@@ -778,6 +778,71 @@ test("E11-3: tics answer emits a msg+answered to the asker (settles the need + l
   } finally { fs.rmSync(d, { recursive: true, force: true }); }
 });
 
+test("tics inbox excludes broadcast signal telemetry but keeps actionable broadcast tics", () => {
+  const d = inst();
+  try {
+    // Arrange — a bus with one actionable broadcast (delegate to *) and one run-suite signal (green
+    // telemetry, broadcast to *). Direct-write deterministic seqs (the inbox fold is seq-ordered).
+    const ts = "2026-06-16T00:00:00Z";
+    fs.writeFileSync(path.join(d, ".claude", "state", "tics.jsonl"),
+      JSON.stringify({ kind: "delegate", from: "orchestrator", to: "*", msg: "rank by score", ref: "S2", scope: "*", seq: 1, ts }) + "\n" +
+      JSON.stringify({ kind: "signal", from: "run-suite", to: "*", result: "green", msg: "[app] suite green", scope: "*", seq: 2, ts }) + "\n");
+
+    // Act
+    const r = read(d, "inbox", "test-writer");
+
+    // Assert — the actionable broadcast shows; the signal telemetry is excluded (belongs in log/report).
+    assert.strictEqual(r.status, 0, "inbox exits 0 on a populated bus: " + r.stderr);
+    assert.match(r.stdout, /rank by score/, "an actionable broadcast (delegate to *) shows in the inbox");
+    assert.doesNotMatch(r.stdout, /suite green/, "a run-suite signal (green telemetry) is excluded from the inbox");
+    assert.doesNotMatch(r.stdout, /\[signal\]/, "no signal-kind line surfaces in the inbox");
+  } finally { fs.rmSync(d, { recursive: true, force: true }); }
+});
+
+test("WIN-1: per-tic readers (inbox/log) window to the last 40 by default with a --full footer; --full shows all (no overflow on a long-lived bus)", () => {
+  const d = inst();
+  try {
+    // Arrange — a LARGE bus: 45 actionable broadcast tics (> the N=40 window). MARK001 is the
+    // oldest (seq 1), MARK045 the newest (seq 45). Broadcasts (to=*) land in any role's inbox;
+    // address the inbox to orchestrator (not a reserved hook identity) so all 45 are matched.
+    const lines = [];
+    for (let i = 1; i <= 45; i++) {
+      const mark = "MARK" + String(i).padStart(3, "0");
+      lines.push(JSON.stringify({ seq: i, ts: "2026-06-19T00:00:" + String(i % 60).padStart(2, "0"), from: "orchestrator", to: "*", kind: "delegate", msg: mark, layer: "app", phase: "red", scope: "" }));
+    }
+    fs.writeFileSync(path.join(d, ".claude", "state", "tics.jsonl"), lines.join("\n") + "\n");
+
+    // Act + Assert — inbox default WINDOWS to the last 40: newest kept, oldest dropped, footer names --full.
+    const ib = read(d, "inbox", "orchestrator");
+    assert.strictEqual(ib.status, 0, "inbox exits 0 on a large bus: " + ib.stderr);
+    assert.match(ib.stdout, /MARK045/, "inbox keeps the NEWEST tic (within the last-40 window)");
+    assert.doesNotMatch(ib.stdout, /MARK001/, "inbox DROPS the oldest tic (beyond the last-40 window)");
+    assert.match(ib.stdout, /showing last 40 of 45/, "inbox shows a truncation footer with the windowed/total counts");
+    assert.match(ib.stdout, /--full/, "the footer names the --full escape hatch");
+
+    // Act + Assert — inbox --full shows EVERYTHING (no window, no footer).
+    const ibFull = read(d, "inbox", "orchestrator", "--full");
+    assert.strictEqual(ibFull.status, 0, "inbox --full exits 0: " + ibFull.stderr);
+    assert.match(ibFull.stdout, /MARK001/, "--full shows the oldest tic (no window)");
+    assert.match(ibFull.stdout, /MARK045/, "--full shows the newest tic");
+    assert.doesNotMatch(ibFull.stdout, /showing last 40 of 45/, "--full shows no truncation footer (nothing was truncated)");
+
+    // Act + Assert — log default WINDOWS to the last 40 the same way.
+    const lg = read(d, "log");
+    assert.strictEqual(lg.status, 0, "log exits 0 on a large bus: " + lg.stderr);
+    assert.match(lg.stdout, /MARK045/, "log keeps the NEWEST tic (within the last-40 window)");
+    assert.doesNotMatch(lg.stdout, /MARK001/, "log DROPS the oldest tic (beyond the last-40 window)");
+    assert.match(lg.stdout, /showing last 40 of 45/, "log shows a truncation footer with the windowed/total counts");
+    assert.match(lg.stdout, /--full/, "the log footer names the --full escape hatch");
+
+    // Act + Assert — log --full shows EVERYTHING.
+    const lgFull = read(d, "log", "--full");
+    assert.strictEqual(lgFull.status, 0, "log --full exits 0: " + lgFull.stderr);
+    assert.match(lgFull.stdout, /MARK001/, "log --full shows the oldest tic (no window)");
+    assert.match(lgFull.stdout, /MARK045/, "log --full shows the newest tic");
+  } finally { fs.rmSync(d, { recursive: true, force: true }); }
+});
+
 test("E10-2: tics gate surfaces a no-red-before-green warning (flag-only, still exit 0) for a not-test-first green; silent when the green is evidenced", () => {
   // Passing PO + critic verdicts keep the VERDICT gate CLEAR (exit 0), isolating the EVIDENCE effect.
   // The evidence SURFACE is flag-only by default: it warns but must NOT change the exit code
