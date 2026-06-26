@@ -74,3 +74,21 @@ test("release-tarball.sh rejects a pushed tag that does not match package.json (
   assert.match(out, /pushed tag v9\.9\.9 but package\.json version is/, "names both sides of the mismatch");
   assert.match(out, /bump all four package\.json/, "tells the operator how to fix it");
 });
+
+test("the release git-archive tarball SHIPS the full-team preset helper (a bare scripts/ export-ignore strips it)", () => {
+  // The real artifact is `git archive` filtered by .gitattributes. A bare `scripts/ export-ignore`
+  // matches the nested preset scripts/ dir and strips the browser-QA helper, crashing the installer
+  // (v0.66.0 bug). Assert the ACTUAL archive output. Archive a WORKING-tree-reflecting tree via
+  // `git stash create` (|| HEAD) so an in-progress fix is seen and the pre-commit gate never deadlocks.
+  const stash = cp.execFileSync("git", ["-C", ROOT, "stash", "create"], { encoding: "utf8" }).trim();
+  const tree = stash || "HEAD";
+  const out = path.join(os.tmpdir(), "ttics-helper-pack-" + process.pid + ".tgz");
+  try {
+    cp.execFileSync("git", ["-C", ROOT, "archive", "--format=tar.gz", "-o", out, tree]);
+    const list = cp.execFileSync("tar", ["-tzf", out], { encoding: "utf8" }).split("\n");
+    assert.ok(
+      list.includes("packages/team-tactics/kit/presets/full-team/scripts/smoke-verify.cjs"),
+      "the browser-QA helper must ship in the release tarball — root-anchor the dev `scripts/` export-ignore as `/scripts/`"
+    );
+  } finally { try { fs.rmSync(out); } catch (e) {} }
+});

@@ -4,7 +4,7 @@
 .claude/ export-ignore
 docs/decisions/ export-ignore
 infra/ export-ignore
-scripts/ export-ignore
+/scripts/ export-ignore
 .github/ export-ignore
 claim-session/ export-ignore
 claim-owner/ export-ignore
