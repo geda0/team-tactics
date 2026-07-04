@@ -579,6 +579,54 @@ test("E9-1: tics roster lists each standard role with its configured MODEL_<ROLE
   }
 });
 
+test("SD-1: tics roster folds per-role draft-review verdicts into a `drafts a/e/r` tally; a role with none shows no nonzero drafts", () => {
+  const d = inst();
+  try {
+    // Arrange — the orchestrator's draft-review verdicts addressed TO implementer (ADR 0022):
+    // two accepts, one edit, one reject. Plus a NON-draft broadcast reviewer verdict that must NOT be folded in.
+    srcLib(d, "emit_tic orchestrator implementer verdict 'draft review: rank slice' s1 accept");
+    srcLib(d, "emit_tic orchestrator implementer verdict 'draft review: feed slice' s2 accept");
+    srcLib(d, "emit_tic orchestrator implementer verdict 'draft review: cache slice' s3 edit");
+    srcLib(d, "emit_tic orchestrator implementer verdict 'draft review: auth slice' s4 reject");
+    srcLib(d, "emit_tic tdd-critic '*' verdict 'audit PASS' '' pass");
+
+    // Act
+    const r = read(d, "roster");
+    assert.strictEqual(r.status, 0, "roster exits 0 on a bus with draft-review verdicts: " + r.stderr);
+
+    // Assert — implementer's row carries the accept/edit/reject fold; test-writer (no draft verdicts) shows no nonzero tally.
+    const out = r.stdout;
+    assert.match(out, /implementer.*drafts 2\/1\/1/, "implementer's row shows drafts 2/1/1 (2 accept, 1 edit, 1 reject) — the draft-review acceptance fold");
+    assert.ok(!/test-writer.*drafts [1-9]/.test(out), "a role with no draft-review verdicts shows no nonzero drafts tally (no spurious count)");
+  } finally { fs.rmSync(d, { recursive: true, force: true }); }
+});
+
+// MUTATION GUARD (green on current code): the fold addresses drafts by `x.to === role`, which already
+// excludes the '*' broadcast — so this pins that behavior. It kills the surviving mutant that widens the
+// address match to `x.to === role || x.to === "*"`, which would count a broadcast toward EVERY role
+// (SD-1's negative case can't catch it: its broadcast is a `pass`, rejected by the RESULT filter before
+// addressing is ever consulted). Per tdd-critic: locks existing behavior, does not spec new behavior.
+test("SD-2: a BROADCAST draft-review-shaped verdict is folded into NO role's drafts tally — only verdicts addressed to a specific role count", () => {
+  const d = inst();
+  try {
+    // Arrange — one draft review addressed TO implementer, plus a broadcast ('*') draft-review-SHAPED verdict
+    // (result `accept`, same shape) that must not leak into any role's tally.
+    srcLib(d, "emit_tic orchestrator implementer verdict 'draft review: real' s1 accept");
+    srcLib(d, "emit_tic orchestrator '*' verdict 'draft review: broadcast' s5 accept");
+
+    // Act
+    const r = read(d, "roster");
+    assert.strictEqual(r.status, 0, "roster exits 0 on a bus with a broadcast draft-review-shaped verdict: " + r.stderr);
+
+    // Assert — implementer counts only its one directed review; the broadcast did NOT bump it to 2/0/0.
+    const out = r.stdout;
+    assert.match(out, /implementer.*drafts 1\/0\/0/, "implementer's row shows drafts 1/0/0 — the '*' broadcast is not folded in");
+    // And no OTHER role picked up the broadcast (with the mutant, every role would show a drafts tally).
+    assert.ok(!/test-writer.*drafts/.test(out), "the broadcast does not count toward test-writer");
+    assert.ok(!/architect.*drafts/.test(out), "the broadcast does not count toward architect");
+  } finally { fs.rmSync(d, { recursive: true, force: true }); }
+});
+
 test("E10-1a: isHookSignedRed is true only for a red signal from run-suite (self-reported red / green / non-signal / malformed -> false; never throws)", () => {
   const TV = require(path.join(__dirname, "..", "kit", "hooks", "tics-view.cjs"));
   // a red signal from the suite-runner hook is hook-signed evidence
