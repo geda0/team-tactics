@@ -21,6 +21,7 @@ node_modules/
 # project-specific config + invariants + CI are committed.
 /.claude/agents/
 /.claude/hooks/
+/.claude/scripts/
 /.claude/state/
 /.claude/settings.json
 /.claude/.team-tactics/
