@@ -43,6 +43,15 @@ proceeding; under time/cost pressure review only the low-confidence slices. `tic
 draft-review verdicts into a per-role `drafts a/e/r` tally — tune `MODEL_<ROLE>` on that acceptance
 data, exactly as a speculative-decoding drafter is tuned on its acceptance rate.
 
+**Sanctioned draft lanes.** The same draft/verify shape extends beyond the implementer: the **planner's
+slice queue** (advisory — the orchestrator reviews ordering/sizing; the gate still referees every slice),
+**refactor proposals** after green (the suite staying green is the mechanical verifier), and **chores**
+(release notes, ledger rows, progress updates, commit messages — already the PM/dev-ops fast tier). The
+line that keeps this honest: **auto-accept exists only where a mechanical verifier does.** A green suite
+can vouch for a refactor; nothing mechanical vouches for a plan or a doc, so those drafts are always
+reviewed by the capable model. And judgment is never drafted — acceptance criteria, ADR decisions, and
+final test design can only be verified by redoing them.
+
 ## The loop, per feature
 1. **PLAN** — product-owner selects the next backlog item and writes its acceptance
    criteria (observable behaviors) into `design-notes.md`. Surface decisions to the
