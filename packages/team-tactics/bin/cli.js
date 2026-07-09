@@ -170,14 +170,28 @@ function refreshGitHooks(target) {
   if (n) console.log("  githooks refreshed " + n + " portable hook(s) — kept current with the kit (N5)");
 }
 
+// Historical kit-authored fingerprints (pre-0.61 bodies never carried the `team-tactics: managed` sentinel;
+// a 0.61-0.67 body can appear sentinel-less if a user hand-stripped just that comment line). Each string is a
+// verbatim kit-only phrase — a full heading / full sentence — never a generic substring a foreign rule could
+// plausibly contain (e.g. NOT "shared bus" alone). CAUTION: a match here clobbers the file with current kit
+// content, so keep these fingerprints distinctive.
+const CURSOR_RULE_FINGERPRINTS = [
+  "# tics — coordinate on the shared bus (convention, not a gate)",              // v0.55-0.58
+  "**Enforcement, stated plainly — this is a convention, not a gate here.**",    // v0.61-0.67
+];
+
 // Keep the Cursor always-apply rule current on every update (parity with refreshGitHooks): refresh ONLY a
 // kit-managed rule that's already present — never create it on update (fresh-init opt-in via mcpInstall),
-// never clobber a user's/foreign rule (no managed sentinel). This is the delivery vehicle for rule changes.
+// never clobber a user's/foreign rule. Kit-managed = carries the `team-tactics: managed` sentinel OR matches a
+// known historical kit fingerprint (pre-sentinel bodies); neither -> foreign, hands off untouched.
 function refreshCursorRule(target) {
   const file = path.join(target, ".cursor", "rules", "tics.mdc");
-  if (!fs.existsSync(file)) return;                                                // not installed — respect the opt-in
-  if (fs.readFileSync(file, "utf8").indexOf("team-tactics: managed") === -1) return; // foreign — never clobber
-  tics.writeCursorRule(target);                                                    // rewrite to current kit content
+  if (!fs.existsSync(file)) return;                                    // not installed — respect the opt-in
+  const body = fs.readFileSync(file, "utf8");
+  const isManaged = body.indexOf("team-tactics: managed") !== -1
+    || CURSOR_RULE_FINGERPRINTS.some((fp) => body.indexOf(fp) !== -1);
+  if (!isManaged) return;                                              // foreign — never clobber
+  tics.writeCursorRule(target);                                        // rewrite to current kit content
 }
 
 // ---- manifest (P0-3): track kit-owned files so updates never silently clobber ----

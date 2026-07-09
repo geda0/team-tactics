@@ -281,6 +281,15 @@ No contract, tic `kind`, field, or hook changes. Docs and one generated rule bod
 corrected text on `ttics update` via `refreshCursorRule` (ADR 0018) — which is the mechanism that makes this
 fix *reach* them at all.
 
+**Addendum (2026-07-09, v0.68.1):** the migration vehicle itself did not reach pre-0.61 installs.
+`refreshCursorRule` only recognized a rule carrying the `team-tactics: managed` sentinel, but the kit's own
+rule bodies generated in v0.55–v0.58 never carried it — so pre-0.61 adopters were misclassified as "foreign"
+and kept the falsified "the phase × layer TDD referee does not run in Cursor" claim forever. Fixed (test-first,
+CP-1c): `refreshCursorRule` now recognizes a rule as kit-managed when it carries the sentinel **or** matches a
+known historical kit fingerprint (`CURSOR_RULE_FINGERPRINTS`, covering the pre-0.61 and 0.61–0.67 bodies),
+shipped v0.68.1. The invariant holds unchanged — a rule with no sentinel **and** no known fingerprint is left
+untouched, so we never clobber a user's own rule.
+
 ## 8. Explicitly out of scope
 
 `model: opus` is hardcoded in the frontmatter of `qa-verifier.md:5`, `product-owner.md:5`, `architect.md:5`,

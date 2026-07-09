@@ -212,6 +212,76 @@ test("CP-1b: update refreshes a stale MANAGED .cursor/rules/tics.mdc, never clob
   } finally { fs.rmSync(target, { recursive: true, force: true }); }
 });
 
+test("CP-1c: update recognizes the kit's own HISTORICAL rule bodies (pre-0.61, no sentinel) as managed and refreshes them; a genuinely foreign rule still survives byte-for-byte", () => {
+  const target = fs.mkdtempSync(path.join(os.tmpdir(), "cp1c-"));
+  const ruleFile = path.join(target, ".cursor", "rules", "tics.mdc");
+
+  // Historical kit rule bodies — BYTE-EXACT, captured by executing each generation's writeCursorRule
+  // (packages/tics/kit/hooks/tics-mcp.cjs) at its commit: v0.55 = a760095, v0.58 = 3f2ac88 (v0.57's 32d205b
+  // is identical to v0.58), v0.61 = 4930883 (v0.62-0.67's 5fe9759 differs only by an added crumbs bullet).
+  // Pre-0.61 bodies never carried the `team-tactics: managed` sentinel — that gap is this test's point.
+  const bodyV055 = "---\nalwaysApply: true\n---\n\n# tics — coordinate on the shared bus (convention, not a gate)\n\nYou participate in a shared team-tactics coordination bus via the tics MCP tools.\nEach turn:\n- Call `tics_inbox` (your role) and `tics_board` to see what is addressed to you and the fleet state.\n- Check `tics_review` for open needs you can answer; settle one with `tics_answer`.\n- Contribute honestly with `tic_emit` (handoff/need/verdict/note/claim/etc.).\n\nThe ceiling, stated plainly: this is a **convention, not a gate**. The phase x layer TDD referee\n**does not run in Cursor** — nothing here forces these calls. Emit truthfully: the bus is shared with an\nenforced Claude Code fleet, and your contributions are classified as **unrefereed** (self-reported), never\nas hook-signed. You cannot emit signal/block/commit (hook-only kinds).\n";
+
+  const bodyV058 = "---\nalwaysApply: true\n---\n\n# tics — coordinate on the shared bus (convention, not a gate)\n\nYou participate in a shared team-tactics coordination bus via the tics MCP tools.\nEach turn:\n- Call `tics_inbox` (your role) and `tics_board` to see what is addressed to you and the fleet state.\n- Check `tics_review` for open needs you can answer; settle one with `tics_answer`.\n- Contribute honestly with `tic_emit` (handoff/need/verdict/note/claim/etc.).\n- If you spawn sub-actors / background jobs (one per role or slice), give EACH a **distinct `session`** and pass it on every `tic_emit` (the optional `session` arg) — otherwise they all merge into one indistinguishable actor on the bus (`session=\"\"`). A self-set `session` is provenance, not authentication, just like `from`.\n\nThe ceiling, stated plainly: this is a **convention, not a gate**. The phase x layer TDD referee\n**does not run in Cursor** — nothing here forces these calls. Emit truthfully: the bus is shared with an\nenforced Claude Code fleet, and your contributions are classified as **unrefereed** (self-reported), never\nas hook-signed. You cannot emit signal/block/commit (hook-only kinds).\n";
+
+  const sentinelLine =
+    "<!-- team-tactics: managed rule — refreshed by `ttics update`. Edit the method in AGENTS.md, not here. -->\n";
+  const bodyV061WithSentinel = "---\nalwaysApply: true\n---\n<!-- team-tactics: managed rule — refreshed by `ttics update`. Edit the method in AGENTS.md, not here. -->\n\n# tics — coordinate on the shared bus (Cursor)\n\n**The method lives in `AGENTS.md`** (then `docs/tdd/tdd-workflow.md` + `docs/tdd/tool-support.md`) — that is the canonical TDD\nprotocol (red->green->refactor, phase x layer scope, the roles). Read it. This rule only covers the bus and what\nenforcement you do and do not get in Cursor.\n\nEach turn, coordinate on the shared tics bus via the MCP tools:\n- Call `tics_inbox` (your role) and `tics_board` for what is addressed to you + fleet state; check `tics_review` and settle one open need with `tics_answer`.\n- Contribute honestly with `tic_emit` (handoff/need/verdict/note/claim). You cannot emit signal/block/commit (hook-only kinds), and your contributions are classified **unrefereed** (self-reported), never hook-signed.\n- Spawning sub-actors? Give EACH a distinct `session` and pass it on every `tic_emit` — otherwise they merge into one indistinguishable actor (`session=\"\"`). A self-set `session` is provenance, not authentication, just like `from`.\n\n**Enforcement, stated plainly — this is a convention, not a gate here.** The Claude Code referee — the phase x layer edit\ngate, the **security-surface guard** (it blocks auth/secret/CORS edits), green-bar signing, and no-finish-on-red — **does\nNOT run in Cursor**; nothing here forces these calls, so self-enforce per the checklist in `docs/tdd/tool-support.md`. The\none mechanical gate you CAN have: run **`npx tics install-hooks`** once — it installs git hooks (pre-commit green-bar +\npre-push release gate) that fire under any tool.\n";
+  // A user who hand-stripped the managed comment but kept the verbatim kit body (0.61+ always shipped WITH
+  // the sentinel, so this only arises from editing). Still a kit body carrying the falsified claim.
+  const bodyV061NoSentinel = bodyV061WithSentinel.replace(sentinelLine, "");
+
+  // Genuinely foreign: mentions "shared bus" casually but matches NO kit fingerprint and has no sentinel.
+  const foreign = "---\nalwaysApply: true\n---\n# my own team conventions\nAlways use tabs. Coordinate on the shared bus at standup.\n";
+  // Foreign near-miss on the substring COMMON to both fingerprints ("convention, not a gate"): casual prose
+  // that mentions it but matches neither full fingerprint and carries no sentinel. Must survive — a guard
+  // that fails loudly if a fingerprint is ever shortened to the bare common phrase.
+  const foreignCommonPhrase = "---\nalwaysApply: true\n---\n# house rules\nOur style guide is a convention, not a gate; use tabs.\n";
+
+  try {
+    // Fresh install lays the managed Cursor rule down and creates the manifest, so run([target]) is an UPDATE.
+    const init = run(["init", target]);
+    assert.strictEqual(init.status, 0, init.stderr);
+    assert.ok(fs.existsSync(ruleFile), "fresh init writes the managed Cursor rule");
+
+    // (1) v0.55 pre-0.61 body (no sentinel) -> update -> refreshed to the current host-dependent body.
+    fs.writeFileSync(ruleFile, bodyV055);
+    assert.strictEqual(run([target]).status, 0);
+    let refreshed = fs.readFileSync(ruleFile, "utf8");
+    assert.match(refreshed, /host-dependent/, "v0.55 body is recognized as kit-managed and refreshed to the ADR 0024 body");
+    assert.doesNotMatch(refreshed, /does not run in Cursor/i, "the falsified pre-ADR-0024 claim is gone after refresh");
+    assert.match(refreshed, /team-tactics: managed/, "the refreshed rule now carries the sentinel (future updates take the fast path)");
+
+    // (2) v0.58 pre-0.61 body (the variant with the extra `session` bullet) -> refreshed likewise.
+    fs.writeFileSync(ruleFile, bodyV058);
+    assert.strictEqual(run([target]).status, 0);
+    refreshed = fs.readFileSync(ruleFile, "utf8");
+    assert.match(refreshed, /host-dependent/, "v0.58 body is recognized as kit-managed and refreshed");
+    assert.doesNotMatch(refreshed, /does not run in Cursor/i);
+    assert.match(refreshed, /team-tactics: managed/);
+
+    // (3) 0.61-era body with the managed sentinel LINE hand-stripped (still verbatim-kit prose carrying the
+    //     falsified 'does NOT run in Cursor' claim) -> recognized by fingerprint and refreshed likewise.
+    fs.writeFileSync(ruleFile, bodyV061NoSentinel);
+    assert.strictEqual(run([target]).status, 0);
+    refreshed = fs.readFileSync(ruleFile, "utf8");
+    assert.match(refreshed, /host-dependent/, "the sentinel-stripped 0.61 kit body is still recognized and refreshed");
+    assert.doesNotMatch(refreshed, /does not run in Cursor/i);
+    assert.match(refreshed, /team-tactics: managed/);
+
+    // (4) A genuinely foreign rule (no sentinel, matches NO kit fingerprint) is left untouched byte-for-byte.
+    fs.writeFileSync(ruleFile, foreign);
+    assert.strictEqual(run([target]).status, 0);
+    assert.strictEqual(fs.readFileSync(ruleFile, "utf8"), foreign, "a foreign rule is left untouched byte-for-byte");
+
+    // (5) A foreign rule that casually contains the phrase COMMON to both fingerprints ("convention, not a
+    //     gate") but matches neither full fingerprint and has no sentinel -> still untouched byte-for-byte.
+    fs.writeFileSync(ruleFile, foreignCommonPhrase);
+    assert.strictEqual(run([target]).status, 0);
+    assert.strictEqual(fs.readFileSync(ruleFile, "utf8"), foreignCommonPhrase, "a 'convention, not a gate' near-miss survives — fingerprints must stay longer than the common phrase");
+  } finally { fs.rmSync(target, { recursive: true, force: true }); }
+});
+
 test("MCPN: update nudges to run mcp-install when MCP is unwired, and stays silent when it is wired", () => {
   const target = fs.mkdtempSync(path.join(os.tmpdir(), "mcpn-"));
   try {
