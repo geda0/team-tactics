@@ -1,6 +1,6 @@
 {
   "name": "team-tactics",
-  "version": "0.67.1",
+  "version": "0.68.0",
   "description": "Bootstrap the team-tactics kit (test-driven agent pairing for Claude Code) into any project.",
   "bin": {
     "tics": "bin/cli.js"
@@ -39,7 +39,7 @@
     "url": "https://github.com/geda0/team-tactics/issues"
   },
   "dependencies": {
-    "@ttics/tics": "*",
-    "@ttics/tdd": "*"
+    "@ttics/tics": "0.68.0",
+    "@ttics/tdd": "0.68.0"
   }
 }

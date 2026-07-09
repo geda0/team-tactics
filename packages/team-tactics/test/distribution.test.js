@@ -75,6 +75,30 @@ test("release-tarball.sh rejects a pushed tag that does not match package.json (
   assert.match(out, /bump all four package\.json/, "tells the operator how to fix it");
 });
 
+// W11 (ADR 0024 § 9, drift D-0024-stray-artifact): a tool-call artifact leaked into a shipped doc
+// (`kit/docs/tool-support.md`, commit 4930883 / v0.61.0) and reached every adopter. Sweep the whole
+// shipped kit markdown — walked, not hardcoded, so a NEW file can't slip a fifth occurrence through.
+test("W11: no markdown the kit ships to adopters carries a stray tool-call artifact", () => {
+  const ARTIFACTS = ["invoke", "content"].map((tag) => `</${tag}>`); // closing tool-call tags, never legitimate prose
+  const mdUnder = (dir) => fs.readdirSync(dir, { withFileTypes: true }).flatMap((e) => {
+    const p = path.join(dir, e.name);
+    return e.isDirectory() ? mdUnder(p) : e.name.endsWith(".md") ? [p] : [];
+  });
+
+  const pkgs = path.join(ROOT, "packages");
+  const kits = fs.readdirSync(pkgs).map((n) => path.join(pkgs, n, "kit")).filter((d) => fs.existsSync(d));
+  const shipped = kits.flatMap(mdUnder); // includes the full-team preset docs under team-tactics/kit/presets/
+  assert.ok(shipped.length > 5, "the sweep actually found the shipped kit markdown (guard against a dead walk)");
+
+  const offenders = shipped
+    .map((f) => [path.relative(ROOT, f), fs.readFileSync(f, "utf8")])
+    .map(([rel, text]) => [rel, ARTIFACTS.filter((a) => text.includes(a))])
+    .filter(([, hits]) => hits.length)
+    .map(([rel, hits]) => `${rel} contains ${hits.join(" + ")}`);
+
+  assert.deepStrictEqual(offenders, [], "shipped .md must not contain tool-call artifacts:\n  " + offenders.join("\n  "));
+});
+
 test("the release git-archive tarball SHIPS the full-team preset helper (a bare scripts/ export-ignore strips it)", () => {
   // The real artifact is `git archive` filtered by .gitattributes. A bare `scripts/ export-ignore`
   // matches the nested preset scripts/ dir and strips the browser-QA helper, crashing the installer

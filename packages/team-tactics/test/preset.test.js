@@ -10,6 +10,7 @@ const run = (args, cwd) => cp.spawnSync("node", [CLI, ...args], { encoding: "utf
 const has = (d, ...p) => fs.existsSync(path.join(d, ...p));
 const manifest = (d) => JSON.parse(fs.readFileSync(path.join(d, ".claude", ".team-tactics", "manifest.json"), "utf8"));
 const TEAM = ["product-owner", "architect", "qa-verifier", "project-manager", "dev-ops"];
+const kitFile = (...p) => fs.readFileSync(path.join(__dirname, "..", "kit", "presets", "full-team", ...p), "utf8");
 
 test("plain install ships the FULL TEAM by default (ADR 0005 — full power by default)", () => {
   const d = fs.mkdtempSync(path.join(os.tmpdir(), "tdd-preset-"));
@@ -138,6 +139,60 @@ test("N8: a locally-modified agent is PRESERVED on update + the kit version park
 // qa-verifier role invokes it. A full-team install must ship it at .claude/scripts/smoke-verify.cjs;
 // a --minimal install (no qa-verifier role) must NOT install it. The installer does not copy it yet,
 // so the full-team assertion is RED.
+// ADR 0024 Ruling 2 (§4 E-1…E-6, §5 predicates Q1…Q7): the QA seam is the `verdict` TIC, not the
+// qa-verifier AGENT — whoever holds the instrument observes and emits under its own `from`. This
+// doctrine must land in the two shipped full-team docs. Today outer-loop.md's ACCEPT step still says
+// only "qa-verifier drives the running app" (agent-as-seam) and never names the instrument vocabulary,
+// smoke's range limit, the identity-laundering ban, or the PO's cite-the-experience-verdict rule; so
+// this is RED (tolerant, case-insensitive regexes pin the load-bearing words, not whole sentences).
+test("outer-loop doc states the QA seam is the verdict tic not the agent (ADR 0024 Ruling 2 Q1-Q5)", () => {
+  const doc = kitFile("docs", "outer-loop.md");
+  // Q1 — the seam is the verdict TIC, not the AGENT; whoever observed emits it.
+  assert.match(doc, /verdict tic/i, "Q1: names the verdict tic as the seam");
+  assert.match(doc, /not the\b[\s\S]{0,20}agent/i, "Q1: the seam is not the agent");
+  assert.match(doc, /whoever observed/i, "Q1: whoever observed emits the verdict");
+  // Q2 — the closed instrument vocabulary + the none-can-never-pass rule.
+  assert.match(doc, /\bsmoke\b/i, "Q2: instrument token smoke");
+  assert.match(doc, /browser-mcp/i, "Q2: instrument token browser-mcp");
+  assert.match(doc, /\bhuman\b/i, "Q2: instrument token human");
+  assert.match(doc, /instrument\s*=?\s*none/i, "Q2: instrument token none");
+  assert.match(doc, /none\b[\s\S]{0,80}concerns/i, "Q2: instrument=none => concerns");
+  assert.match(doc, /never\b[\s\S]{0,20}pass/i, "Q2: none is never a pass");
+  // Q3 — smoke's range stated as a limit; appearance needs browser-mcp or human.
+  assert.match(doc, /text marker/i, "Q3: smoke sees text markers");
+  assert.match(doc, /can(?:not|'t)\s+see/i, "Q3: smoke cannot see");
+  assert.match(doc, /appearance/i, "Q3: appearance is out of smoke's range");
+  // Q4 — orchestrator may observe when it holds the instrument, but must not launder identity.
+  assert.match(doc, /orchestrator[\s\S]{0,160}qa-verifier|qa-verifier[\s\S]{0,160}orchestrator/i, "Q4: orchestrator named alongside qa-verifier");
+  assert.match(doc, /own\b[\s\S]{0,12}from/i, "Q4: emit under its own from");
+  assert.match(doc, /launder/i, "Q4: forbids identity laundering");
+  // Q5 — the PO's accept on an experience milestone must cite the experience verdict, else concerns.
+  assert.match(doc, /product-owner[\s\S]{0,200}experience/i, "Q5: PO accept ties to experience");
+  assert.match(doc, /cite/i, "Q5: must cite the experience verdict");
+});
+
+// ADR 0024 Ruling 2 (§4 E-3/E-5/E-6, §5 Q3/Q6/Q7): the qa-verifier agent doc must state smoke's range
+// limit (Q3), document the mcp__<server>__<tool> browser tools as an ADOPTER-LOCAL opt-in while the kit
+// frontmatter stays `Read, Bash, Grep, Glob` (Q6, ADR 0007), and warn that the MODULE API emits nothing
+// so a require(...) caller must emit its own verdict tic (Q7). Today the agent names "text markers" but
+// never states smoke cannot judge appearance, never mentions mcp__/adopter opt-in, and never warns the
+// module-API caller — so this is RED.
+test("qa-verifier agent documents smoke's range, the adopter-local browser-mcp opt-in, and the module-API trap (ADR 0024 Ruling 2 Q3/Q6/Q7)", () => {
+  const doc = kitFile("agents", "qa-verifier.md");
+  // Q3 — smoke only answers "is this text marker in the rendered DOM"; cannot judge appearance.
+  assert.match(doc, /text marker/i, "Q3: smoke answers text-marker presence");
+  assert.match(doc, /rendered dom/i, "Q3: in the rendered DOM");
+  assert.match(doc, /appearance/i, "Q3: cannot judge appearance");
+  // Q6 — the browser MCP tools are an adopter-local opt-in; kit frontmatter unchanged.
+  assert.match(doc, /mcp__/, "Q6: documents the mcp__<server>__<tool> pattern");
+  assert.match(doc, /adopter/i, "Q6: <server> is the adopter's own config key");
+  assert.match(doc, /Read, Bash, Grep, Glob/, "Q6: kit frontmatter stays Read, Bash, Grep, Glob");
+  // Q7 — only the CLI with TT_QA_EMIT=1 emits; a module/require caller must emit its own verdict tic.
+  assert.match(doc, /TT_QA_EMIT/, "Q7: names the CLI emit flag");
+  assert.match(doc, /module|require/i, "Q7: names the module-API caller");
+  assert.match(doc, /emit[\s\S]{0,24}own/i, "Q7: caller must emit its own verdict tic");
+});
+
 test("full-team ships the browser-QA helper .claude/scripts/smoke-verify.cjs; --minimal does not", () => {
   const d = fs.mkdtempSync(path.join(os.tmpdir(), "tdd-smoke-"));
   const d2 = fs.mkdtempSync(path.join(os.tmpdir(), "tdd-smoke-min-"));

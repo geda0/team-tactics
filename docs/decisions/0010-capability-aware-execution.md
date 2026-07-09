@@ -300,5 +300,3 @@ no stopping on red (that is an *edit/stop* gate, not a *spawn* gate) — and §3
 - **A new dedicated `model` envelope field on every tic.** Rejected for E9: the EXTRA_JSON
   hatch on the `delegate` tic carries it additively with no schema change and no old-bus
   migration, matching the 0009 "no new bus field" posture.
-</content>
-</invoke>

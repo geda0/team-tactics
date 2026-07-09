@@ -472,10 +472,24 @@ test("CP-3b: cross-surface honesty guard — the Cursor rule's hook-only-kind + 
     assert.strictEqual(r.result.isError, true, "from=subagent is a hook-only identity an agent must not self-assert");
     const after = fs.existsSync(path.join(d, ".claude", "state", "tics.jsonl")) ? ticsOf(d).length : 0;
     assert.strictEqual(after, before, "a forged from=subagent never reaches the bus");
-    // (c) The generated rule body still carries the honesty claims the agents rely on.
+    // (c) The generated rule body carries the ADR 0024 host-dependent contract (W1/W2/W4/W10),
+    //     NOT the falsified 'referee does not run in Cursor' absolute.
     const ruleFile = M.writeCursorRule(d);
     const rule = fs.readFileSync(ruleFile, "utf8");
-    assert.match(rule, /does NOT run in Cursor|not run in Cursor/i, "the referee-does-not-run-here claim survives");
+    // W1 — no host-absolute, in either direction (the false 'does NOT run in Cursor' is gone).
+    assert.doesNotMatch(rule, /does NOT run in Cursor|not run in Cursor|does not run Claude Code's|do not run Claude Code's|the phase referee is gone|irreducibly Claude-Code-only|irreducibly CC-only|CC-only/i,
+      "W1: no host-absolute survives in the rule body");
+    // W1 (positive clause) — must not flip to the OPPOSITE false absolute either (the ADR's "same mistake at
+    // a different sign"). Any claim the hooks DO run in Cursor must be hedged; unhedged positives forbidden.
+    assert.doesNotMatch(rule, /Cursor runs the hooks|the referee runs in Cursor|hooks (do |)run in Cursor|Cursor (always|never) runs|always unrefereed/i,
+      "W1: no UNHEDGED positive absolute about Cursor");
+    // W2 — the enforcement boundary is stated as host-dependent.
+    assert.match(rule, /host-dependent/, "W2: the rule states host-dependence");
+    // W4 — the mechanical probe: a hook-signed run-suite/guard tic vs a self-reported one.
+    assert.match(rule, /run-suite|guard/, "W4: the probe cites the reserved hook identity");
+    assert.match(rule, /hook-signed/, "W4: the rule names the hook-signed classification");
     assert.match(rule, /unrefereed|self-reported/i, "the unrefereed/self-reported honesty claim survives");
+    // W10 — single-source: point to tool-support.md for the enforcement detail, don't restate it.
+    assert.match(rule, /tool-support\.md/, "W10: the rule points to docs/tdd/tool-support.md");
   } finally { fs.rmSync(d, { recursive: true, force: true }); }
 });

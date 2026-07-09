@@ -1107,9 +1107,19 @@ test("CP-1a: writeCursorRule body carries the managed sentinel + method pointer 
     assert.match(rule, /AGENTS\.md/);
     // (4) portable-referee recommendation — Cursor users CAN get the git-hook gate
     assert.match(rule, /install-hooks/);
-    // (5) GT-3 honesty — the security guard does NOT run in Cursor
+    // (5) ADR 0024 (W1/W2/W4/W10) — the enforcement boundary is host-dependent, not the falsified absolute
     assert.match(rule, /security/i);
-    assert.match(rule, /not run in Cursor|does NOT run/i);
+    // W1 — the false host-absolute is gone (neither direction).
+    assert.doesNotMatch(rule, /does NOT run in Cursor|not run in Cursor|does not run Claude Code's|do not run Claude Code's|the phase referee is gone|irreducibly Claude-Code-only|irreducibly CC-only|CC-only/i);
+    // W1 (positive clause) — nor the OPPOSITE unhedged absolute (hooks DO run in Cursor).
+    assert.doesNotMatch(rule, /Cursor runs the hooks|the referee runs in Cursor|hooks (do |)run in Cursor|Cursor (always|never) runs|always unrefereed/i);
+    // W2 — host-dependence is stated positively.
+    assert.match(rule, /host-dependent/);
+    // W4 — the probe cites a reserved hook identity and the hook-signed classification.
+    assert.match(rule, /run-suite|guard/);
+    assert.match(rule, /hook-signed/);
+    // W10 — single-source pointer to the enforcement detail.
+    assert.match(rule, /tool-support\.md/);
     // (6) the distinct-session guidance survives
     assert.match(rule, /session/);
     // (7) the honesty boundary survives

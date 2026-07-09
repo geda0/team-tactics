@@ -462,5 +462,3 @@ red→green; the final wiring/docs slice is a suite-green-gated additive change.
   Rejected — impossible and out of scope: MCP tools cannot intercept the host agent's file
   edits, so there is no seam to gate. Enforcement lives in Claude Code; Cursor gets honest,
   attested participation.
-</content>
-</invoke>

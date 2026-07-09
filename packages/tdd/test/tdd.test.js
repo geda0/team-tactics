@@ -156,6 +156,40 @@ test("red-storm breaker: the Stop hook escalates to 'suspected contradictory tes
     assert.match(r.stderr, /over-constrained|contradictory/i, "escalates: the test itself may be the problem, don't grind");
   } finally { fs.rmSync(d, { recursive: true, force: true }); }
 });
+test("tool-support.md tier-3 states enforcement is host-dependent, not a false absolute (ADR 0024 Ruling 1: W1,W3,W4,W5,W6,W7,W9)", () => {
+  const doc = fs.readFileSync(path.join(__dirname, "..", "kit", "docs", "tool-support.md"), "utf8");
+  // W1 — no false absolute in EITHER direction (today's doc ships several of these).
+  assert.doesNotMatch(doc, /does not run Claude Code's|do not run Claude Code's|does NOT run in Cursor|not run in Cursor|the phase referee is gone|irreducibly Claude-Code-only|irreducibly CC-only|CC-only/i, "W1: no false absolute either direction");
+  // W1 (positive clause) — nor the OPPOSITE unhedged absolute ("Cursor runs the hooks"): the ADR forbids
+  // BOTH signs. A rewrite that flips to a positive absolute must false-red here, not sail through.
+  assert.doesNotMatch(doc, /Cursor runs the hooks|the referee runs in Cursor|hooks (do |)run in Cursor|Cursor (always|never) runs|always unrefereed/i, "W1: no unhedged positive absolute either");
+  // Headline: the enforcement boundary is stated as host-dependent.
+  assert.match(doc, /host-dependent/i, "states the boundary is host-dependent");
+  // W3 — the observation recorded once, dated, and un-generalized.
+  assert.match(doc, /2026/, "W3: dates the single Cursor observation");
+  assert.match(doc, /observed|one configuration/i, "W3: records that one configuration was observed running the hooks");
+  assert.match(doc, /single observation|not a guarantee|not proof/i, "W3: hedges — one observation, not a guarantee for other versions/configs");
+  // W5 — the probe is one-directional: presence proves refereed, absence proves nothing => assume refereed.
+  assert.match(doc, /absence[\s\S]{0,80}prove[sd]? nothing/i, "W5: absence proves nothing");
+  assert.match(doc, /assume[\s\S]{0,20}refereed/i, "W5: no hook-signed tic => assume refereed and self-enforce anyway");
+  // W4 — the probe uses the SHIPPED classification vocabulary: `hook-signed` AND `self-reported`
+  // (the exact words `tics gate` prints), so a reader can map the doc onto the gate's output.
+  assert.match(doc, /hook-signed/, "W4: probe uses the shipped word hook-signed");
+  assert.match(doc, /self-reported/, "W4: probe uses the shipped word self-reported");
+  // W6 — the self-enforce checklist is UNCONDITIONAL (not predicated on the referee's absence).
+  assert.doesNotMatch(doc, /Because the phase referee is gone/i, "W6: checklist heading not predicated on the referee being gone");
+  assert.match(doc, /self-enforce/i, "W6: unconditional self-enforce checklist survives");
+  assert.match(doc, /permission slip/i, "W6: phase is a declaration, not a permission slip");
+  // W7 — selftest proves the hooks are INSTALLED, not that your host FIRES them.
+  assert.match(doc, /selftest[\s\S]{0,120}installed/i, "W7: selftest proves installed, distinct from firing");
+  // W9 — the Stop rungs emit no tic, so their firing is unobservable from the bus.
+  assert.match(doc, /(require-green-to-stop|solo-drift|Stop rung)[\s\S]{0,200}(no tic|unobservable|cannot tell from the bus)/i, "W9: Stop rungs leave no bus evidence — unobservable in any host");
+  // W8 — the portable tier-2 referee (git hooks) claim survives the rewrite untouched: install-hooks with
+  // pre-commit green-bar + pre-push release gate. Guards against the rewrite quietly dropping tier 2.
+  assert.match(doc, /install-hooks/, "W8: tier-2 install-hooks portability survives");
+  assert.match(doc, /pre-commit[\s\S]{0,120}(green|gate)/i, "W8: pre-commit green-bar gate survives");
+  assert.match(doc, /pre-push[\s\S]{0,120}(release gate|tics gate)/i, "W8: pre-push release gate survives");
+});
 test("run-suite records status + emits a signal tic (composed with tics)", () => {
   const d = inst();
   try {
