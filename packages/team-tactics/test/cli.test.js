@@ -282,6 +282,32 @@ test("CP-1c: update recognizes the kit's own HISTORICAL rule bodies (pre-0.61, n
   } finally { fs.rmSync(target, { recursive: true, force: true }); }
 });
 
+test("CP-1d-1: update narrates the .cursor/rules/tics.mdc refresh when the managed body actually changes, but stays silent on an idempotent re-run", () => {
+  const target = fs.mkdtempSync(path.join(os.tmpdir(), "cp1d1-"));
+  const ruleFile = path.join(target, ".cursor", "rules", "tics.mdc");
+  try {
+    // Fresh install lays the managed Cursor rule down and creates the manifest, so run([target]) is an UPDATE.
+    const init = run(["init", target]);
+    assert.strictEqual(init.status, 0, init.stderr);
+    assert.ok(fs.existsSync(ruleFile), "fresh init writes the managed Cursor rule");
+
+    // (1) Changed body: a stale-but-managed rule (managed sentinel + stripped body). The update rewrites it
+    //     to current kit content, so its bytes change — the updater must NARRATE that file mutation.
+    fs.writeFileSync(ruleFile, "<!-- team-tactics: managed -->\nstale old rule\n");
+    const upd1 = run([target]);
+    assert.strictEqual(upd1.status, 0, upd1.stderr);
+    assert.match(upd1.stdout, /\.cursor\/rules\/tics\.mdc/,
+      "a changed-body refresh prints a line naming .cursor/rules/tics.mdc (no longer a silent mutation)");
+
+    // (2) Idempotent re-run: the file is now byte-identical to current kit content, so a second update
+    //     rewrites identical bytes — no new line for that file, so repeat-update output stays quiet.
+    const upd2 = run([target]);
+    assert.strictEqual(upd2.status, 0, upd2.stderr);
+    assert.doesNotMatch(upd2.stdout, /\.cursor\/rules\/tics\.mdc/,
+      "an idempotent re-run (already current) prints no line for the unchanged rule");
+  } finally { fs.rmSync(target, { recursive: true, force: true }); }
+});
+
 test("MCPN: update nudges to run mcp-install when MCP is unwired, and stays silent when it is wired", () => {
   const target = fs.mkdtempSync(path.join(os.tmpdir(), "mcpn-"));
   try {
@@ -303,6 +329,58 @@ test("MCPN: update nudges to run mcp-install when MCP is unwired, and stays sile
     const r2 = run([target]);  // update again, MCP now wired
     const out2 = (r2.stdout || "") + (r2.stderr || "");
     assert.ok(!/not wired/i.test(out2), "no 'not wired' nudge when MCP is already wired");
+  } finally { fs.rmSync(target, { recursive: true, force: true }); }
+});
+
+test("CP-1d-2: a bare-path invocation reflects install-vs-update from manifest presence — fresh says Installing (no version/BREAKING), an existing manifest adopts Updating semantics with the from->to line + BREAKING block", () => {
+  const freshTarget = fs.mkdtempSync(path.join(os.tmpdir(), "cp1d2-fresh-"));
+  const target = fs.mkdtempSync(path.join(os.tmpdir(), "cp1d2-upd-"));
+  const manifestPath = path.join(target, ".claude", ".team-tactics", "manifest.json");
+  try {
+    // (a) FRESH target, no manifest: a bare path is a plain install.
+    const fresh = run([freshTarget]);
+    assert.strictEqual(fresh.status, 0, fresh.stderr);
+    assert.match(fresh.stdout, /Installing team-tactics kit ->/, "a fresh bare invocation installs");
+    assert.doesNotMatch(fresh.stdout, /Updating team-tactics kit ->/, "a fresh target is not an update");
+    assert.doesNotMatch(fresh.stdout, /BREAKING \/ MIGRATIONS/, "no BREAKING block on a fresh install");
+
+    // (b) EXISTING manifest: seed one via init, then rewind kitVersion to an old release so the
+    //     bare update crosses the 0.4.0 + 0.7.0 breaking gates.
+    const init = run(["init", target]);
+    assert.strictEqual(init.status, 0, init.stderr);
+    const manifest = JSON.parse(fs.readFileSync(manifestPath, "utf8"));
+    manifest.kitVersion = "0.3.0";
+    fs.writeFileSync(manifestPath, JSON.stringify(manifest, null, 2) + "\n");
+
+    const upd = run([target]);  // bare path, NO subcommand — manifest present -> update semantics
+    assert.strictEqual(upd.status, 0, upd.stderr);
+    assert.match(upd.stdout, /Updating team-tactics kit ->/, "a bare invocation over an existing manifest updates");
+    assert.match(upd.stdout, /0\.3\.0 -> \d+\.\d+/, "prints the from->to version-transition line");
+    assert.match(upd.stdout, /BREAKING \/ MIGRATIONS/, "prints the BREAKING block for a transition crossing a breaking gate");
+    assert.match(upd.stdout, /DATA ONLY|FAILS CLOSED/, "the BREAKING block carries the 0.4.0 migration note");
+  } finally {
+    fs.rmSync(freshTarget, { recursive: true, force: true });
+    fs.rmSync(target, { recursive: true, force: true });
+  }
+});
+
+test("CP-1d-2 intent-lock: an explicit `init` over an already-installed target (manifest present) reports Updating, not Installing", () => {
+  // Characterization / intent-lock (NOT an honest-red slice): pins the CP-1d-2 isUpdate broadening
+  // (`isUpdate = cmd === "update" || !!priorManifest.kitVersion`) so that an explicit `init` over an
+  // existing install deliberately reports Updating — a future "explicit init = always fresh" refactor trips red.
+  const target = fs.mkdtempSync(path.join(os.tmpdir(), "cp1d2-lock-"));
+  try {
+    // Arrange: fresh install via explicit `init` writes the manifest.
+    const first = run(["init", target]);
+    assert.strictEqual(first.status, 0, first.stderr);
+
+    // Act: explicit `init` AGAIN, over the existing install (manifest present).
+    const second = run(["init", target]);
+    assert.strictEqual(second.status, 0, second.stderr);
+
+    // Assert: manifest presence => update semantics, even under an explicit `init`.
+    assert.match(second.stdout, /Updating team-tactics kit ->/, "explicit init over an existing manifest reports Updating");
+    assert.doesNotMatch(second.stdout, /Installing team-tactics kit ->/, "an explicit init is not treated as a fresh install once a manifest exists");
   } finally { fs.rmSync(target, { recursive: true, force: true }); }
 });
 

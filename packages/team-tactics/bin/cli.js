@@ -192,6 +192,9 @@ function refreshCursorRule(target) {
     || CURSOR_RULE_FINGERPRINTS.some((fp) => body.indexOf(fp) !== -1);
   if (!isManaged) return;                                              // foreign — never clobber
   tics.writeCursorRule(target);                                        // rewrite to current kit content
+  if (fs.readFileSync(file, "utf8") !== body) {
+    say("refresh", ".cursor/rules/tics.mdc (managed rule -> current kit body)");
+  }
 }
 
 // ---- manifest (P0-3): track kit-owned files so updates never silently clobber ----
@@ -209,6 +212,7 @@ const priorManifest = (() => {
   return { files: {} };
 })();
 const priorSha = (rel) => (priorManifest.files && priorManifest.files[rel] && priorManifest.files[rel].sha256) || null;
+const isUpdate = cmd === "update" || !!priorManifest.kitVersion;
 
 // ADR 0005: full-team is the DEFAULT (full power by default). `--minimal` (alias `--preset none`)
 // opts out to the inner pair, recorded as "minimal" so it's sticky. P2-14: the preset is sticky —
@@ -345,8 +349,8 @@ ensureDir(path.join(target, ".claude", "state"));
 ensureDir(path.join(target, "docs", "tdd"));
 ensureDir(path.join(target, "docs", "tics"));
 
-console.log((cmd === "update" ? "Updating" : "Installing") + " team-tactics kit -> " + target);
-if (cmd === "update") {
+console.log((isUpdate ? "Updating" : "Installing") + " team-tactics kit -> " + target);
+if (isUpdate) {
   const _from = priorManifest.kitVersion, _to = PKG.version;
   console.log("  " + (_from || "pre-0.4 (no manifest)") + " -> " + _to);
   const _notes = [];
