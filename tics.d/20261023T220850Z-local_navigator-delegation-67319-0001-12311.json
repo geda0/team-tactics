@@ -1,0 +1,1 @@
+{"ts":"2026-10-23T22:08:50Z","seq":206,"kind":"verdict","from":"orchestrator","to":"implementer","phase":"off","layer":"app","scope":"app","session":"local_navigator-delegation","msg":"draft review ADR 0029 green: 6-arg cap, EXTRA allowlist, dup-key reader scanner; exploits replayed blocked","ref":"ed956f7","result":"accept"}
