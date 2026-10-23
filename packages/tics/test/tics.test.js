@@ -1384,6 +1384,37 @@ test("P6f (ADR 0026): TIC_STORE=git — with a remote that hangs, consecutive re
   } finally { srv.kill("SIGKILL"); h.cleanup(); }
 });
 
+// P6g: the reader's fetch must be bounded even when git's transport helper (here the ssh command) hangs, and must
+// not leave that helper running: killing only the direct `git fetch` child is not enough.
+test("P6g (ADR 0026): TIC_STORE=git — a read whose fetch hits a hanging ssh helper exits 0 within 8 s, lists local tics and leaves no helper alive", async () => {
+  const d = inst("git"), tmp = fs.mkdtempSync(path.join(os.tmpdir(), "tics-p6g-"));
+  const bare = path.join(tmp, "bare.git"), pids = path.join(tmp, "ssh-pids"), ssh = path.join(tmp, "hang-ssh"), out = path.join(tmp, "log.out");
+  const bus = busOf(d);
+  fs.writeFileSync(ssh, '#!/bin/sh\necho $$ >> "' + pids + '"\nexec sleep 600\n', { mode: 0o755 });
+  git(tmp, "init", "-q", "--bare", bare);
+  fs.appendFileSync(path.join(d, ".claude", "tdd.config"), 'TICS_REMOTE="' + bare + '"\n');
+  const pidList = () => (fs.existsSync(pids) ? fs.readFileSync(pids, "utf8").trim().split("\n").filter(Boolean).map(Number) : []);
+  const alive = (p) => { try { process.kill(p, 0); return true; } catch (_) { return false; } };
+  try {
+    assert.strictEqual(srcLib(d, "emit_tic a '*' note before-hang").status, 0);
+    assert.ok(git(bare, "rev-parse", "--verify", "-q", "refs/heads/tics-bus").stdout.trim(), "the bus is published to the reachable remote");
+    assert.strictEqual(git(bus, "remote", "set-url", "origin", "ssh://hang/x.git").status, 0);
+    fs.appendFileSync(path.join(d, ".claude", "tdd.config"), 'TICS_FETCH_TTL="0"\n');
+    fs.rmSync(path.join(bus, ".git", "tics-fetch-attempt"), { force: true });
+    const fd = fs.openSync(out, "w");
+    const r = await timedRunKeepGroup(path.join(d, ".claude", "hooks", "tics"), ["log"], { cwd: d, env: { ...ENV, GIT_SSH_COMMAND: ssh }, stdio: ["ignore", fd, "ignore"] }, 30000);
+    fs.closeSync(fd);
+    const listed = fs.readFileSync(out, "utf8");
+    assert.deepStrictEqual(
+      { status: r.status, fast: r.ms < 8000, listed: /before-hang/.test(listed), sshSpawned: pidList().length > 0, helpersAlive: pidList().filter(alive) },
+      { status: 0, fast: true, listed: true, sshSpawned: true, helpersAlive: [] },
+      "tics log against a hanging ssh helper (ms " + r.ms + ", ssh pids " + pidList().join(",") + "); output: " + JSON.stringify(listed));
+  } finally {
+    for (const p of pidList()) { try { process.kill(-p, "SIGKILL"); } catch (_) {} try { process.kill(p, "SIGKILL"); } catch (_) {} }
+    for (const p of [d, tmp]) fs.rmSync(p, { recursive: true, force: true });
+  }
+});
+
 // Times an emit in its own process group, hard-capped so a hanging emit fails the test instead of the runner;
 // the whole group (bash + git children) is killed on the cap. timedRun is the same for any command.
 function timedRun(cmd, args, opts, capMs) {
@@ -1392,6 +1423,16 @@ function timedRun(cmd, args, opts, capMs) {
     const c = cp.spawn(cmd, args, Object.assign({ detached: true, stdio: "ignore" }, opts));
     const cap = setTimeout(() => { try { process.kill(-c.pid, "SIGKILL"); } catch (_) {} }, capMs);
     c.on("exit", (status) => { clearTimeout(cap); try { process.kill(-c.pid, "SIGKILL"); } catch (_) {} res({ status, ms: Date.now() - t0 }); });
+  });
+}
+// Like timedRun, but on a normal exit it does NOT kill the process group, so a test can observe what the command
+// itself left running (stray children); only the hard cap kills the group. The caller reaps the rest.
+function timedRunKeepGroup(cmd, args, opts, capMs) {
+  return new Promise((res) => {
+    const t0 = Date.now();
+    const c = cp.spawn(cmd, args, Object.assign({ detached: true, stdio: "ignore" }, opts));
+    const cap = setTimeout(() => { try { process.kill(-c.pid, "SIGKILL"); } catch (_) {} }, capMs);
+    c.on("exit", (status) => { clearTimeout(cap); res({ status, ms: Date.now() - t0 }); });
   });
 }
 function timedEmit(d, s, capMs, env) {
