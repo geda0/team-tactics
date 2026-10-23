@@ -1,0 +1,1 @@
+{"ts":"2026-10-23T17:23:59Z","seq":89,"kind":"delegate","from":"orchestrator","to":"implementer","phase":"green","layer":"app","scope":"app","session":"local_navigator-delegation","msg":"P7 green: hook identities emit to local jsonl under TIC_STORE=git","ref":"adr-0026-hook-local","result":""}
