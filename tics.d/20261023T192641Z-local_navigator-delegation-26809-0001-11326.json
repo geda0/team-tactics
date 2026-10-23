@@ -1,0 +1,1 @@
+{"ts":"2026-10-23T19:26:41Z","seq":168,"kind":"delegate","from":"orchestrator","to":"implementer","phase":"green","layer":"app","scope":"app","session":"local_navigator-delegation","msg":"K4 green: lowercase the kind first; cap identifiers at 32 chars","ref":"adr-0028","result":""}
