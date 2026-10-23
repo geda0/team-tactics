@@ -1,0 +1,1 @@
+{"ts":"2026-10-23T12:07:19Z","seq":39,"kind":"delegate","from":"orchestrator","to":"test-writer","phase":"red","layer":"app","scope":"app","session":"local_navigator-delegation","msg":"P1c red per contract adr-0026-P1b: crashed holder's lock broken by pid/age; checkout clean after forced rebase failure; lock never held across the push","ref":"adr-0026-P1b","result":""}
