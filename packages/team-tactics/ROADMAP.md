@@ -99,7 +99,9 @@ are in ADR 0025. What the distributed run taught:
   landed in the wrong one; a brief asked for a rebase of a published branch, forcing a force-push
   decision; work was delegated before its dependency was pushed; test work went to a host without
   Node; an authority change lived only in direct messages; and a clean clone of the framework's own
-  main had been red for months on stale version pins. → briefs name **repo + base**, confirmed before
+  main had been red for months on stale version pins. Sharpest of all: the kit was installed into a
+  live session, whose hooks load only at session start, so two slices ran "hook-gated" with no hook
+  ever firing, and nothing said so (ADR 0025 N13, referee liveness). → briefs name **repo + base**, confirmed before
   the first push, and never ask to rewrite published history; the rest are N4, N11, N12 and N3.
 - **What held:** the read-only auditor (95 verdicts, 14 blocks, a session id on every tic and no gap
   over an hour while active); the tic as evidence (every retro claim cites a seq); and the verbatim

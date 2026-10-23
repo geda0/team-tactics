@@ -126,6 +126,7 @@ Treat this run as the pull the ROADMAP asks for, and split what it needs into th
 | **N10 Delegation-ratio fold for lead roles**: per lead, dispatch (`assign` + `delegate` + dispatching handoffs) against self-work (notes + claims *on work another role owns*), with the lead's undone own duties flagged. A claim with a stated failover reason (the owner is at a limit or unreachable) does not count as self-work. **Staff the role:** when a lead claims a role's work and that role has 0 tics, the fold suggests spawning that role (the adopter's AGENTS.md, "Growing the team") instead of only flagging the lead. The ADR 0006 solo-drift backstop, applied to the fleet lead. It applies **only to a role declared as a lead** (by the fleet pack); a solo install has none, so the fold is silent there | `@ttics/tics` reader (fold); the threshold lives in the fleet pack | §Context 7: 18 assigns against 270 notes and verdicts. Six claims took other roles' work while those roles sat at 0 tics, and two were failover. A read-side fold over existing kinds, needing no bus change. It only counts what reaches the bus, so dispatch must go through tics (or be mirrored there) to be seen |
 | **N11 Acknowledged handoffs**: an `assign` / `delegate` / `handoff` names a **directed** addressee (not `fleet`) and stays *open* until that addressee emits a tic citing it. `tics board` flags it to the sender as unacknowledged after N minutes | `@ttics/tics` reader (fold over `ref`) | §Context 7 and seq 1401: briefs to idle sessions never landed, and nothing said so. Rides on N4 (who is alive) |
 | **N12 Dependency-gated assign**: an `assign` may declare `needs: <ref>`, and stays blocked, not delivered, until a tic satisfying `<ref>` exists | `@ttics/tdd` core, opt-in; a special case of N7 | §Context 7: one scope changed four times, and one task was assigned twice and never started |
+| **N13 Referee liveness**: a session states "referee armed: yes/no" from evidence that the hooks loaded (a hook-emitted tic or marker since session start). `tics cycle` and the board show it, and a green claimed while the referee is unarmed is classified self-reported automatically | `@ttics/tdd` core | Found while growing the framework from this run: the kit was installed into a live session whose hooks load only at session start, so two delegated slices ran "hook-gated" with no hook ever firing. The only tell was an absence: no suite-status, telemetry or session-started file and no hook tic on the bus. ADR 0011's hook-signed vs self-reported split failed silent at the session level |
 | The S0–S8 definitions, exploit catalogue, grader chassis, model-run recipes | **stays in the adopter** | Domain-specific. The adopter expresses them through N6/N7. |
 
 **Rule of the split:** a need moves into the core only if it is method-agnostic, and it stays opt-in unless every
@@ -143,6 +144,8 @@ run benefits. Role and process shapes become packs. Domain stays with the adopte
    to non-code work. It needs an architect-owned seam ADR and the tdd-critic before build.
 5. **N3, ruling tics.** Small once N6 exists, because gated actions then have something to cite.
 6. **N8, quarantine.** It is independent and can go at any point after 2.
+   **N13, referee liveness**, is independent and small, and every other gate's honesty depends on it: it can go
+   at any point.
 7. **N9, the fleet role pack.** Last: it should compose N1–N8 and N10–N12, not invent around their absence. It
    carries the N10 threshold for its lead role.
 
@@ -177,5 +180,7 @@ principle.
   fold names that role as one to staff.
 - **P7 (N11):** an `assign` with no addressee tic citing it within N minutes shows as unacknowledged on the board.
   A citing tic clears it.
+- **P9 (N13):** with no hook-emitted tic or marker since session start, `tics cycle` reports the referee unarmed,
+  and a green from that window is classified self-reported. One hook marker arms it.
 - **P8 (N12):** an `assign` declaring `needs: <ref>` is reported blocked while no tic satisfies `<ref>`, and open
   once one does.
