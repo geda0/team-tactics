@@ -52,7 +52,7 @@ Two facts make a git transport cheap and safe:
 1. Ensure `TICS_GIT_DIR` exists: a local init with `origin` = `TICS_REMOTE` and an orphan `TICS_BRANCH` checkout. No
    network at open (rule 1 below).
 2. Write the tic as one new spool file under `tics.d/` in that checkout, with a host-unique name
-   (`<UTC ts>-<host-or-session>-<pid>-<random>.json`).
+   (`<UTC ts>-<host-or-session>-<pid>-<n>-<random>.json`, created exclusively; see P1d).
 3. Under the checkout lock (below), stage **all** of `tics.d` (`add -A`, so a tic orphaned by any earlier lost race
    rides along) and commit; release the lock; then push. On a rejected push: re-take the lock, `fetch` and `rebase`
    onto the remote branch, release, and push again, a bounded number of times (default 8, with jittered backoff).
@@ -77,6 +77,36 @@ through one bus checkout, and unserialized `add`/`commit`/`rebase` there silentl
   check and the removal, reachable only after a stale break.
 - A failed rebase aborts and then restores, from the object store, any `tics.d` file the abort removed that is not
   already on the remote, so even a double hold can't delete a tic (P1c-4).
+
+**Unique tic files (P1d; architect contract adr-0026-P1d).** A 120-run soak found two emits from one process in one
+UTC second drawing the same 15-bit `$RANDOM` (1 in ~1,500 emits). The second `>>` appended into the first file, the
+readers parse a file as one JSON value and silently drop it, so **both** tics vanished from every view; in git mode
+the merged file is pushed to every host. The spool store on main has the same defect. Both halves are required:
+the writer fix stops new merged files, and the reader fix recovers the ones already on real buses (and tolerates
+the writer's own transient states, below). Neither alone suffices.
+- **One name builder for both stores** (`spool` and `git`), in `tics-lib.sh`:
+  `<UTC %Y%m%dT%H%M%SZ>-<origin>-<pid>-<n>-<RANDOM>.json`. `origin` = `session`, else `hostname -s`, else `host`
+  (the spool name gains it too; no reader parses names). `n` = a per-process counter (`_TIC_N`, incremented per
+  emit, zero-padded to 4) so in-process emits sort in emit order under the filename tie-break (§2).
+- **The guarantee is the exclusive create, not the name.** `emit_tic` is often called in a subshell, where `$$`
+  is the parent's pid and a counter bump doesn't propagate, so names alone can still repeat. The tic is written
+  with one `printf` under `set -C` (noclobber `>`, i.e. `O_EXCL`), in a subshell so the option doesn't leak. On
+  failure: if the path now exists, bump `n`, draw a new `RANDOM`, retry (bounded, 32 tries); if it doesn't exist,
+  the directory is unwritable, so give up exactly as today's `|| true` does. **`spool`/`git` never `>>` a tic
+  file.** (`jsonl` keeps its append; it is one log by design.)
+- **Accepted residual:** between the `O_EXCL` open and the write, the file exists empty, and a concurrent emit's
+  `add -A` may commit it empty. The owner's own commit lands the content as a modification of its own,
+  host-unique path, so rebase still can't conflict and nothing is lost; readers skip the empty line meanwhile.
+- **Readers parse line by line** (`loadTics` spool and jsonl, `gitBusTics` union): every non-blank line that parses
+  as a JSON object is a tic; a blank line is ignored; any other line is skipped and **counted**.
+- **The count is surfaced, once, in `tics log`** (next to "bus as of"): `N unparsable tic line(s) skipped`, printed
+  only when N > 0. Other views (inbox, board, gate, claim-check) stay silent, since the edit guard reads on every
+  edit. A silent drop is what hid this defect; the count makes the next one visible.
+- **Dedup by filename stays file-level** and runs **before** the line split: the worktree and tracking-tree copies
+  of one name are one file (the worktree copy wins, as today), and a legacy merged file then yields all its tics.
+  Never dedup tics by filename after the split. Identity (§2) is `(filename, line index)`; a file written after
+  P1d holds one line, so the filename alone still identifies it. The order tie-break becomes filename, then line
+  index.
 
 **Keeping the project tree clean (P5):** when `TICS_GIT_DIR` sits inside `ROOT` (the default does), the store adds
 it to the project's `info/exclude` (located with `git rev-parse --git-path info/exclude`), never to a tracked
@@ -130,8 +160,8 @@ written. Hooks and agents both emit, so that froze sessions and broke the never-
 
 ### 2. Collision-free ordering (`seq` becomes advisory)
 
-- A tic's **identity** is its spool filename (the git store) or `(ts, session, seq)` (jsonl). It is never `seq`
-  alone.
+- A tic's **identity** is its spool filename (the git store; `(filename, line index)` for a legacy merged file,
+  P1d) or `(ts, session, seq)` (jsonl). It is never `seq` alone.
 - The reader **orders** by `ts`, then by `session`, then by the spool filename. That is a total, stable order that
   every host computes the same way. `seq` stays in the record (back-compat, and it is still monotonic within one
   host) but is never used to dedupe or identify.
@@ -161,6 +191,11 @@ written. Hooks and agents both emit, so that froze sessions and broke the never-
 - **P1b (lossless on a shared checkout):** two emitters on one checkout racing a third host lose nothing.
 - **P1c (the lock contract):** a dead-pid or aged lock is broken; the checkout is clean after a rebase conflict; the
   lock is never held across the push; a forced double hold never deletes a tic.
+- **P1d (never-drop, unique tic files):** (1) two emits from one process in one second with the same `$RANDOM`
+  land in two one-line files, locally and on the remote, spool and git, and `log` lists both; (2) the spool reader
+  lists every valid line of a merged file and a valid line after a garbage one; (3) the git-bus reader lists both
+  lines of a merged file fetched from the remote; (4) `log` reports the count of skipped unparsable lines when it
+  is non-zero, and prints nothing extra when it is zero.
 - **P6 (the reader sees the bus):** with `TIC_STORE=git` (from `tdd.config` or the environment): (a) host A's
   `tics log` lists host B's tics and A's `claim-check` sees B's claim; (b) with the remote unreachable, A's local
   tics (unpushed included) are still listed and the read exits 0; (c) a read leaves the bus checkout's HEAD, index
@@ -174,6 +209,8 @@ written. Hooks and agents both emit, so that froze sessions and broke the never-
 2a. **P1b + P1c**: the per-checkout lock (added after the critic's re-audit found the shared-checkout loss).
 2b. **P6**: the reader reads the git bus (fetch on read, offline-safe). Added after dogfooding: P1 and P5 shipped
    a bus the fleet could write but not read, because no predicate covered the read side.
+2c. **P1d**: unique tic files (shared name builder + exclusive create) and line-by-line readers with a skipped-line
+   count in `log` (added after a soak found merged files; P1d-1..3 red, P1d-4 to follow).
 3. **P3**: offline emit plus `tics sync`.
 4. **P2 + P4**: the reader orders by (ts, session, filename) and identifies by filename.
 5. Docs: `tic-protocol.md` store section, and `tdd.config` keys.
