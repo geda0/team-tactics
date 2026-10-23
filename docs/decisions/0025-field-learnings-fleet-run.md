@@ -30,7 +30,9 @@ through the phase×layer gate). Then it grew into a **fleet**: a leader session 
 coordinating through one bus.
 
 **How the bus was read.** It was replayed from the adopter's bus branch at the end of the run, one JSON file per
-tic. All counts are exact over the 1,490 records.
+tic. All counts are exact over the 1,490 records. A later pass over **every branch** of the adopter's repo found
+2,218 distinct tics: 726 (33%) never reached the bus branch. They are the lanes' inner loop, which stayed on lane
+branches that were never merged (the Bus partition row). The other rows count the bus branch only.
 
 ### Evidence
 
@@ -53,6 +55,9 @@ tic. All counts are exact over the 1,490 records.
 | Baseline suite at every session start | red (268 tests: 6 failures, 36 errors), warned by `session-green-check` every time and never fixed |
 | Peer sessions visible at close | ~55, most idle; several renamed by their job drifting ("build X" sessions doing Y) |
 | **The lead's own mix** (leader, 341 tics) | note 183, verdict 87, status 32, **assign 18**, claim 8 (its own), blocker 4, block 2. Most dispatches went by direct message rather than `assign`, so the bus undercounts delegation |
+| **Bus partition** (all 106 branches) | 726 of 2,218 tics only on lane branches: run-suite 307, subagent 163, orchestrator 150, test-writer 33, implementer 31. Fleet days across all branches: **490 of 1,596 in red/green/refactor**. Lane run-suite: 235 red, 33 green, 39 stuck |
+| Addressing | 819 of 990 fleet-day tics to `fleet`; **all 18 `assign` tics to `fleet`**, the addressee named only in prose |
+| Correlated outage | 10-22 12:17–12:38: leader, coordinator, macM1 and macm12 all at usage limits (one account); no tic 12:38 → 15:22. Cloud lanes silent up to 7.5 h |
 | Briefs that never landed | 3 lanes briefed while idle never acknowledged and never posted. The lead found out only at a stall check (seq 1401) |
 
 ### What the adopter built by hand, and why
@@ -66,8 +71,9 @@ tic. All counts are exact over the 1,490 records.
 2. **A stage pipeline for non-code work.** The deliverables were bundles, not features: prose, data, a grader and
    a zip. The adopter defined S0–S8 gates (similarity, fairness, exploit replay, difficulty pilot, release) with an
    evidence tic per stage per artifact sha. These lived in an auditor-kept rulebook and were enforced by the auditor's
-   judgment. **The phase×layer referee had nothing to grip**, which is why phase sat at `off` for 99.3% of the
-   fleet days.
+   judgment. **The phase×layer referee had nothing to grip** at the fleet level: the bus branch shows `off` for
+   99.3% of the fleet days. That figure is partly a visibility artifact, though: the lanes ran 490 in-cycle tics on
+   their own branches that never merged. The referee gripped the code work and missed the bundle work.
 3. **Kill lines as rules nobody could fire mechanically.** Examples: "a weak-model pilot ≥ 0.96 kills", "no reward
    curve before the pilot". On the last night one bundle went through about two hours of grader hardening (curve,
    13-mode exploit matrix, three zip fingerprints) before the 17-minute pilot that killed it. The rule existed, but
@@ -107,17 +113,17 @@ Treat this run as the pull the ROADMAP asks for, and split what it needs into th
 
 | Need (evidence) | Home | Why there |
 |---|---|---|
-| **N1 Git transport for the spool** (§Context 1; 61 seq collisions; the only channel that reached every host) | `@ttics/tics` core | Method-agnostic. Any multi-host adopter needs it. |
+| **N1 Git transport for the spool** (§Context 1; 61 seq collisions; the only channel that reached every host; 726 tics stranded on lane branches) | `@ttics/tics` core | Method-agnostic. Any multi-host adopter needs it. |
 | **N2 Collision-free ordering**: `seq` becomes advisory, and order is by (ts, session, content hash) with a stable tie-break. Readers never trust `seq` for identity | `@ttics/tics` core | Required by N1. Already true in fact today: spool filenames are unique and seqs are not. |
 | **N3 `ruling` tic kind** carrying a verbatim quote, source and grantee. Gated actions cite a ruling ref, and `tics board` flags actions with no ruling | `@ttics/tics` core | Authority is general, and it composes with 0017's mechanical gates. |
-| **N4 Session registry**: session id on every emit by default, `tics roster` mapping role → session → current job across hosts, and stale or renamed sessions flagged | `@ttics/tics` core | Extends 0008's liveness fold across hosts. |
+| **N4 Session registry**: session id on every emit by default, `tics roster` mapping role → session → current job across hosts, and stale or renamed sessions flagged. Each session also declares its **host capabilities** (e.g. Node, Docker, GPU, x86) and its **fault domain** (the account whose usage limit it shares). Claims carry a **lease** that lapses without a tic | `@ttics/tics` core | Extends 0008's liveness fold across hosts. Evidence: the leader ran stall checks by hand (614, 623); a correlated outage took the lead and its failover down together; test work was later routed to a host without Node |
 | **N5 `tics digest`**: decisions and verdicts verbatim, status runs folded, and a per-role "since I last read" view | `@ttics/tics` reader | Pure read-side, no bus change. |
 | **N6 Evidence-chain stage gates**: an artifact (sha) declares its stages, and each stage requires verdict tics from named roles. `tics gate <sha>` refuses a release with a missing stage, and stage tics carry the sha | `@ttics/tdd` core, opt-in | Generalizes 0011 / 0017 from "the suite went green" to "the declared evidence exists". Gives non-code work a referee instead of `off`. |
 | **N7 Declared predicates on a scope**: e.g. `requires: pilot-verdict before curve`, or `kill: weak >= 0.96`. They are evaluated against evidence tics and fire as `block` tics | `@ttics/tdd` core, opt-in | The mechanical form of a kill line. Stays default-safe, as in 0017. |
 | **N8 Honest quarantine**: `quarantine <test> --owner --until`, with escalation when the baseline stays red across N sessions | `@ttics/tdd` core | A warning that never escalates was ignored for a week. Quarantine makes the red floor a dated debt instead of noise. |
 | **N9 A fleet role pack**: leader (dispatch), independent auditor (read-only, rulebook-keeping), lanes (builders), PM (clock and cap) | **new sibling package**, beside `team-tactics` | The fixed outer-loop roles didn't fit: qa-verifier 0 tics, project-manager 0, product-owner 3. Roles should be packs on one core. `team-tactics` stays one pack, and the fleet is another. |
 | **N10 Delegation-ratio fold for lead roles**: per lead, dispatch (`assign` + `delegate` + dispatching handoffs) against self-work (notes + claims *on work another role owns*), with the lead's undone own duties flagged. A claim with a stated failover reason (the owner is at a limit or unreachable) does not count as self-work. **Staff the role:** when a lead claims a role's work and that role has 0 tics, the fold suggests spawning that role (the adopter's AGENTS.md, "Growing the team") instead of only flagging the lead. The ADR 0006 solo-drift backstop, applied to the fleet lead | `@ttics/tics` reader (fold); the threshold lives in the fleet pack | §Context 7: 18 assigns against 270 notes and verdicts. Six claims took other roles' work while those roles sat at 0 tics, and two were failover. A read-side fold over existing kinds, needing no bus change. It only counts what reaches the bus, so dispatch must go through tics (or be mirrored there) to be seen |
-| **N11 Acknowledged handoffs**: an `assign` / `delegate` / `handoff` stays *open* until its addressee emits a tic citing it. `tics board` flags it to the sender as unacknowledged after N minutes | `@ttics/tics` reader (fold over `ref`) | §Context 7 and seq 1401: briefs to idle sessions never landed, and nothing said so. Rides on N4 (who is alive) |
+| **N11 Acknowledged handoffs**: an `assign` / `delegate` / `handoff` names a **directed** addressee (not `fleet`) and stays *open* until that addressee emits a tic citing it. `tics board` flags it to the sender as unacknowledged after N minutes | `@ttics/tics` reader (fold over `ref`) | §Context 7 and seq 1401: briefs to idle sessions never landed, and nothing said so. Rides on N4 (who is alive) |
 | **N12 Dependency-gated assign**: an `assign` may declare `needs: <ref>`, and stays blocked, not delivered, until a tic satisfying `<ref>` exists | `@ttics/tdd` core, opt-in; a special case of N7 | §Context 7: one scope changed four times, and one task was assigned twice and never started |
 | The S0–S8 definitions, exploit catalogue, grader chassis, model-run recipes | **stays in the adopter** | Domain-specific. The adopter expresses them through N6/N7. |
 
@@ -148,7 +154,8 @@ principle.
   contribution names the tic counts that justify it. A fleet adopter no longer has to rebuild the bus, the gates and
   the roster outside the framework.
 - **Cost:** N6/N7 make the gate model larger, beyond the phase×layer gate. That is accepted only as opt-in, and
-  only with the evidence for it: 99.3% `off` on the fleet days means the current referee offered nothing there.
+  only with the evidence for it: the bundle work (gates S0–S8) ran entirely at `off`, so the current referee offered
+  nothing there. (The bus branch's 99.3% `off` overstates it: the lanes' code work ran in-cycle on unmerged branches.)
 - **Risk:** one adopter's shape could over-fit the core. That is the reason for the §3 rule (agnostic → core,
   process → pack, domain → adopter), and why this ADR is Proposed until N1's own ADR ships.
 
