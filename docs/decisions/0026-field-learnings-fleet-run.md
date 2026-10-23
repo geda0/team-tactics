@@ -81,7 +81,10 @@ tic. All counts are exact over the 1,490 records.
    re-read the thread to find the decisions in it.
 7. **A lead that did instead of delegated.** This came from a separate review of roles and the reporting line, done
    for the navigator. The leader's tics are mostly its own notes and verdicts (270 of 341), against 18 `assign` tics
-   and 8 claims of its own. Some of its own duties (the end-of-run resume refresh) fell to another role. Handoffs had
+   and 8 claims of its own (589, 596, 622, 636, 641, 647, 699, 701). Two of those (622, 641) were stated takebacks
+   from a worker at its usage limit, which is legitimate failover. The other six took audit, QA, analysis and PM-chore
+   work owned by other roles onto the lead's own host, and none was handed back. Meanwhile the roles that owned that
+   work sat at 0 tics. Some of its own duties (the end-of-run resume refresh) fell to another role. Handoffs had
    no acknowledgement: briefs to idle sessions sat unread, and nothing flagged them until a stall check (1401). Work
    was also assigned before its dependency existed: one lane's scope changed four times, and one task was assigned
    twice and never started. The fixed outer-loop roles show the mirror image: they existed and got no work
@@ -113,7 +116,7 @@ Treat this run as the pull the ROADMAP asks for, and split what it needs into th
 | **N7 Declared predicates on a scope**: e.g. `requires: pilot-verdict before curve`, or `kill: weak >= 0.96`. They are evaluated against evidence tics and fire as `block` tics | `@ttics/tdd` core, opt-in | The mechanical form of a kill line. Stays default-safe, as in 0017. |
 | **N8 Honest quarantine**: `quarantine <test> --owner --until`, with escalation when the baseline stays red across N sessions | `@ttics/tdd` core | A warning that never escalates was ignored for a week. Quarantine makes the red floor a dated debt instead of noise. |
 | **N9 A fleet role pack**: leader (dispatch), independent auditor (read-only, rulebook-keeping), lanes (builders), PM (clock and cap) | **new sibling package**, beside `team-tactics` | The fixed outer-loop roles didn't fit: qa-verifier 0 tics, project-manager 0, product-owner 3. Roles should be packs on one core. `team-tactics` stays one pack, and the fleet is another. |
-| **N10 Delegation-ratio fold for lead roles**: per lead, dispatch (`assign` + `delegate` + dispatching handoffs) against self-work (notes + own claims), with the lead's undone own duties flagged. The ADR 0006 solo-drift backstop, applied to the fleet lead | `@ttics/tics` reader (fold); the threshold lives in the fleet pack | §Context 7: 18 assigns against 270 notes and verdicts. A read-side fold over existing kinds, needing no bus change. It only counts what reaches the bus, so dispatch must go through tics (or be mirrored there) to be seen |
+| **N10 Delegation-ratio fold for lead roles**: per lead, dispatch (`assign` + `delegate` + dispatching handoffs) against self-work (notes + claims *on work another role owns*), with the lead's undone own duties flagged. A claim with a stated failover reason (the owner is at a limit or unreachable) does not count as self-work. **Staff the role:** when a lead claims a role's work and that role has 0 tics, the fold suggests spawning that role (the adopter's AGENTS.md, "Growing the team") instead of only flagging the lead. The ADR 0006 solo-drift backstop, applied to the fleet lead | `@ttics/tics` reader (fold); the threshold lives in the fleet pack | §Context 7: 18 assigns against 270 notes and verdicts. Six claims took other roles' work while those roles sat at 0 tics, and two were failover. A read-side fold over existing kinds, needing no bus change. It only counts what reaches the bus, so dispatch must go through tics (or be mirrored there) to be seen |
 | **N11 Acknowledged handoffs**: an `assign` / `delegate` / `handoff` stays *open* until its addressee emits a tic citing it. `tics board` flags it to the sender as unacknowledged after N minutes | `@ttics/tics` reader (fold over `ref`) | §Context 7 and seq 1401: briefs to idle sessions never landed, and nothing said so. Rides on N4 (who is alive) |
 | **N12 Dependency-gated assign**: an `assign` may declare `needs: <ref>`, and stays blocked, not delivered, until a tic satisfying `<ref>` exists | `@ttics/tdd` core, opt-in; a special case of N7 | §Context 7: one scope changed four times, and one task was assigned twice and never started |
 | The S0–S8 definitions, exploit catalogue, grader chassis, model-run recipes | **stays in the adopter** | Domain-specific. The adopter expresses them through N6/N7. |
@@ -161,7 +164,9 @@ principle.
   it.
 - **P5 (N8):** a quarantined test past its `--until` date turns the baseline red again.
 - **P6 (N10):** on a bus where a lead role emits only notes and verdicts, the delegation fold reports a ratio of 0 and
-  flags it. One `assign` from that role changes the ratio.
+  flags it. One `assign` from that role changes the ratio. A claim on another role's work counts as self-work, and
+  the same claim carrying a stated failover reason does not. When the claimed work's owning role has 0 tics, the
+  fold names that role as one to staff.
 - **P7 (N11):** an `assign` with no addressee tic citing it within N minutes shows as unacknowledged on the board.
   A citing tic clears it.
 - **P8 (N12):** an `assign` declaring `needs: <ref>` is reported blocked while no tic satisfies `<ref>`, and open
