@@ -7,6 +7,8 @@ set -uo pipefail
 HERE="$(cd "$(dirname "$0")" && pwd)"; ROOT="$(cd "$HERE/../.." && pwd)"
 # shellcheck disable=SC1091
 . "$ROOT/.claude/hooks/tics-lib.sh"
+# ADR 0029: at most 6 arguments — a 7th would reach emit_tic's raw EXTRA slot. Malformed call: rc 2, nothing recorded.
+[ "$#" -gt 6 ] && { echo "tic.sh: too many arguments ($#) — usage: tic.sh FROM TO KIND MSG [REF] [RESULT] (max 6). Nothing recorded." >&2; exit 2; }
 # Arg hardening: FROM/TO are positional role names, never flags. A leading '-' means a flag bled
 # into a positional slot (shifted args) — reject so garbled junk never reaches the append-only bus.
 case "${1:-}" in -*) echo "tic.sh: FROM ('$1') looks like a flag — usage: tic.sh FROM TO KIND MSG [REF] [RESULT]. Nothing recorded." >&2; exit 2 ;; esac

@@ -9,6 +9,25 @@ function storePaths(targetDir, ignoreEnv) {
   // TICS_DIR / TICS_FILE let parallel worktree sections share ONE spool bus (see docs/tdd/sectioning.md).
   return { jsonl: (!ignoreEnv && process.env.TICS_FILE) || path.join(dir, "tics.jsonl"), spool: (!ignoreEnv && process.env.TICS_DIR) || path.join(dir, "tics.d") };
 }
+// True when a JSON object text repeats a top-level key (JSON.parse silently keeps the last one: ADR 0029 forgery).
+function hasDupTopKey(t) {
+  const seen = new Set(); let depth = 0, i = 0;
+  while (i < t.length) {
+    const c = t[i];
+    if (c === '"') {
+      let j = i + 1;
+      while (j < t.length && t[j] !== '"') j += t[j] === "\\" ? 2 : 1;
+      if (depth === 1) {
+        let k = j + 1; while (k < t.length && /\s/.test(t[k])) k++;
+        if (t[k] === ":") { let key; try { key = JSON.parse(t.slice(i, j + 1)); } catch (e) { key = t.slice(i, j + 1); } if (seen.has(key)) return true; seen.add(key); }
+      }
+      i = j + 1; continue;
+    }
+    if (c === "{" || c === "[") depth++; else if (c === "}" || c === "]") depth--;
+    i++;
+  }
+  return false;
+}
 const SKIPPED_SET = new Set();   // keys of skipped lines (a file read via several worktree views counts once)
 function loadTics(targetDir, ignoreEnv) {
   const { jsonl, spool } = storePaths(targetDir, ignoreEnv);
@@ -17,7 +36,7 @@ function loadTics(targetDir, ignoreEnv) {
     text.split("\n").forEach((l, i) => {
       if (!l.trim()) return;
       let o = null;
-      try { o = JSON.parse(l); } catch (e) {}
+      try { o = JSON.parse(l); if (hasDupTopKey(l)) o = null; } catch (e) {}
       if (o && typeof o === "object" && !Array.isArray(o)) out.push({ o, f: name, i }); else SKIPPED_SET.add(path.resolve(base || "", name) + ":" + i);
     });
   };
