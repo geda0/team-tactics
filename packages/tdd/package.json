@@ -13,7 +13,7 @@
     "README.md"
   ],
   "dependencies": {
-    "@ttics/tics": "0.68.1"
+    "@ttics/tics": "0.68.2"
   },
   "scripts": {
     "test": "node --test"
