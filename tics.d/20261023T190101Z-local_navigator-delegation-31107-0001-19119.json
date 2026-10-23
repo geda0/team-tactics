@@ -1,0 +1,1 @@
+{"ts":"2026-10-23T19:01:01Z","seq":150,"kind":"delegate","from":"project-manager","to":"dev-ops","phase":"off","layer":"app","scope":"app","session":"local_navigator-delegation","msg":"cut v0.71.0: a moved bus fails loud + tics rebind (ADR 0026 P8)","ref":"release-0.71.0","result":""}
