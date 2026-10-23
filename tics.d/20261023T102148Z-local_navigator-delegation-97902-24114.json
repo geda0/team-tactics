@@ -1,0 +1,1 @@
+{"ts":"2026-10-23T10:21:48Z","seq":19,"kind":"delegate","from":"orchestrator","to":"implementer","phase":"green","layer":"app","scope":"app","session":"local_navigator-delegation","msg":"ADR 0026 P6a-e green per architect contract (union read, no mutation, TTL fetch, freshness)","ref":"adr-0026-P6","result":""}
