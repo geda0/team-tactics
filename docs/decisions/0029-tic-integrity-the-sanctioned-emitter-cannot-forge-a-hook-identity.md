@@ -22,8 +22,15 @@ the sanctioned emitter.
 ## Decision
 
 1. **`tic.sh` takes at most 6 arguments.** A 7th is a malformed call: rc 2, nothing recorded.
+1b. **Identities are allowlisted and checked as stored** (amended after the security audit found a second bypass:
+   the reserved check ran on the raw FROM while CR/LF were stripped later, so `$'run-suite\n'` was stored as a clean
+   `run-suite`). FROM and TO must match `^[A-Za-z0-9][A-Za-z0-9._:@-]{0,63}$` (TO may also be `*`), validated on the
+   value exactly as it will be written; anything else (newline, CR, any control byte, a space, a non-ASCII look-alike)
+   is malformed, rc 2, nothing recorded. The reserved-identity check runs **after** that, on the validated value. The
+   MCP surface applies the same grammar. Every from/to on the existing buses fits (61 distinct ids, max 17 chars).
 2. **EXTRA_JSON has an allowlist grammar** (it remains for hooks such as run-suite's `,"exit":N,"durationSec":N`):
-   zero or more `,"key":value` pairs, where `key` is an identifier and `value` is an integer or a string with no
+   zero or more `,"key":value` pairs, where `key` is an identifier and `value` is a JSON integer (`-?(0|[1-9][0-9]*)`)
+   or a string with no
    quote, backslash or control character, and no key equals a fixed field (`ts seq kind from to phase layer scope
    session msg ref result`). On a violation the EXTRA is dropped with a stderr warning; the tic itself is still
    recorded (never-drop).
@@ -45,6 +52,10 @@ hook-only location).
 - **I3:** a store line with a duplicated top-level key is never read (not listed, not counted as a hook-signed green),
   and `tics log` counts it as unreadable.
 - **I4:** the MCP `tic_emit` cannot pass a 7th positional.
+- **I5:** a FROM/TO outside the identity allowlist (newline, CR, `\x01`, trailing space, non-ASCII hyphen) or a control
+  character in KIND is rc 2 with nothing recorded, on tic.sh and MCP; real ids (`macM1-lane2`, `session_01KqABC`,
+  `navigator-delegation-setup`, TO `*`) are accepted.
+- **I6:** a leading-zero integer in EXTRA is dropped with a warning; every stored line parses.
 
 ## Consequences
 

@@ -2491,5 +2491,58 @@ test("I (ADR 0029): the sanctioned emitter cannot forge a hook identity; readers
           "tics log:\n" + log.stdout + log.stderr);
       } finally { fs.rmSync(d, { recursive: true, force: true }); }
     });
+
+    await t.test("I5 (" + store + "): tic.sh refuses (exit 2, records nothing) a FROM/TO outside the identity allowlist or a control char in KIND — a stripped/odd character cannot smuggle a hook identity", { timeout: 60000 }, () => {
+      const calls = [
+        ["run-suite\n", "orchestrator", "signal", "suite green", "x", "green"],
+        ["run-\rsuite", "orchestrator", "signal", "suite green", "x", "green"],
+        ["subag\nent", "orchestrator", "signal", "suite green", "x", "green"],
+        ["run\x01-suite", "orchestrator", "signal", "suite green", "x", "green"],
+        ["run-suite ", "orchestrator", "signal", "suite green", "x", "green"],
+        ["run‑suite", "orchestrator", "signal", "suite green", "x", "green"],
+        ["lead", "orch\nestrator", "note", "i5-to", "x", ""],
+        ["lead", "fleet", "note\t", "i5-kind", "x", ""],
+      ];
+      const HOOK = ["run-suite", "subagent", "guard", "witness"];
+      for (const args of calls) {
+        const d = inst(store);
+        try {
+          const r = ticSh(d, ...args);
+          assert.deepStrictEqual(
+            { status: r.status, stored: storeLines(d).length, hook: storeParsed(d).filter((o) => HOOK.includes(o.from)).length },
+            { status: 2, stored: 0, hook: 0 },
+            "args " + JSON.stringify(args) + " must be refused: " + JSON.stringify(storeLines(d)));
+        } finally { fs.rmSync(d, { recursive: true, force: true }); }
+      }
+    });
+
+    await t.test("I5-ok (" + store + "): tic.sh accepts real allowlisted identities in FROM and TO (exit 0, stored as given)", { timeout: 60000 }, () => {
+      const ok = [["macM1-lane2", "fleet-lead"], ["session_01KqABC", "*"], ["navigator-delegation-setup", "fleet-lead"]];
+      for (const [from, to] of ok) {
+        const d = inst(store);
+        try {
+          const r = ticSh(d, from, to, "note", "i5-ok", "x", "");
+          assert.deepStrictEqual(
+            { status: r.status, stored: storeParsed(d).filter((o) => o.msg === "i5-ok").map((o) => [o.from, o.to]) },
+            { status: 0, stored: [[from, to]] },
+            "from " + JSON.stringify(from) + " to " + JSON.stringify(to) + ": " + r.stderr + JSON.stringify(storeLines(d)));
+        } finally { fs.rmSync(d, { recursive: true, force: true }); }
+      }
+    });
+
+    await t.test("I6 (" + store + "): emit_tic drops a non-JSON EXTRA (a leading-zero integer) with a warning, and every store line parses", { timeout: 60000 }, () => {
+      const d = inst(store);
+      try {
+        const r = srcLib(d, "emit_tic a b note i6 '' '' ',\"x\":007'");
+        const all = storeParsed(d);
+        assert.deepStrictEqual(
+          {
+            lines: storeLines(d).length, parsed: all.length, warned: r.stderr.trim() !== "",
+            i6: all.filter((o) => o.msg === "i6").map((o) => [o.from, "x" in o]),
+          },
+          { lines: 1, parsed: 1, warned: true, i6: [["a", false]] },
+          "stored: " + JSON.stringify(storeLines(d)));
+      } finally { fs.rmSync(d, { recursive: true, force: true }); }
+    });
   }
 });
