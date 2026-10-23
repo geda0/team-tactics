@@ -39,6 +39,20 @@ test("B2: the four package.json versions are in lockstep (no version drift)", ()
   assert.strictEqual(new Set(vers).size, 1, "root + tics + tdd + team-tactics must share ONE version; got: " + vers.join(", "));
 });
 
+test("B2: internal @ttics pins and the lockfile's workspace entries follow the lockstep version (clean `npm ci` links them)", () => {
+  // the @ttics packages are not on the registry: a pin the workspace can't satisfy makes npm fetch it and 404
+  const read = (p) => JSON.parse(fs.readFileSync(path.join(REPO, p), "utf8"));
+  const v = read("package.json").version, lock = read("package-lock.json").packages;
+  for (const dir of ["tics", "tdd", "team-tactics"]) {
+    const pkg = read("packages/" + dir + "/package.json"), ent = lock["packages/" + dir] || {};
+    for (const [dep, spec] of Object.entries(pkg.dependencies || {}))
+      if (dep.startsWith("@ttics/")) assert.strictEqual(spec, v, dir + " pins " + dep + "@" + spec + ", not the lockstep " + v);
+    assert.strictEqual(ent.version, v, "package-lock.json packages/" + dir + " records version " + ent.version + ", not " + v);
+    assert.deepStrictEqual(ent.dependencies || {}, pkg.dependencies || {}, "package-lock.json packages/" + dir + " dependencies are out of sync with its package.json");
+  }
+  assert.strictEqual(lock[""].version, v, "package-lock.json root records version " + lock[""].version + ", not " + v);
+});
+
 test("B2: `tics --version` prints the authoritative kit version, matching the manifest", () => {
   const pkgV = require("../package.json").version;
   const r = run(["--version"]);
