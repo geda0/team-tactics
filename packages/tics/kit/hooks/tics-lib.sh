@@ -183,12 +183,15 @@ _tic_net_backoff() {
 tics_sync() {
   [ "${TIC_STORE:-jsonl}" = "git" ] || { echo "tics sync: TIC_STORE is not git; nothing to publish"; return 0; }
   _tic_git_open
+  # the same per-checkout lock as an emit, so a sync never races an emit's add/commit/push on this checkout
+  _tic_git_lock || { echo "tics sync: the bus checkout is busy; retry shortly"; return 0; }
   if [ -d "$_gd/tics.d" ]; then
     _tic_git add -- tics.d 2>/dev/null
     _tic_git diff --cached --quiet 2>/dev/null || _tic_git commit -q -m "tic" 2>/dev/null
   fi
-  _tic_git rev-parse -q --verify HEAD >/dev/null 2>&1 || { echo "tics sync: no local tics"; return 0; }
-  if ! _tic_git_push; then echo "tics sync: remote unreachable; local tics kept, retry later"; return 0; fi
+  _tic_git rev-parse -q --verify HEAD >/dev/null 2>&1 || { _tic_git_unlock; echo "tics sync: no local tics"; return 0; }
+  if ! _tic_git_push; then _tic_git_unlock; echo "tics sync: remote unreachable; local tics kept, retry later"; return 0; fi
+  _tic_git_unlock
   date -u +%Y-%m-%dT%H:%M:%SZ > "$_gd/.git/tics-fetch-attempt" 2>/dev/null
   _tic_net fetch -q origin "+$_gb:refs/remotes/origin/$_gb" && _tic_net_ok
   echo "tics sync: published to origin/$_gb"
