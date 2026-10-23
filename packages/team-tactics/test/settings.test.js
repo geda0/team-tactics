@@ -67,6 +67,31 @@ test("merge preserves user keys + user hooks, idempotently", () => {
   } finally { fs.rmSync(d, { recursive: true, force: true }); }
 });
 
+test("S-foreign-hook (update): a user hook script living in .claude/hooks/ survives update, kit hooks stay deduplicated", () => {
+  const d = install();
+  try {
+    const USER_CMD = "$CLAUDE_PROJECT_DIR/.claude/hooks/release-gate.sh";
+    const userGroup = { matcher: "Bash", hooks: [{ type: "command", command: USER_CMD }] };
+    const all = (s) => Object.entries(s.hooks).flatMap(([ev, gs]) => gs.flatMap((g) => g.hooks.map((h) => ev + " " + (g.matcher || "") + " " + h.command)));
+    const count = (list, x) => list.filter((y) => y === x).length;
+    const kit = S(d);
+    const kitCmds = all(kit);
+    const seeded = JSON.parse(JSON.stringify(kit));
+    seeded.hooks.PreToolUse.push(userGroup);
+    fs.writeFileSync(path.join(d, ".claude", "settings.json"), JSON.stringify(seeded, null, 2));
+    fs.writeFileSync(path.join(d, ".claude", "hooks", "release-gate.sh"), "#!/bin/sh\nexit 0\n", { mode: 0o755 });
+
+    run(["update", d], d);
+    const once = all(S(d));
+    run(["update", d], d);
+    const twice = all(S(d));
+
+    assert.strictEqual(count(once, "PreToolUse Bash " + USER_CMD), 1, "user release-gate hook survives the first update exactly once");
+    assert.strictEqual(count(twice, "PreToolUse Bash " + USER_CMD), 1, "user release-gate hook survives a second update exactly once");
+    assert.deepStrictEqual(kitCmds.map((c) => count(twice, c)), kitCmds.map(() => 1), "every kit hook present exactly once after two updates (no duplicates)");
+  } finally { fs.rmSync(d, { recursive: true, force: true }); }
+});
+
 test("SubagentStop wires the auto-handoff hook + ships it", () => {
   const d = install();
   try {
