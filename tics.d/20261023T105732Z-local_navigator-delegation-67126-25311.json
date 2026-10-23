@@ -1,0 +1,1 @@
+{"ts":"2026-10-23T10:57:32Z","seq":29,"kind":"delegate","from":"orchestrator","to":"test-writer","phase":"red","layer":"app","scope":"app","session":"local_navigator-delegation","msg":"P3 red per architect contract: ssh://hang + GIT_SSH_COMMAND=sleep; emit <10s committed locally; 2nd emit <1s no ssh; tics sync publishes both","ref":"adr-0026-P3","result":""}
