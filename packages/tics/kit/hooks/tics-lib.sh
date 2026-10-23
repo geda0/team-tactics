@@ -110,7 +110,8 @@ _tic_git_publish() {
 _tic_git_moved() {
   [ -e "$_gd/.git/tics-remote" ] || _tic_git remote get-url origin > "$_gd/.git/tics-remote" 2>/dev/null
   _mr="$(cat "$_gd/.git/tics-remote" 2>/dev/null)"
-  [ "${_mr%/}" != "${TICS_REMOTE:-}" ] && [ "${_mr%/}" != "${TICS_REMOTE%/}" ]
+  _cr="${TICS_REMOTE:-}"
+  [ "${_mr%/}" != "${_cr%/}" ]
 }
 # Portable per-checkout mutex (macOS has no flock(1)): mkdir is atomic. The holder's pid is recorded; a lock is
 # stale when that pid is dead OR the lock is older than 2 x TICS_NET_TIMEOUT (no holder keeps it longer). Only a
