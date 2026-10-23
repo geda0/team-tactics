@@ -136,14 +136,21 @@ written. Hooks and agents both emit, so that froze sessions and broke the never-
 when the checkout is created, so a later change to `TICS_REMOTE` was silently ignored and emits kept publishing to the
 old remote (found in the tics-project fleet trial). Auto-switching is rejected: rebasing onto an unrelated remote would
 replay the whole old local history into the new bus.
-- On a mismatch (the checkout's `origin` ≠ the configured `TICS_REMOTE`), an emit still commits locally (never
+- **What counts as moved (amended):** the checkout records the remote it was created from in `.git/tics-remote`
+  (`tics rebind` rewrites it; a legacy checkout with no record adopts its current `origin` and writes it on first
+  use). A mismatch is the configured `TICS_REMOTE` (environment or `tdd.config`) ≠ that record, compared after
+  trimming one trailing `/` and with no other normalization. A deliberate `git remote set-url` on the checkout is an
+  operator act, not a mismatch.
+- On a mismatch, an emit still commits locally (never
   drops) but does not push, and `tics log` / `tics board` print `bus remote mismatch: checkout=<X> config=<Y> — run
   tics rebind`.
 - `tics rebind` re-creates the checkout for the configured remote and carries over **only the unpushed** tics (those
   not on the old remote's branch), then publishes them.
 - **P8 (rebind):** (a) after `TICS_REMOTE` changes, an emit exits 0, commits locally, and nothing reaches the old
   remote; (b) `log` and `board` print the mismatch line; (c) `tics rebind` publishes exactly the unpushed tics to the
-  new remote, not the old history, and afterwards emits publish there.
+  new remote, not the old history, and afterwards emits publish there; (d) a per-process environment `TICS_REMOTE`
+  that differs from the record is a mismatch too (loud, no push, the tic kept locally), and a `git remote set-url`
+  by hand is not.
 
 **Hook telemetry stays local (architect contract adr-0026-hook-local).** With `TIC_STORE=git`, a tic whose `from` is a
 hook identity (`subagent`, `run-suite`, `guard`, `witness`: the one list `tic.sh` reserves and ADR 0027 pins) always
