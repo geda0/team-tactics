@@ -1,0 +1,1 @@
+{"ts":"2026-10-23T18:38:29Z","seq":139,"kind":"delegate","from":"orchestrator","to":"test-writer","phase":"red","layer":"app","scope":"app","session":"local_navigator-delegation","msg":"P8e-j: pin critic's P8 gaps (sync guard, fetch-skip, legacy adoption, uncommitted carry-over, slash rule, project status clean after rebind)","ref":"adr-0026-P8","result":""}
