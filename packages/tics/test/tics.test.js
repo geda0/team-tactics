@@ -497,6 +497,11 @@ test("V4 (ADR 0027): a signal-only role is a member; every hook identity tic.sh 
   const names = m.members.map((x) => x.session).sort();
   assert.deepStrictEqual(names, ["dev-ops (no session)"], "the signal-only role is a member; subagent/witness hook telemetry is not");
   assert.deepStrictEqual([...(TV.HOOK_IDENTITIES || [])].sort(), reserved, "the view's hook identities match the ones tic.sh reserves");
+  // the third copy (ADR 0026 P7): tics-lib.sh keeps hook telemetry local by the same list
+  const libSh = fs.readFileSync(path.join(__dirname, "..", "kit", "hooks", "tics-lib.sh"), "utf8");
+  const libCase = libSh.match(/case "\$1" in ([a-z-]+(?:\|[a-z-]+)+)\) \[ "\$_ts" = "git" \]/);
+  assert.ok(libCase, "tics-lib.sh must still carry its hook-local store downgrade: case \"$1\" in a|b|...) [ \"$_ts\" = \"git\" ]");
+  assert.deepStrictEqual(libCase[1].split("|").sort(), reserved, "tics-lib.sh's hook-local list matches the identities tic.sh reserves");
 });
 
 test("E8-1: greenAttestation classifies a green signal as hook-signed (from=run-suite) vs self-reported (role), null otherwise; never throws", () => {
