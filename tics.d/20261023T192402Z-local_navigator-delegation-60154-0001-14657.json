@@ -1,0 +1,1 @@
+{"ts":"2026-10-23T19:24:02Z","seq":163,"kind":"verdict","from":"orchestrator","to":"implementer","phase":"green","layer":"app","scope":"app","session":"local_navigator-delegation","msg":"draft review ADR 0028 green: assign/status, note+orig_kind for unknown identifiers, rc 2 otherwise; 16 lines; all workspaces green","ref":"d86ffc5","result":"accept"}
