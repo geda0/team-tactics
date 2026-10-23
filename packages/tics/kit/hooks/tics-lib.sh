@@ -280,7 +280,9 @@ tics_rebind() {
   _gd="${TICS_GIT_DIR:-$ROOT/.claude/state/tics.git}"; _gb="${TICS_BRANCH:-tics-bus}"
   [ -d "$_gd/.git" ] || { echo "tics rebind: no bus checkout yet; nothing to move"; return 0; }
   _tic_git_moved || { echo "tics rebind: bus already on ${TICS_REMOTE:-}"; return 0; }
-  _tic_git_lock || { echo "tics rebind: the bus checkout is busy; retry shortly"; return 0; }   # no emit lands only in the old checkout
+  # the lock serializes rebind against other emits' commits; a tic FILE written after the listing below can still land
+  # only in the kept old checkout (emits write before they lock) — never lost, recoverable from tics.git.old-*
+  _tic_git_lock || { echo "tics rebind: the bus checkout is busy; retry shortly"; return 0; }
   _rbt="$_gd.rebind-$$"; rm -rf "$_rbt"; mkdir -p "$_rbt"
   { _tic_git ls-files -- tics.d; _tic_git ls-files -o --exclude-standard -- tics.d; } 2>/dev/null | sort -u | while IFS= read -r _rf; do
     [ -f "$_gd/$_rf" ] || continue
