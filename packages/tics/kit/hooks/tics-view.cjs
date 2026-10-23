@@ -349,12 +349,13 @@ function ticsBoard(targetDir, all) {
     if (b === "unscoped") return -1;
     return a.localeCompare(b);
   });
+  const w = Math.max(16, ...model.members.map((m) => m.session.length + 2));   // long ids never run into the tier
   for (const sc of scopes) {
     console.log("  [" + sc + "]");
     for (const m of model.byScope[sc]) {
       const when = (m.lastTs || "").slice(11, 19);
       const stuckMark = m.stuck ? "  STUCK" : "";
-      console.log("    " + m.session.padEnd(16) + m.liveness.padEnd(8) + when + stuckMark);
+      console.log("    " + m.session.padEnd(w) + m.liveness.padEnd(8) + when + stuckMark);
     }
   }
   if (model.collisions.length) {
