@@ -1,0 +1,1 @@
+{"ts":"2026-10-23T11:48:17Z","seq":38,"kind":"delegate","from":"orchestrator","to":"implementer","phase":"green","layer":"app","scope":"app","session":"local_navigator-delegation","msg":"P1b+P3g green: commit robust to index.lock contention (never drop), per-emit error capture, reader failure writes the shared fail marker","ref":"adr-0026-P3","result":""}
