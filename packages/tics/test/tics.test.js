@@ -1853,6 +1853,28 @@ test("P8 (ADR 0026): TIC_STORE=git — a moved TICS_REMOTE fails loud and tics r
         "\nNEW tics-bus after p8-new: " + JSON.stringify(afterNext) + "\ntics log:\n" + logOut);
     } finally { s.cleanup(); }
   });
+
+  await t.test("P8d (ADR 0026): a per-process env TICS_REMOTE that differs from the record is a mismatch (kept locally, no push), and a hand git remote set-url is not", { timeout: 60000 }, () => {
+    const h = p6Hosts(), NEW = fs.mkdtempSync(path.join(os.tmpdir(), "tics-remote-new-")), OLD2 = h.remote + "-2";
+    git(NEW, "init", "-q", "--bare");
+    const bus = busOf(h.hostA);
+    try {
+      const base = srcLib(h.hostA, "emit_tic test-writer '*' note p8d-base");
+      const envEmit = srcLib(h.hostA, "export TICS_REMOTE='" + NEW + "'; emit_tic test-writer '*' note p8d-env");
+      const envLocal = busHeadMsgs(bus).includes("p8d-env"), oldAfterEnv = remoteMsgs(h.remote), newAfterEnv = remoteMsgs(NEW);
+      git(os.tmpdir(), "clone", "-q", "--bare", h.remote, OLD2);
+      git(bus, "remote", "set-url", "origin", OLD2);
+      const handset = srcLib(h.hostA, "emit_tic test-writer '*' note p8d-handset");
+      const old2 = remoteMsgs(OLD2), log = read(h.hostA, "log"), logOut = log.stdout + log.stderr;
+      assert.deepStrictEqual(
+        { baseStatus: base.status, envStatus: envEmit.status, envLocal, oldHasEnv: oldAfterEnv.includes("p8d-env"), newHasEnv: newAfterEnv.includes("p8d-env"),
+          handsetStatus: handset.status, old2HasHandset: old2.includes("p8d-handset"), mismatchAfterHandset: logOut.includes("bus remote mismatch") },
+        { baseStatus: 0, envStatus: 0, envLocal: true, oldHasEnv: false, newHasEnv: false,
+          handsetStatus: 0, old2HasHandset: true, mismatchAfterHandset: false },
+        "OLD tics-bus after env emit: " + JSON.stringify(oldAfterEnv) + "\nNEW tics-bus: " + JSON.stringify(newAfterEnv) +
+        "\nenv emit stderr: " + envEmit.stderr + "\nOLD2 tics-bus: " + JSON.stringify(old2) + "\nhandset stderr: " + handset.stderr + "\ntics log:\n" + logOut);
+    } finally { h.cleanup(); for (const p of [NEW, OLD2]) fs.rmSync(p, { recursive: true, force: true }); }
+  });
 });
 
 test("P1b (ADR 0026): TIC_STORE=git — two emitters sharing ONE bus checkout, racing a third host, lose nothing and record no failure", { timeout: 60000 }, async () => {
