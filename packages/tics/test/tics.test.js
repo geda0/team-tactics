@@ -1686,3 +1686,105 @@ test("P1b (ADR 0026): TIC_STORE=git — two emitters sharing ONE bus checkout, r
       "every tic reaches the remote exactly once and no emit misreads a concurrent emit's error as a network failure");
   } finally { h.cleanup(); }
 });
+
+// P1c (ADR 0026, the architect's lock contract): the per-checkout mkdir lock covers LOCAL mutations only (add,
+// commit, the fetch+rebase after a rejected push), is never held across the push itself, and a stale lock is
+// broken when its recorded pid is dead OR its age exceeds 2 x TICS_NET_TIMEOUT; a failed rebase always aborts.
+// committedMsgs reads the msgs committed at the bus checkout's HEAD (local commits, pushed or not).
+const committedMsgs = (bus) => git(bus, "ls-tree", "-r", "--name-only", "HEAD", "--", "tics.d").stdout.trim().split("\n").filter(Boolean)
+  .map((p) => { try { return JSON.parse(git(bus, "show", "HEAD:" + p).stdout).msg; } catch (_) { return null; } }).filter(Boolean).sort();
+const lockDirOf = (d) => path.join(busOf(d), ".git", "tics-emit.lock");
+
+test("P1c (ADR 0026): TIC_STORE=git — the per-checkout lock covers local mutations only: stale locks break, rebases abort, pushes run unlocked", { timeout: 180000 }, async (t) => {
+  await t.test("P1c-1 (ADR 0026): a crashed holder doesn't block — a dead-pid lock and an alive-pid lock older than 2 x TICS_NET_TIMEOUT are both broken and the tic committed", { timeout: 60000 }, async () => {
+    const h = p6Hosts('TICS_NET_TIMEOUT="1"\n');
+    try {
+      assert.strictEqual(srcLib(h.hostA, "emit_tic a '*' note open-A").status, 0);   // the bus checkout exists
+      const dead = cp.spawnSync("true").pid;                                           // exited: its pid is dead
+      fs.mkdirSync(lockDirOf(h.hostA));
+      fs.writeFileSync(path.join(lockDirOf(h.hostA), "pid"), dead + "\n");
+      const e1 = await timedEmit(h.hostA, "emit_tic a '*' note after-dead-holder", 30000, ENV);
+      const afterDead = committedMsgs(busOf(h.hostA));
+      // an alive holder (this test runner) whose lock is far older than 2 x TICS_NET_TIMEOUT (= 2 s)
+      fs.rmSync(lockDirOf(h.hostA), { recursive: true, force: true });
+      fs.mkdirSync(lockDirOf(h.hostA));
+      fs.writeFileSync(path.join(lockDirOf(h.hostA), "pid"), process.pid + "\n");
+      const old = new Date(Date.now() - 60000);
+      fs.utimesSync(path.join(lockDirOf(h.hostA), "pid"), old, old);
+      fs.utimesSync(lockDirOf(h.hostA), old, old);
+      const e2 = await timedEmit(h.hostA, "emit_tic a '*' note after-old-holder", 30000, ENV);
+      assert.deepStrictEqual(
+        { e1: e1.status, e1Fast: e1.ms < 2000, deadCommitted: afterDead.includes("after-dead-holder"),
+          e2: e2.status, e2Fast: e2.ms < 2500, oldCommitted: committedMsgs(busOf(h.hostA)).includes("after-old-holder") },
+        { e1: 0, e1Fast: true, deadCommitted: true, e2: 0, e2Fast: true, oldCommitted: true },
+        "emit over a dead-pid lock (ms " + e1.ms + ") and over a 60 s old alive-pid lock with TICS_NET_TIMEOUT=1 (ms " + e2.ms + ")");
+    } finally { h.cleanup(); }
+  });
+
+  await t.test("P1c-2 (ADR 0026): after a rejected push whose rebase conflicts, the checkout has no rebase in progress and a further emit still commits", { timeout: 60000 }, async () => {
+    const h = p6Hosts(), scratch = fs.mkdtempSync(path.join(os.tmpdir(), "tics-p1c2-"));
+    const bus = busOf(h.hostA), name = "tics.d/20260101T000000Z-hostA-1-1.json";
+    const ticJson = (msg) => '{"ts":"2026-01-01T00:00:00Z","seq":9,"kind":"note","from":"a","to":"*","phase":"off","layer":"app","scope":"app","session":"hostA","msg":"' + msg + '","ref":"","result":""}\n';
+    try {
+      assert.strictEqual(srcLib(h.hostA, "emit_tic a '*' note base-A").status, 0);     // published: a shared base
+      // a local, unpushed tic at `name` ...
+      fs.writeFileSync(path.join(bus, name), ticJson("local-version"));
+      assert.strictEqual(git(bus, "add", "--", name).status, 0);
+      assert.strictEqual(git(bus, "commit", "-q", "-m", "tic").status, 0);
+      // ... and the remote gets a different file at the same path, so A's next push is rejected and its rebase conflicts
+      assert.strictEqual(git(scratch, "clone", "-q", "--branch", "tics-bus", h.remote, "c").status, 0);
+      const c = path.join(scratch, "c");
+      fs.writeFileSync(path.join(c, name), ticJson("remote-version"));
+      assert.strictEqual(git(c, "add", "--", name).status, 0);
+      assert.strictEqual(git(c, "commit", "-q", "-m", "tic").status, 0);
+      assert.strictEqual(git(c, "push", "-q", "origin", "HEAD:refs/heads/tics-bus").status, 0);
+      const e1 = await timedEmit(h.hostA, "emit_tic a '*' note conflicting-emit", 30000, ENV);
+      const roStatus = cp.spawnSync("git", ["--no-optional-locks", "-C", bus, "status"], { encoding: "utf8", env: { ...ENV, GIT_OPTIONAL_LOCKS: "0" } }).stdout;
+      const state = {
+        rebaseMerge: fs.existsSync(path.join(bus, ".git", "rebase-merge")),
+        rebaseApply: fs.existsSync(path.join(bus, ".git", "rebase-apply")),
+        statusSaysRebasing: /rebas/i.test(roStatus),
+        onBranch: git(bus, "symbolic-ref", "-q", "HEAD").stdout.trim(),
+      };
+      const e2 = await timedEmit(h.hostA, "emit_tic a '*' note after-conflict", 30000, ENV);
+      assert.deepStrictEqual(
+        { e1: e1.status, ...state, e2: e2.status, committed: committedMsgs(bus).includes("after-conflict") },
+        { e1: 0, rebaseMerge: false, rebaseApply: false, statusSaysRebasing: false, onBranch: "refs/heads/tics-bus", e2: 0, committed: true },
+        "after a conflicting rebase (emit ms " + e1.ms + ", then " + e2.ms + "); git status: " + JSON.stringify(roStatus));
+    } finally {
+      h.cleanup();
+      fs.rmSync(scratch, { recursive: true, force: true });
+    }
+  });
+
+  // P1c-3 design: emit A must really be inside its push when B runs, so A is started with TICS_FETCH_TTL=0 (the
+  // backoff never skips its push) and we wait for A's ssh spawn (the push in flight, ~4 s hang). B runs with the
+  // default TTL while a fresh failure marker is on record, so B itself never touches the network: under the
+  // contract B's whole run is lock + add + commit + unlock (fast), while lock-across-push makes B wait for A.
+  await t.test("P1c-3 (ADR 0026): the lock is never held across the push — emit B commits and exits in under 1.5 s while emit A's push hangs on the same checkout", { timeout: 60000 }, async () => {
+    const d = inst("git"), tmp = fs.mkdtempSync(path.join(os.tmpdir(), "tics-p1c3-")), hs = hangSsh(tmp);
+    const bus = busOf(d), HANG = { ...ENV, GIT_SSH_COMMAND: hs.ssh };
+    fs.appendFileSync(path.join(d, ".claude", "tdd.config"), 'TICS_REMOTE="ssh://hang/x.git"\nTICS_NET_TIMEOUT="4"\n');
+    try {
+      // the checkout exists and its first push failed: a fresh failure marker is on record
+      assert.strictEqual((await timedEmit(d, "emit_tic a '*' note setup", 30000, HANG)).status, 0);
+      assert.ok(fs.existsSync(path.join(bus, ".git", "tics-net-failed")), "the setup emit recorded the failed push");
+      const before = hs.spawns();
+      let aDone = false;
+      const a = timedEmit(d, "emit_tic a '*' note emit-A", 30000, { ...HANG, TICS_FETCH_TTL: "0" }).then((r) => { aDone = true; return r; });
+      const t0 = Date.now();
+      while (hs.spawns() === before && Date.now() - t0 < 5000) await new Promise((r) => setTimeout(r, 25));
+      const aPushing = hs.spawns() > before && !aDone;
+      const b = await timedEmit(d, "emit_tic b '*' note emit-B", 30000, HANG);
+      const bCommitted = committedMsgs(bus).includes("emit-B"), aRunningAtBExit = !aDone;
+      const ra = await a;
+      assert.deepStrictEqual(
+        { aPushing, b: b.status, bFast: b.ms < 1500, bCommitted, aRunningAtBExit, a: ra.status, aCommitted: committedMsgs(bus).includes("emit-A") },
+        { aPushing: true, b: 0, bFast: true, bCommitted: true, aRunningAtBExit: true, a: 0, aCommitted: true },
+        "emit B on the checkout while A's push hangs (B ms " + b.ms + ", A ms " + ra.ms + ", ssh spawns " + before + " -> " + hs.spawns() + ")");
+    } finally {
+      hs.reap();
+      for (const p of [d, tmp]) fs.rmSync(p, { recursive: true, force: true });
+    }
+  });
+});
