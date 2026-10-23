@@ -1,0 +1,1 @@
+{"ts":"2026-10-23T20:02:35Z","seq":190,"kind":"delegate","from":"orchestrator","to":"test-writer","phase":"red","layer":"app","scope":"app","session":"local_navigator-delegation","msg":"K6b red: newline-bearing kind (forged run-suite green payload) exits 2, records nothing, no tic from run-suite, store parses — jsonl and spool","ref":"adr-0028","result":""}
