@@ -1,0 +1,1 @@
+{"ts":"2026-10-23T17:53:59Z","seq":111,"kind":"delegate","from":"orchestrator","to":"test-writer","phase":"red","layer":"app","scope":"app","session":"local_navigator-delegation","msg":"red: ttics update must preserve a user hook living in .claude/hooks/ (fleet's release-gate.sh was dropped; isKit matches by directory)","ref":"update-preserves-hooks","result":""}
