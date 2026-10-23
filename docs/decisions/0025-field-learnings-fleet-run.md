@@ -30,7 +30,7 @@ through the phase×layer gate). Then it grew into a **fleet**: a leader session 
 coordinating through one bus.
 
 **How the bus was read.** It was replayed from the adopter's bus branch at the end of the run, one JSON file per
-tic. All counts are exact over the 1,490 records. A later pass over **every branch** of the adopter's repo found
+tic. All counts are exact over the 1,490 records. A later pass over **every branch** of the adopter's repo (105, of which 28 carry a bus) found
 2,218 distinct tics: 726 (33%) never reached the bus branch. They are the lanes' inner loop, which stayed on lane
 branches that were never merged (the Bus partition row). The other rows count the bus branch only.
 
@@ -55,8 +55,9 @@ branches that were never merged (the Bus partition row). The other rows count th
 | Baseline suite at every session start | red (268 tests: 6 failures, 36 errors), warned by `session-green-check` every time and never fixed |
 | Peer sessions visible at close | ~55, most idle; several renamed by their job drifting ("build X" sessions doing Y) |
 | **The lead's own mix** (leader, 341 tics) | note 183, verdict 87, status 32, **assign 18**, claim 8 (its own), blocker 4, block 2. Most dispatches went by direct message rather than `assign`, so the bus undercounts delegation |
-| **Bus partition** (all 106 branches) | 726 of 2,218 tics only on lane branches: run-suite 307, subagent 163, orchestrator 150, test-writer 33, implementer 31. Fleet days across all branches: **490 of 1,596 in red/green/refactor**. Lane run-suite: 235 red, 33 green, 39 stuck |
-| Addressing | 819 of 990 fleet-day tics to `fleet`; **all 18 `assign` tics to `fleet`**, the addressee named only in prose |
+| **Bus partition** (all 105 branches, 28 with a bus) | 726 of 2,218 tics only on lane branches: run-suite 307, subagent 163, orchestrator 150, test-writer 33, implementer 31. Fleet days across all branches: **490 of 1,596 in red/green/refactor**. Lane run-suite: 235 red, 33 green, 39 stuck |
+| Addressing | 819 of 990 fleet-day tics broadcast (817 `fleet`, 2 `*`); **all 18 `assign` tics to `fleet`**, the addressee named only in prose |
+| Off-bus channel (the coordinator's DM log, 10-22 15:48Z on) | leader↔coordinator **255** direct messages (206 sent by the coordinator in all, 160 received), against the leader's 18 bus `assign` tics. Most sends returned "delivery not confirmed" |
 | Correlated outage | 10-22 12:17–12:38: leader, coordinator, macM1 and macm12 all at usage limits (one account); no tic 12:38 → 15:22. Cloud lanes silent up to 7.5 h |
 | Briefs that never landed | 3 lanes briefed while idle never acknowledged and never posted. The lead found out only at a stall check (seq 1401) |
 
