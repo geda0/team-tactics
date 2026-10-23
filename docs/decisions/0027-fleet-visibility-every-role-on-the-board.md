@@ -30,8 +30,9 @@ every existing bus legible today.
 1. **Identity fallback.** A member is keyed by its `session` when it has one. A tic with no session (empty, or
    the `*` wildcard) counts toward a role member keyed by its `from`, shown as `<role> (no session)`. The missing
    id is itself made visible, so the gap nudges N4 instead of hiding.
-2. **Hook telemetry is not a member.** `signal` and `block` tics without a session (run-suite, guard) are the
-   referee's telemetry, not a participant, so they never create a member.
+2. **The referee is not a member.** A tic without a session from a hook identity (`run-suite`, `guard`, which
+   also emit `need`, `claim` and `stuck`) or of a hook-only kind (`signal`, `block`, `commit`, `session`, per
+   ADR 0014 §3, plus `stuck`) is telemetry, not a participant, so it never creates a member.
 3. **Collisions stay session-only.** Two roles without session ids on one scope are not evidence of two live
    sessions, so the collision fold is unchanged (no false alarms).
 4. **Liveness and STUCK apply to role members** exactly as to sessions: last tic → live / idle / stale. A role
@@ -41,7 +42,7 @@ every existing bus legible today.
 
 - **V1:** on a bus where a role emits with no session id, `fleetModel` lists that role as a member with its last ts
   and liveness, and the board row names it with `(no session)`.
-- **V2:** `signal` / `block` tics with no session create no member.
+- **V2:** hook telemetry with no session (the hook identities, or a hook-only kind) creates no member.
 - **V3:** a stale role member holding an active no-session claim is STUCK; two no-session roles on one scope are
   not a collision.
 

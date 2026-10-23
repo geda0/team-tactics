@@ -247,6 +247,15 @@ function livenessTier(lastTs, nowMs, idleSec, staleSec) {
 // Active claims for a target dir (claim minus release, minus release-on-section-done).
 // The single entry every claim consumer uses.
 function claimsFor(targetDir, tics) { return activeClaims(tics); }
+// Who a tic counts toward on the board (ADR 0027): its session, else its role shown as "<from> (no session)",
+// so a lead that never sets TICS_SESSION is still visible. The referee is not a member: the hook identities
+// (run-suite, guard) and the hook-only kinds (ADR 0014 §3) create none.
+const HOOK_FROM = new Set(["run-suite", "guard"]), HOOK_KINDS = new Set(["signal", "block", "commit", "session", "stuck"]);
+function memberId(x) {
+  if (x.session && x.session !== "*") return x.session;
+  if (!x.from || HOOK_FROM.has(x.from) || HOOK_KINDS.has(x.kind)) return "";
+  return x.from + " (no session)";
+}
 // Fleet model: fold the bus into members grouped by held scope, with liveness tiers.
 // opts.nowMs injectable for tests; idleSec/staleSec come from tdd.config with defaults.
 function fleetModel(targetDir, tics, opts) {
@@ -259,10 +268,10 @@ function fleetModel(targetDir, tics, opts) {
   const sessLatest = new Map();
   const scopeSessions = new Map(); // scope -> Set of distinct sessions (for collision detection)
   for (const x of tics) {
-    const id = x.session || "";
+    const id = memberId(x);
     if (id) { const ts = x.ts || ""; if (ts > (sessLatest.get(id) || "")) sessLatest.set(id, ts); }
-    const sc = x.scope || "";
-    if (sc && sc !== "*" && id && id !== "*") { let s = scopeSessions.get(sc); if (!s) { s = new Set(); scopeSessions.set(sc, s); } s.add(id); }
+    const sc = x.scope || "", ss = x.session || "";   // collisions stay session-only (ADR 0027 §3)
+    if (sc && sc !== "*" && ss && ss !== "*") { let s = scopeSessions.get(sc); if (!s) { s = new Set(); scopeSessions.set(sc, s); } s.add(ss); }
   }
   const activeCls = claimsFor(targetDir, tics);
   const sessScope = new Map();
