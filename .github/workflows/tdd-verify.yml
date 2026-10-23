@@ -1,4 +1,4 @@
-# team-tactics CI — the package's own suite + a real install/selftest smoke.
+# team-tactics CI — the monorepo's own suite + a real install/selftest smoke, as a user would run it.
 name: tdd-verify
 on:
   push:
@@ -9,10 +9,14 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
-        with: { node-version: 20 }
-      - run: node --test
+        with: { node-version: 20, cache: npm }
+      # The workspaces are linked by the install; without it every require("@ttics/*") fails.
+      - run: npm ci
+      # `npm test` (workspaces), NOT a bare `node --test` — CI must run the same command a
+      # developer runs locally, or a break like this one stays invisible in CI.
+      - run: npm test
       - name: install + gate selftest (as a user would)
         run: |
           tmp="$(mktemp -d)"
-          node bin/cli.js "$tmp"
-          node bin/cli.js selftest "$tmp"
+          node packages/team-tactics/bin/cli.js "$tmp"
+          node packages/team-tactics/bin/cli.js selftest "$tmp"
