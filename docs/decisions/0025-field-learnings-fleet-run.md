@@ -180,7 +180,7 @@ principle.
   fold names that role as one to staff.
 - **P7 (N11):** an `assign` with no addressee tic citing it within N minutes shows as unacknowledged on the board.
   A citing tic clears it.
-- **P9 (N13):** with no hook-emitted tic or marker since session start, `tics cycle` reports the referee unarmed,
-  and a green from that window is classified self-reported. One hook marker arms it.
 - **P8 (N12):** an `assign` declaring `needs: <ref>` is reported blocked while no tic satisfies `<ref>`, and open
   once one does.
+- **P9 (N13):** with no hook-emitted tic or marker since session start, `tics cycle` reports the referee unarmed,
+  and a green from that window is classified self-reported. One hook marker arms it.
