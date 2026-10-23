@@ -249,11 +249,12 @@ function livenessTier(lastTs, nowMs, idleSec, staleSec) {
 function claimsFor(targetDir, tics) { return activeClaims(tics); }
 // Who a tic counts toward on the board (ADR 0027): its session, else its role shown as "<from> (no session)",
 // so a lead that never sets TICS_SESSION is still visible. The referee is not a member: the hook identities
-// (run-suite, guard) and the hook-only kinds (ADR 0014 §3) create none.
-const HOOK_FROM = new Set(["run-suite", "guard"]), HOOK_KINDS = new Set(["signal", "block", "commit", "session", "stuck"]);
+// tic.sh reserves (agents cannot self-assert them) create none. Excluded by identity only, never by kind:
+// tic.sh lets agents emit any kind, so a signal-only role (dev-ops) is still a member (ADR 0027 §2, V4).
+const HOOK_IDENTITIES = new Set(["subagent", "run-suite", "guard", "witness"]);
 function memberId(x) {
   if (x.session && x.session !== "*") return x.session;
-  if (!x.from || HOOK_FROM.has(x.from) || HOOK_KINDS.has(x.kind)) return "";
+  if (!x.from || HOOK_IDENTITIES.has(x.from)) return "";
   return x.from + " (no session)";
 }
 // Fleet model: fold the bus into members grouped by held scope, with liveness tiers.
@@ -745,4 +746,4 @@ function ticsLandmarks(targetDir, all) {
   }
   return 0;
 }
-module.exports = { loadTics, loadSignalEvents, ticsLog, ticsInbox, ticsConductor, ticsClaims, ticsSections, ticsCycle, ticsGate, claimCheck, claimCheckCli, claimOwner, claimOwnerCli, claimSession, claimSessionCli, sectionStatus, sectionStatusCli, livenessTier, fleetModel, ticsBoard, ticsRoster, ticsReview, ticsAnswer, fanOut, greenAttestation, attestationTally, isHookSignedRed, cfgStr, evidenceFor, openNeeds, main, toolTally, ticsLandmarks, landmarkMap, ticsWhere, ticsHow };
+module.exports = { HOOK_IDENTITIES, loadTics, loadSignalEvents, ticsLog, ticsInbox, ticsConductor, ticsClaims, ticsSections, ticsCycle, ticsGate, claimCheck, claimCheckCli, claimOwner, claimOwnerCli, claimSession, claimSessionCli, sectionStatus, sectionStatusCli, livenessTier, fleetModel, ticsBoard, ticsRoster, ticsReview, ticsAnswer, fanOut, greenAttestation, attestationTally, isHookSignedRed, cfgStr, evidenceFor, openNeeds, main, toolTally, ticsLandmarks, landmarkMap, ticsWhere, ticsHow };

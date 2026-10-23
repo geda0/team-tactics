@@ -30,9 +30,12 @@ every existing bus legible today.
 1. **Identity fallback.** A member is keyed by its `session` when it has one. A tic with no session (empty, or
    the `*` wildcard) counts toward a role member keyed by its `from`, shown as `<role> (no session)`. The missing
    id is itself made visible, so the gap nudges N4 instead of hiding.
-2. **The referee is not a member.** A tic without a session from a hook identity (`run-suite`, `guard`, which
-   also emit `need`, `claim` and `stuck`) or of a hook-only kind (`signal`, `block`, `commit`, `session`, per
-   ADR 0014 §3, plus `stuck`) is telemetry, not a participant, so it never creates a member.
+2. **The referee is not a member, by identity only.** A tic without a session from one of the four hook
+   identities that `tic.sh` reserves (`subagent`, `run-suite`, `guard`, `witness`), which agents cannot
+   self-assert, is telemetry, not a participant, so it never creates a member. Kinds are **not** filtered:
+   `tic.sh` lets agents emit any kind (`signal`, `block`, `stuck`, ...); ADR 0014 §3's kind list governs only the
+   MCP emit surface. On the fleet bus, filtering by kind hid dev-ops entirely, since it only ever emits signals.
+   The view's `HOOK_IDENTITIES` is single-sourced with `tic.sh`'s reserved list (a test pins them equal).
 3. **Collisions stay session-only.** Two roles without session ids on one scope are not evidence of two live
    sessions, so the collision fold is unchanged (no false alarms).
 4. **Liveness and STUCK apply to role members** exactly as to sessions: last tic → live / idle / stale. A role
@@ -42,14 +45,19 @@ every existing bus legible today.
 
 - **V1:** on a bus where a role emits with no session id, `fleetModel` lists that role as a member with its last ts
   and liveness, and the board row names it with `(no session)`.
-- **V2:** hook telemetry with no session (the hook identities, or a hook-only kind) creates no member.
+- **V2:** hook telemetry with no session (a tic from one of the hook identities `tic.sh` reserves) creates no
+  member. Kind alone never excludes a tic.
 - **V3:** a stale role member holding an active no-session claim is STUCK; two no-session roles on one scope are
   not a collision.
+- **V4:** a role that only emits hook-like kinds (e.g. dev-ops, signals only) is a member; every hook identity
+  `tic.sh` reserves (`subagent`, `run-suite`, `guard`, `witness`) creates none, and the view's list matches
+  `tic.sh`'s.
 
 ## Slices (red→green, one behavior each)
 
 1. **V1 + V2**: the identity fallback and the telemetry exclusion (one fold change).
 2. **V3**: STUCK and collisions for role members.
+3. **V4**: exclusion by identity only (single-sourced with tic.sh), never by kind.
 
 ## Consequences
 
