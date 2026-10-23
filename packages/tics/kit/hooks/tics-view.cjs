@@ -276,7 +276,8 @@ function fleetModel(targetDir, tics, opts) {
   const activeCls = claimsFor(targetDir, tics);
   const sessScope = new Map();
   for (const x of activeCls.values()) {
-    if (x.session && x.scope && x.scope !== "*") sessScope.set(x.session, x.scope);
+    const id = memberId(x);   // a no-session role's claim holds a scope too (ADR 0027 V3)
+    if (id && x.scope && x.scope !== "*") sessScope.set(id, x.scope);
   }
   const members = [];
   for (const [id, lastTs] of sessLatest.entries()) {
