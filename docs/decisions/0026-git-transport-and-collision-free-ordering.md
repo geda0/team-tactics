@@ -100,11 +100,16 @@ checkout and let the next emit recreate it).
 - **P4 (stable order):** two readers on different hosts render the same merged bus in the same order.
 - **P5 (project tree untouched):** after emits under `TIC_STORE=git`, `git status` of the project's own tree is
   unchanged.
+- **P6 (the reader sees the bus):** with `TIC_STORE=git` (from `tdd.config` or the environment), `tics log` lists
+  the tics in `TICS_GIT_DIR/tics.d/`, including ones another host published, which it fetches on read. With the
+  remote unreachable it still lists the local ones and exits 0, and a read never drops a local unpushed tic.
 
 ## Slices (red→green, one behavior each)
 
 1. **P1**: emit publishes to a bare remote, concurrent and lossless (the push-retry loop).
 2. **P5**: the bus lives in `TICS_GIT_DIR`; the project tree is untouched.
+2b. **P6**: the reader reads the git bus (fetch on read, offline-safe). Added after dogfooding: P1 and P5 shipped
+   a bus the fleet could write but not read, because no predicate covered the read side.
 3. **P3**: offline emit plus `tics sync`.
 4. **P2 + P4**: the reader orders by (ts, session, filename) and identifies by filename.
 5. Docs: `tic-protocol.md` store section, and `tdd.config` keys.
