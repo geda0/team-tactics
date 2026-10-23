@@ -1266,3 +1266,29 @@ test("P5 (ADR 0026): TIC_STORE=git — emits leave the project's own git tree un
     for (const p of [remote, d]) fs.rmSync(p, { recursive: true, force: true });
   }
 });
+
+test("P6 (ADR 0026): TIC_STORE=git — tics log lists local and other-host tics (fetched on read), and stays offline-safe", () => {
+  const remote = fs.mkdtempSync(path.join(os.tmpdir(), "tics-remote-")), gone = remote + "-gone";
+  const hostA = inst("git"), hostB = inst("git");
+  // TICS_REMOTE lives in each install's tdd.config, so emit and read both see it with no env plumbing
+  for (const d of [hostA, hostB]) fs.appendFileSync(path.join(d, ".claude", "tdd.config"), 'TICS_REMOTE="' + remote + '"\n');
+  try {
+    git(remote, "init", "-q", "--bare");
+    assert.strictEqual(srcLib(hostA, "emit_tic a '*' note from-A").status, 0);
+    assert.strictEqual(srcLib(hostB, "emit_tic b '*' note from-B").status, 0);
+    const online = read(hostA, "log");
+    assert.strictEqual(online.status, 0, online.stderr);
+    assert.match(online.stdout, /from-A/, "the local tic is listed: " + online.stdout);
+    assert.match(online.stdout, /from-B/, "the other host's tic is fetched on read: " + online.stdout);
+    // the remote goes away; A emits a tic that cannot be pushed
+    fs.renameSync(remote, gone);
+    assert.strictEqual(srcLib(hostA, "emit_tic a '*' note offline-A").status, 0);
+    const offline = read(hostA, "log");
+    assert.strictEqual(offline.status, 0, "an offline read still exits 0: " + offline.stderr);
+    assert.match(offline.stdout, /offline-A/, "a local unpushed tic is never dropped: " + offline.stdout);
+    assert.match(offline.stdout, /from-A/, "earlier local tics are still listed offline");
+    assert.match(offline.stdout, /from-B/, "already-fetched tics are still listed offline");
+  } finally {
+    for (const p of [remote, gone, hostA, hostB]) fs.rmSync(p, { recursive: true, force: true });
+  }
+});
