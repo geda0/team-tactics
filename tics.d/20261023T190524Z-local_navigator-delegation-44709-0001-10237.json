@@ -1,0 +1,1 @@
+{"ts":"2026-10-23T19:05:24Z","seq":151,"kind":"handoff","from":"dev-ops","to":"project-manager","phase":"off","layer":"app","scope":"app","session":"local_navigator-delegation","msg":"v0.71.0 released at f1405f2: tag pushed, tdd-verify main+tag and release-tarball green, ttics-0.71.0.tgz on the Release; npm test 331/330 pass/0 fail/1 skip","ref":"release-0.71.0","result":"done"}
