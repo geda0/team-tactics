@@ -18,7 +18,10 @@ emit_tic() {
   _tf="${TICS_FILE:-$ROOT/.claude/state/tics.jsonl}"
   _td="${TICS_DIR:-$ROOT/.claude/state/tics.d}"
   mkdir -p "$ROOT/.claude/state" 2>/dev/null || true
-  [ "${TIC_STORE:-jsonl}" = "git" ] && { _tic_git_open; _td="$_gd/tics.d"; }
+  # ADR 0026: hook-identity telemetry stays local (jsonl), never touching the git bus.
+  _ts="${TIC_STORE:-jsonl}"
+  case "$1" in subagent|run-suite|guard|witness) [ "$_ts" = "git" ] && _ts=jsonl ;; esac
+  [ "$_ts" = "git" ] && { _tic_git_open; _td="$_gd/tics.d"; }
   _seq=$(( $({ cat "$_tf" 2>/dev/null; cat "$_td"/*.json 2>/dev/null; } | wc -l) + 1 ))
   _ph="$(cat "$ROOT/.claude/state/phase" 2>/dev/null || echo unknown)"
   _ly="$(cat "$ROOT/.claude/state/layer" 2>/dev/null || echo unknown)"
@@ -34,7 +37,7 @@ emit_tic() {
     "$(_tic_esc "${3:-note}")" "$(_tic_esc "${1:-?}")" "$(_tic_esc "${2:-*}")" \
     "$(_tic_esc "$_ph")" "$(_tic_esc "$_ly")" "$(_tic_esc "$_sc")" "$(_tic_esc "$_se")" \
     "$(_tic_esc "${4:-}")" "$(_tic_esc "${5:-}")" "$(_tic_esc "${6:-}")" "${7:-}")"
-  if [ "${TIC_STORE:-jsonl}" = "git" ] || [ "${TIC_STORE:-jsonl}" = "spool" ]; then
+  if [ "$_ts" = "git" ] || [ "$_ts" = "spool" ]; then
     mkdir -p "$_td" 2>/dev/null || true
     _TIC_N=$(( ${_TIC_N:-0} + 1 ))
     _stamp="$(date -u +%Y%m%dT%H%M%SZ)"; _org="${_se:-$(hostname -s 2>/dev/null || echo host)}"
@@ -50,7 +53,7 @@ emit_tic() {
     _out="$_tf"
     printf '%s\n' "$_tic_line" >> "$_out" 2>/dev/null || true
   fi
-  [ "${TIC_STORE:-jsonl}" = "git" ] && _tic_git_publish "$_out"
+  [ "$_ts" = "git" ] && _tic_git_publish "$_out"
   return 0
 }
 
