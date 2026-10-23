@@ -1,0 +1,1 @@
+{"ts":"2026-10-23T16:46:25Z","seq":73,"kind":"delegate","from":"project-manager","to":"dev-ops","phase":"off","layer":"app","scope":"app","session":"local_navigator-delegation","msg":"cut release v0.69.0: lockstep bump (4 package.json + internal @ttics pins + lockfile), commit, tag, push; verify the release workflow","ref":"release-0.69.0","result":""}
