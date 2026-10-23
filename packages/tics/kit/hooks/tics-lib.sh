@@ -60,8 +60,9 @@ _tic_git_open() {
   _tic_git init -q 2>/dev/null
   _tic_git_hide
   _tic_git remote add origin "${TICS_REMOTE:-}" 2>/dev/null
-  if _tic_git fetch -q origin "$_gb" 2>/dev/null; then _tic_git checkout -q -B "$_gb" FETCH_HEAD 2>/dev/null
-  else _tic_git checkout -q --orphan "$_gb" 2>/dev/null; fi
+  # P3 local first: no fetch here. The tic is committed before any network call; a remote bus branch is
+  # integrated by the push's non-fast-forward retry (rebase), and the reader unions the tracking tree.
+  _tic_git checkout -q --orphan "$_gb" 2>/dev/null
 }
 # P5: when the bus checkout sits inside the project's own git tree, list it in the project's info/exclude
 # (never a tracked .gitignore), so emits leave the project's status and HEAD untouched.
@@ -75,15 +76,80 @@ _tic_git_hide() {
   mkdir -p "$(dirname "$_ex")" 2>/dev/null || true
   grep -qxF "$_rel" "$_ex" 2>/dev/null || printf '%s\n' "$_rel" >> "$_ex" 2>/dev/null || true
 }
-# Commit the one new tic file, then push; on a rejected push fetch + rebase + retry (bounded, jittered).
-# If every try fails the tic stays committed locally and rides out with the next emit's push.
+# Commit the one new tic file, then publish it (P3: bounded, never hangs, never drops the tic).
 _tic_git_publish() {
   _tic_git add -- "${1#"$_gd"/}" 2>/dev/null && _tic_git commit -q -m "tic" 2>/dev/null || return 0
+  _tic_net_backoff && return 0
+  _tic_git_push || true
+  return 0
+}
+# Push HEAD to the bus branch. Only a non-fast-forward rejection is retried (fetch + rebase + push, bounded by
+# TICS_PUSH_TRIES, jittered); a timeout or network error is not, and records the failure (attempt stamp +
+# fail marker) so emits and reads inside TICS_FETCH_TTL skip the network. Unpublished tics stay committed
+# locally and ride out with the next push or `tics sync`. Returns 0 when published.
+_tic_git_push() {
   _n=0
-  until _tic_git push -q origin "HEAD:refs/heads/$_gb" 2>/dev/null; do
-    _n=$((_n + 1)); [ "$_n" -ge "${TICS_PUSH_TRIES:-8}" ] && return 0
-    _tic_git fetch -q origin "$_gb" 2>/dev/null && _tic_git rebase -q FETCH_HEAD >/dev/null 2>&1
+  while :; do
+    _tic_net push origin "HEAD:refs/heads/$_gb"; _rc=$?
+    [ "$_rc" -eq 0 ] && { _tic_net_ok; return 0; }
+    [ "$_rc" -eq 2 ] || { _tic_net_fail; return 1; }
+    _n=$((_n + 1)); [ "$_n" -ge "${TICS_PUSH_TRIES:-8}" ] && return 1
+    _tic_net fetch -q origin "$_gb" || { _tic_net_fail; return 1; }
+    _tic_git rebase -q FETCH_HEAD >/dev/null 2>&1 || _tic_git rebase --abort >/dev/null 2>&1
     sleep "0.$(( (RANDOM % 4) + 1 ))"
   done
+}
+# Run one networked git command under a watchdog: TICS_NET_TIMEOUT seconds (default 5), pure bash (macOS has no
+# timeout(1)). git and the sleeper each run in their own process group (set -m), so expiry kills git with its
+# ssh/helper children, and a git that finishes first takes the sleeper down with it. Nothing is left running.
+# Returns 0 ok, 2 rejected (non-fast-forward or a lost ref race), 1 timeout or any other failure.
+_tic_net() {
+  _ne="$_gd/.git/tics-net.err"; _om=; case $- in *m*) _om=1 ;; esac
+  {
+    set -m
+    GIT_TERMINAL_PROMPT=0 _tic_git "$@" >/dev/null 2>"$_ne" </dev/null & _np=$!
+    ( sleep "${TICS_NET_TIMEOUT:-5}"; kill -KILL -- -"$_np" ) </dev/null >/dev/null 2>&1 & _wp=$!
+    wait "$_np"; _nrc=$?
+    kill -KILL -- -"$_wp"; wait "$_wp"
+    [ -n "$_om" ] || set +m
+  } 2>/dev/null
+  [ "$_nrc" -eq 0 ] && return 0
+  # a lost race on the remote ref (another emitter updated it mid-push) is a rejection too, not a network error
+  grep -qE '\[rejected\]|non-fast-forward|fetch first|cannot lock ref|failed to update ref' "$_ne" 2>/dev/null && return 2
+  return 1
+}
+# The network-failure record, shared with the reader (tics-view.cjs gitStore): the attempt stamp drives the
+# reader's fetch TTL; the fail marker (epoch seconds) tells emits the last attempt failed.
+_tic_net_fail() {
+  date -u +%Y-%m-%dT%H:%M:%SZ > "$_gd/.git/tics-fetch-attempt" 2>/dev/null
+  date +%s > "$_gd/.git/tics-net-failed" 2>/dev/null
+  return 0
+}
+# A successful push leaves origin/<branch> equal to what was pushed, so it also refreshes the success stamp.
+_tic_net_ok() {
+  rm -f "$_gd/.git/tics-net-failed" 2>/dev/null
+  date -u +%Y-%m-%dT%H:%M:%SZ > "$_gd/.git/tics-fetch-stamp" 2>/dev/null
+  return 0
+}
+# True (skip the network) when the last attempt failed less than TICS_FETCH_TTL seconds ago (default 60).
+_tic_net_backoff() {
+  _nf="$(cat "$_gd/.git/tics-net-failed" 2>/dev/null)"
+  case "$_nf" in '' | *[!0-9]*) return 1 ;; esac
+  [ $(( $(date +%s) - _nf )) -lt "${TICS_FETCH_TTL:-60}" ]
+}
+# `tics sync` (ADR 0026 P3): publish every unpushed local tic, ignoring the TTL (an explicit request), then
+# refresh the remote-tracking ref for the reader. Idempotent; always returns 0.
+tics_sync() {
+  [ "${TIC_STORE:-jsonl}" = "git" ] || { echo "tics sync: TIC_STORE is not git; nothing to publish"; return 0; }
+  _tic_git_open
+  if [ -d "$_gd/tics.d" ]; then
+    _tic_git add -- tics.d 2>/dev/null
+    _tic_git diff --cached --quiet 2>/dev/null || _tic_git commit -q -m "tic" 2>/dev/null
+  fi
+  _tic_git rev-parse -q --verify HEAD >/dev/null 2>&1 || { echo "tics sync: no local tics"; return 0; }
+  if ! _tic_git_push; then echo "tics sync: remote unreachable; local tics kept, retry later"; return 0; fi
+  date -u +%Y-%m-%dT%H:%M:%SZ > "$_gd/.git/tics-fetch-attempt" 2>/dev/null
+  _tic_net fetch -q origin "+$_gb:refs/remotes/origin/$_gb" && _tic_net_ok
+  echo "tics sync: published to origin/$_gb"
   return 0
 }

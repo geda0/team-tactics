@@ -78,6 +78,16 @@ function gitBusTics(gs) {
   } catch (e) {}
   return files;
 }
+// `tics sync` (ADR 0026 P3): publish unpushed local tics. The push logic lives once, in tics-lib.sh (next to
+// this reader in both the kit and an install); ROOT points it at the target's config and bus. Always exits 0.
+function ticsSync(targetDir) {
+  const lib = path.join(__dirname, "tics-lib.sh");
+  const env = Object.assign({}, process.env, { ROOT: targetDir });
+  for (const k of ["GIT_DIR", "GIT_WORK_TREE", "GIT_INDEX_FILE", "GIT_PREFIX", "GIT_COMMON_DIR"]) delete env[k];
+  const r = cp.spawnSync("bash", ["-c", '. "$1"; tics_sync', "tics-sync", lib], { cwd: targetDir, env, encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] });
+  if (r.stdout) process.stdout.write(r.stdout);
+  return 0;
+}
 function busFreshness(targetDir) {
   const gs = gitStore(targetDir);
   if (!gs) return null;
@@ -646,7 +656,8 @@ function main(argv, defaultRoot) {
     case "roster": return ticsRoster(target);
     case "review": return ticsReview(target, scope, all);
     case "answer": return ticsAnswer(target, ansHandle, ansText, fromRole, all);
-    default: console.error("usage: tics <log [--scope S] | inbox <role> [--scope S] | conductor | claims | sections | board | roster | review | answer <handle> \"<text>\" | claim-check <file> <scope> | claim-owner <file> | section-status <name> | fan-out <spec>] [--all]>"); return 2;
+    case "sync": return ticsSync(target);
+    default: console.error("usage: tics <log [--scope S] | inbox <role> [--scope S] | conductor | claims | sections | board | roster | review | answer <handle> \"<text>\" | sync | claim-check <file> <scope> | claim-owner <file> | section-status <name> | fan-out <spec>] [--all]>"); return 2;
   }
 }
 if (require.main === module) {
@@ -817,4 +828,4 @@ function ticsLandmarks(targetDir, all) {
   }
   return 0;
 }
-module.exports = { HOOK_IDENTITIES, setFetch, loadTics, loadSignalEvents, ticsLog, ticsInbox, ticsConductor, ticsClaims, ticsSections, ticsCycle, ticsGate, claimCheck, claimCheckCli, claimOwner, claimOwnerCli, claimSession, claimSessionCli, sectionStatus, sectionStatusCli, livenessTier, fleetModel, ticsBoard, ticsRoster, ticsReview, ticsAnswer, fanOut, greenAttestation, attestationTally, isHookSignedRed, cfgStr, evidenceFor, openNeeds, main, toolTally, ticsLandmarks, landmarkMap, ticsWhere, ticsHow };
+module.exports = { HOOK_IDENTITIES, setFetch, ticsSync, loadTics, loadSignalEvents, ticsLog, ticsInbox, ticsConductor, ticsClaims, ticsSections, ticsCycle, ticsGate, claimCheck, claimCheckCli, claimOwner, claimOwnerCli, claimSession, claimSessionCli, sectionStatus, sectionStatusCli, livenessTier, fleetModel, ticsBoard, ticsRoster, ticsReview, ticsAnswer, fanOut, greenAttestation, attestationTally, isHookSignedRed, cfgStr, evidenceFor, openNeeds, main, toolTally, ticsLandmarks, landmarkMap, ticsWhere, ticsHow };

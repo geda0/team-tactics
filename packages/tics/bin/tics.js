@@ -7,7 +7,7 @@ const { TV, PKG, installTics } = require("../index.js");
 const argv = process.argv.slice(2);
 let scope = null, all = true, fromRole = null, showWitness = false; const rest = [];   // whole-picture by default (merge every worktree's bus); --here restricts to the local bus
 for (let i = 0; i < argv.length; i++) { const a = argv[i]; if (a === "--scope") scope = argv[++i] || ""; else if (a === "--all") all = true; else if (a === "--here") all = false; else if (a === "--from") fromRole = argv[++i] || null; else if (a === "--witness") showWitness = true; else if (a === "--fetch") TV.setFetch(true); else rest.push(a); }
-const KNOWN = ["log", "inbox", "conductor", "claims", "sections", "board", "roster", "review", "cycle", "gate", "claim-check", "answer", "init", "install", "update", "selftest", "mcp", "mcp-install", "help"];
+const KNOWN = ["log", "inbox", "conductor", "claims", "sections", "board", "roster", "review", "cycle", "gate", "claim-check", "answer", "sync", "init", "install", "update", "selftest", "mcp", "mcp-install", "help"];
 const cmd = KNOWN.indexOf(rest[0]) !== -1 ? rest.shift() : "help";
 const role = cmd === "inbox" ? rest.shift() : null;
 const cfFile = cmd === "claim-check" ? rest.shift() : null;
@@ -29,6 +29,7 @@ if (cmd === "roster") process.exit(TV.ticsRoster(target));
 if (cmd === "review") process.exit(TV.ticsReview(target, scope, all));
 if (cmd === "claim-check") process.exit(TV.claimCheckCli(target, cfFile, cfScope));
 if (cmd === "answer") process.exit(TV.ticsAnswer(target, ansHandle, ansText, fromRole, all));
+if (cmd === "sync") process.exit(TV.ticsSync(target));
 if (cmd === "selftest") process.exit(selftest(target));
 if (cmd === "init" || cmd === "install" || cmd === "update") { installTics(target); console.log("@ttics/tics " + PKG.version + " installed in " + target); process.exit(0); }
 if (cmd === "mcp-install") {
