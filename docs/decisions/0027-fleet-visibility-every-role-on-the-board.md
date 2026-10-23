@@ -35,7 +35,7 @@ every existing bus legible today.
    self-assert, is telemetry, not a participant, so it never creates a member. Kinds are **not** filtered:
    `tic.sh` lets agents emit any kind (`signal`, `block`, `stuck`, ...); ADR 0014 §3's kind list governs only the
    MCP emit surface. On the fleet bus, filtering by kind hid dev-ops entirely, since it only ever emits signals.
-   The view's `HOOK_IDENTITIES` is single-sourced with `tic.sh`'s reserved list (a test pins them equal).
+   The view's `HOOK_IDENTITIES` duplicates `tic.sh`'s reserved list (bash and JS can't share a constant); a drift-guard test pins them equal.
 3. **Collisions stay session-only.** Two roles without session ids on one scope are not evidence of two live
    sessions, so the collision fold is unchanged (no false alarms).
 4. **Liveness and STUCK apply to role members** exactly as to sessions: last tic → live / idle / stale. A role
@@ -57,7 +57,9 @@ every existing bus legible today.
 
 1. **V1 + V2**: the identity fallback and the telemetry exclusion (one fold change).
 2. **V3**: STUCK and collisions for role members.
-3. **V4**: exclusion by identity only (single-sourced with tic.sh), never by kind.
+3. **V4**: exclusion by identity only (duplicated from tic.sh, pinned equal by a drift-guard test), never by kind.
+4. **Pins from the tdd-critic audit**: the board row renders `<role> (no session)` with its tier, and a `*` session
+   counts toward its role (both mutation-proven).
 
 ## Consequences
 

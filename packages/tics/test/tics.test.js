@@ -310,6 +310,18 @@ test("E7-2: tics board groups members by scope (unscoped bucket) with a liveness
   }
 });
 
+test("V1r (ADR 0027): tics board renders a no-session role as \"<from> (no session)\", its long id never running into the tier", () => {
+  const d = inst();
+  try {
+    fs.rmSync(path.join(d, ".claude", "state", "session"), { force: true });   // no fallback session id either
+    srcLib(d, "export TICS_SESSION=''; emit_tic contract-auditor '*' note hi");
+    assert.strictEqual(ticsOf(d).pop().session, "", "precondition: the tic carries no session");
+    const b = read(d, "board");
+    assert.strictEqual(b.status, 0, "board renders: " + b.stderr);
+    assert.match(b.stdout, /contract-auditor \(no session\)\s+live\b/, "the role row reads '<from> (no session)' then at least one space, then its tier");
+  } finally { fs.rmSync(d, { recursive: true, force: true }); }
+});
+
 test("E7-3: tics board flags STUCK only for a held scope that is stale — never idle/live/unknown or unscoped", () => {
   const d = inst();
   try {
@@ -422,6 +434,15 @@ test("G1: fleetModel collision ignores the '*' wildcard session (no false collis
   assert.deepStrictEqual(dup && dup.sessions, ["sessX", "sessY"], "two real distinct sessions on a scope is a genuine collision");
 });
 
+test("V1w (ADR 0027): a tic with the '*' wildcard session counts toward its role (\"<from> (no session)\"), never a member named '*'", () => {
+  const TV = require(path.join(__dirname, "..", "kit", "hooks", "tics-view.cjs"));
+  const now = Date.UTC(2026, 9, 23, 0, 0, 0);
+  const ts = new Date(now - 5000).toISOString();
+  const tics = [{ seq: 1, kind: "note", from: "b", to: "*", session: "*", scope: "hot/S1", ts }];
+  const names = TV.fleetModel("/tmp/nonexistent-v1w", tics, { nowMs: now }).members.map((x) => x.session);
+  assert.deepStrictEqual(names, ["b (no session)"], 'the "*" wildcard is not a session: the tic counts toward its role, and no member is "*"');
+});
+
 test("V1+V2 (ADR 0027): fleetModel lists a role with no session id as a member (board shows it), but hook telemetry creates none", () => {
   const TV = require(path.join(__dirname, "..", "kit", "hooks", "tics-view.cjs"));
   const now = Date.UTC(2026, 9, 23, 0, 0, 0);
@@ -469,7 +490,9 @@ test("V4 (ADR 0027): a signal-only role is a member; every hook identity tic.sh 
     { seq: 3, kind: "note", from: "witness", to: "fleet", session: "", ts },
   ];
   const ticSh = fs.readFileSync(path.join(__dirname, "..", "kit", "hooks", "tic.sh"), "utf8");
-  const reserved = ticSh.match(/case "\$\{1:-\}" in (subagent\|[^)]*)\)/)[1].split("|").sort();
+  const reservedCase = ticSh.match(/case "\$\{1:-\}" in ([a-z-]+(?:\|[a-z-]+)+)\)/);   // any order of the reserved names
+  assert.ok(reservedCase, "tic.sh must still carry its hook-only FROM guard: case \"${1:-}\" in a|b|...)");
+  const reserved = reservedCase[1].split("|").sort();
   const m = TV.fleetModel("/tmp/nonexistent-v4", tics, { nowMs: now });
   const names = m.members.map((x) => x.session).sort();
   assert.deepStrictEqual(names, ["dev-ops (no session)"], "the signal-only role is a member; subagent/witness hook telemetry is not");
