@@ -310,9 +310,13 @@ function mergeSettings(targetDir) {
     try { existing = JSON.parse(fs.readFileSync(dest, "utf8")); }
     catch (e) { fs.copyFileSync(dest, dest + ".bak"); say("backup", ".claude/settings.json.bak (was invalid JSON)"); existing = {}; }
   }
-  const isKit = (g) => g && Array.isArray(g.hooks) && g.hooks.some((h) => h && typeof h.command === "string" && h.command.indexOf(".claude/hooks/") !== -1);
   const hooks = Object.assign({}, existing.hooks || {});
   const kitHooks = kitSettings.hooks || {};
+  const hookBase = (c) => { const m = /\.claude\/hooks\/([^\s"']+)/.exec(c); return m ? m[1] : null; };
+  const owned = new Set();
+  for (const gs of Object.values(kitHooks)) for (const g of gs) for (const h of (g.hooks || [])) { const b = h && typeof h.command === "string" && hookBase(h.command); if (b) owned.add(b); }
+  for (const rel of Object.keys(priorManifest.files || {})) { const m = /^\.claude\/hooks\/([^/]+)$/.exec(rel.split(path.sep).join("/")); if (m) owned.add(m[1]); }
+  const isKit = (g) => g && Array.isArray(g.hooks) && g.hooks.some((h) => { const b = h && typeof h.command === "string" && hookBase(h.command); return !!b && owned.has(b); });
   for (const ev of new Set(Object.keys(hooks).concat(Object.keys(kitHooks)))) {
     const combined = (hooks[ev] || []).filter((g) => !isKit(g)).concat(kitHooks[ev] || []);
     if (combined.length) hooks[ev] = combined; else delete hooks[ev];
