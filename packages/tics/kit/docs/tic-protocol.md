@@ -12,7 +12,7 @@ One JSON object per line in `.claude/state/tics.jsonl` (transient — gitignored
 | field | filled by | meaning |
 |-------|-----------|---------|
 | `ts` | auto | UTC ISO-8601 |
-| `seq` | auto | monotonic per-file counter |
+| `seq` | auto | advisory counter: the store's line count + 1 at emit, so not unique across hosts (identity is the filename, ADR 0026) |
 | `kind` | caller | one of the kinds below |
 | `from` / `to` | caller | emitter role / addressee role (`*` = broadcast) |
 | `phase` / `layer` | auto | from `.claude/state/{phase,layer}` |
@@ -98,7 +98,11 @@ live activity (tics, open claims, contracts, needs). Sections coordinate across 
 For parallel writers sharing one log, set `TIC_STORE=spool` in `.claude/tdd.config`: each tic
 becomes its own file under `.claude/state/tics.d/` — concurrency-safe (no shared-file append or
 seq race). Default `TIC_STORE=jsonl` (one append-only file) suits a single session; the views
-merge either store transparently. SQLite is intentionally avoided — it would break the zero-dep
+merge either store transparently. For several hosts and sessions, `TIC_STORE=git` (ADR 0026) commits one file per
+tic to a bus branch of `TICS_REMOTE`: emits commit locally first and push under a watchdog, readers show the union
+of local and fetched tics (`bus as of <time>` on `log`/`board`, `log --fetch` to refresh now), and `tics sync`
+publishes anything unpushed. Spool and git files are created exclusively and never appended to; a reader keeps
+every valid line of a file and `tics log` reports `N unparsable tic line(s) skipped`. SQLite is intentionally avoided — it would break the zero-dep
 / Node>=16 / bash-hook portability invariants for wins not needed at session scale.
 
 ## Parallel work — one git worktree per track (ADR 0015, supersedes 0002/0003/0004)

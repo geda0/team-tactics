@@ -48,6 +48,8 @@ Three store backends (set `TIC_STORE`):
   default 3 × `TICS_NET_TIMEOUT`); the push itself is never locked.
   Readers show the union of local and fetched tics, never modifying the checkout, and `log` / `board`
   print `bus as of <last fetch>` so stale data is visible. `tics sync` publishes unpushed tics.
+  Tic files are created exclusively and never appended to; a reader keeps every valid line of a file, and
+  `tics log` reports `N unparsable tic line(s) skipped` when it had to skip any.
 
 **Scope** is ambient and resolved per emit: `TICS_SCOPE` (per-call, for fan-out) → the
 `.claude/state/scope` file → the active layer → `*`. Convention: `<section>/<pair>`. `phase`

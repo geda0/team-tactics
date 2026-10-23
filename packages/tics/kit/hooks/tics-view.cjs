@@ -10,7 +10,6 @@ function storePaths(targetDir, ignoreEnv) {
   return { jsonl: (!ignoreEnv && process.env.TICS_FILE) || path.join(dir, "tics.jsonl"), spool: (!ignoreEnv && process.env.TICS_DIR) || path.join(dir, "tics.d") };
 }
 const SKIPPED_SET = new Set();   // keys of skipped lines (a file read via several worktree views counts once)
-let SKIPPED = 0;   // unparsable non-blank tic lines seen by loadTics since the last reset (surfaced only by tics log)
 function loadTics(targetDir, ignoreEnv) {
   const { jsonl, spool } = storePaths(targetDir, ignoreEnv);
   const out = [];
