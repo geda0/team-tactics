@@ -18,6 +18,7 @@ emit_tic() {
   _tf="${TICS_FILE:-$ROOT/.claude/state/tics.jsonl}"
   _td="${TICS_DIR:-$ROOT/.claude/state/tics.d}"
   mkdir -p "$ROOT/.claude/state" 2>/dev/null || true
+  [ "${TIC_STORE:-jsonl}" = "git" ] && { _tic_git_open; _td="$_gd/tics.d"; }
   _seq=$(( $({ cat "$_tf" 2>/dev/null; cat "$_td"/*.json 2>/dev/null; } | wc -l) + 1 ))
   _ph="$(cat "$ROOT/.claude/state/phase" 2>/dev/null || echo unknown)"
   _ly="$(cat "$ROOT/.claude/state/layer" 2>/dev/null || echo unknown)"
@@ -28,7 +29,10 @@ emit_tic() {
   # session identity (ADR 0002): which session emitted this tic — TICS_SESSION (per-process) else
   # .claude/state/session, else empty. Lets claims/commits tell which LIVE session owns what.
   _se="${TICS_SESSION:-$(cat "$ROOT/.claude/state/session" 2>/dev/null)}"
-  if [ "${TIC_STORE:-jsonl}" = "spool" ]; then
+  if [ "${TIC_STORE:-jsonl}" = "git" ]; then
+    mkdir -p "$_td" 2>/dev/null || true
+    _out="$_td/$(date -u +%Y%m%dT%H%M%SZ)-${_se:-$(hostname -s 2>/dev/null || echo host)}-$$-${RANDOM:-0}.json"
+  elif [ "${TIC_STORE:-jsonl}" = "spool" ]; then
     mkdir -p "$_td" 2>/dev/null || true
     _out="$_td/$(date -u +%Y%m%dT%H%M%SZ)-$$-${RANDOM:-0}.json"
   else
@@ -40,4 +44,33 @@ emit_tic() {
     "$(_tic_esc "$_ph")" "$(_tic_esc "$_ly")" "$(_tic_esc "$_sc")" "$(_tic_esc "$_se")" \
     "$(_tic_esc "${4:-}")" "$(_tic_esc "${5:-}")" "$(_tic_esc "${6:-}")" "${7:-}" \
     >> "$_out" 2>/dev/null || true
+  [ "${TIC_STORE:-jsonl}" = "git" ] && _tic_git_publish "$_out"
+  return 0
+}
+
+# TIC_STORE=git (ADR 0027): the bus is a branch (TICS_BRANCH, default tics-bus) of TICS_REMOTE, checked out in
+# TICS_GIT_DIR (default .claude/state/tics.git), never the project's own tree. Each tic is one NEW spool file, so
+# commits from different hosts touch disjoint paths: a rebase cannot conflict and a retried push loses nothing.
+_tic_git() { env -u GIT_DIR -u GIT_WORK_TREE -u GIT_INDEX_FILE -u GIT_PREFIX -u GIT_COMMON_DIR \
+  git -C "$_gd" -c user.name=tics -c user.email=tics@localhost "$@"; }
+_tic_git_open() {
+  _gd="${TICS_GIT_DIR:-$ROOT/.claude/state/tics.git}"; _gb="${TICS_BRANCH:-tics-bus}"
+  [ -d "$_gd/.git" ] && return 0
+  mkdir -p "$_gd" 2>/dev/null || true
+  _tic_git init -q 2>/dev/null
+  _tic_git remote add origin "${TICS_REMOTE:-}" 2>/dev/null
+  if _tic_git fetch -q origin "$_gb" 2>/dev/null; then _tic_git checkout -q -B "$_gb" FETCH_HEAD 2>/dev/null
+  else _tic_git checkout -q --orphan "$_gb" 2>/dev/null; fi
+}
+# Commit the one new tic file, then push; on a rejected push fetch + rebase + retry (bounded, jittered).
+# If every try fails the tic stays committed locally and rides out with the next emit's push.
+_tic_git_publish() {
+  _tic_git add -- "${1#"$_gd"/}" 2>/dev/null && _tic_git commit -q -m "tic" 2>/dev/null || return 0
+  _n=0
+  until _tic_git push -q origin "HEAD:refs/heads/$_gb" 2>/dev/null; do
+    _n=$((_n + 1)); [ "$_n" -ge "${TICS_PUSH_TRIES:-8}" ] && return 0
+    _tic_git fetch -q origin "$_gb" 2>/dev/null && _tic_git rebase -q FETCH_HEAD >/dev/null 2>&1
+    sleep "0.$(( (RANDOM % 4) + 1 ))"
+  done
+  return 0
 }
