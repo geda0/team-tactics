@@ -1,0 +1,1 @@
+{"ts":"2026-10-23T10:36:53Z","seq":23,"kind":"delegate","from":"orchestrator","to":"test-writer","phase":"red","layer":"app","scope":"app","session":"local_navigator-delegation","msg":"P6f red: dead (hanging) remote — after the first read, 3 consecutive reads (log + claim-check) each < 1 s, exit 0","ref":"adr-0026-P6","result":""}
