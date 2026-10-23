@@ -132,6 +132,16 @@ written. Hooks and agents both emit, so that froze sessions and broke the never-
 5. **Rejected: a detached asynchronous push.** It would outlive the session and race concurrent emits on the same
    checkout.
 
+**Hook telemetry stays local (architect contract adr-0026-hook-local).** With `TIC_STORE=git`, a tic whose `from` is a
+hook identity (`subagent`, `run-suite`, `guard`, `witness`: the one list `tic.sh` reserves and ADR 0027 pins) always
+goes to the local jsonl: no git commit, no network, no lock. Hooks fire on every tool use, suite run and subagent
+stop, so publishing them would put minutes of network latency inside hooks and flood a shared, possibly public, bus.
+Agent tics still publish. Readers already union jsonl and the git bus, so `tics gate` and `tics cycle` still see the
+hook-signed signals.
+- **P7 (hook-local):** under `TIC_STORE=git`, (a) a hook-identity emit creates no bus commit, starts no networked git
+  and returns in < 200 ms; (b) an agent emit right after it still publishes; (c) `tics gate` on a git-store install
+  still counts the hook-signed green.
+
 **The read side:**
 - `tics` with `TIC_STORE=git` reads the **union** of the checkout's working-tree `tics.d/` (local, including
   unpushed) and the fetched remote-tracking tree (`origin/<TICS_BRANCH>`, read with `ls-tree` / `cat-file`),
