@@ -52,6 +52,8 @@ tic. All counts are exact over the 1,490 records.
 | Status-like tics (status / note / signal / msg) | 780 (52%), against 330 decision-like (verdict / block / assign) |
 | Baseline suite at every session start | red (268 tests: 6 failures, 36 errors), warned by `session-green-check` every time and never fixed |
 | Peer sessions visible at close | ~55, most idle; several renamed by their job drifting ("build X" sessions doing Y) |
+| **The lead's own mix** (leader, 341 tics) | note 183, verdict 87, status 32, **assign 18**, claim 8 (its own), blocker 4, block 2. Most dispatches went by direct message rather than `assign`, so the bus undercounts delegation |
+| Briefs that never landed | 3 lanes briefed while idle never acknowledged and never posted. The lead found out only at a stall check (seq 1401) |
 
 ### What the adopter built by hand, and why
 
@@ -77,6 +79,13 @@ tic. All counts are exact over the 1,490 records.
    14.7% of tics carried a session id, so "who is lane 11, and is it alive?" took reading the thread.
 6. **Reading cost.** Half the bus was status traffic (52%). The leader alone posted 23% of all tics, and every role
    re-read the thread to find the decisions in it.
+7. **A lead that did instead of delegated.** This came from a separate review of roles and the reporting line, done
+   for the navigator. The leader's tics are mostly its own notes and verdicts (270 of 341), against 18 `assign` tics
+   and 8 claims of its own. Some of its own duties (the end-of-run resume refresh) fell to another role. Handoffs had
+   no acknowledgement: briefs to idle sessions sat unread, and nothing flagged them until a stall check (1401). Work
+   was also assigned before its dependency existed: one lane's scope changed four times, and one task was assigned
+   twice and never started. The fixed outer-loop roles show the mirror image: they existed and got no work
+   (qa-verifier 0, project-manager 0).
 
 ### What held up (keep it)
 
@@ -104,6 +113,9 @@ Treat this run as the pull the ROADMAP asks for, and split what it needs into th
 | **N7 Declared predicates on a scope**: e.g. `requires: pilot-verdict before curve`, or `kill: weak >= 0.96`. They are evaluated against evidence tics and fire as `block` tics | `@ttics/tdd` core, opt-in | The mechanical form of a kill line. Stays default-safe, as in 0017. |
 | **N8 Honest quarantine**: `quarantine <test> --owner --until`, with escalation when the baseline stays red across N sessions | `@ttics/tdd` core | A warning that never escalates was ignored for a week. Quarantine makes the red floor a dated debt instead of noise. |
 | **N9 A fleet role pack**: leader (dispatch), independent auditor (read-only, rulebook-keeping), lanes (builders), PM (clock and cap) | **new sibling package**, beside `team-tactics` | The fixed outer-loop roles didn't fit: qa-verifier 0 tics, project-manager 0, product-owner 3. Roles should be packs on one core. `team-tactics` stays one pack, and the fleet is another. |
+| **N10 Delegation-ratio fold for lead roles**: per lead, dispatch (`assign` + `delegate` + dispatching handoffs) against self-work (notes + own claims), with the lead's undone own duties flagged. The ADR 0006 solo-drift backstop, applied to the fleet lead | `@ttics/tics` reader (fold); the threshold lives in the fleet pack | §Context 7: 18 assigns against 270 notes and verdicts. A read-side fold over existing kinds, needing no bus change. It only counts what reaches the bus, so dispatch must go through tics (or be mirrored there) to be seen |
+| **N11 Acknowledged handoffs**: an `assign` / `delegate` / `handoff` stays *open* until its addressee emits a tic citing it. `tics board` flags it to the sender as unacknowledged after N minutes | `@ttics/tics` reader (fold over `ref`) | §Context 7 and seq 1401: briefs to idle sessions never landed, and nothing said so. Rides on N4 (who is alive) |
+| **N12 Dependency-gated assign**: an `assign` may declare `needs: <ref>`, and stays blocked, not delivered, until a tic satisfying `<ref>` exists | `@ttics/tdd` core, opt-in; a special case of N7 | §Context 7: one scope changed four times, and one task was assigned twice and never started |
 | The S0–S8 definitions, exploit catalogue, grader chassis, model-run recipes | **stays in the adopter** | Domain-specific. The adopter expresses them through N6/N7. |
 
 **Rule of the split:** a need moves into the core only if it is method-agnostic, and it stays opt-in unless every
@@ -115,13 +127,14 @@ run benefits. Role and process shapes become packs. Domain stays with the adopte
 2. **N1 + N2, the git transport with collision-free ordering.** It is the largest daily pain, and the adopter's
    helper is a working prototype to characterize-test before it replaces anything. Its own ADR has to settle push
    contention (rebase-retry vs append-only refs) and the read-side fetch cadence.
-3. **N4 + N5, the session registry and digest.** Read-side mostly, so low risk, and they make N1's bus readable at
-   fleet scale.
-4. **N6 + N7, evidence-chain stage gates and declared predicates.** The largest design: it gives the referee back
+3. **N4 + N5 + N11 + N10, the session registry, digest, acknowledged handoffs and the delegation fold.** All
+   read-side folds, so low risk. They make N1's bus readable at fleet scale and show the lead's delegation honestly.
+4. **N6 + N7 (with N12 as N7's first case), evidence-chain stage gates and declared predicates.** The largest design: it gives the referee back
    to non-code work. It needs an architect-owned seam ADR and the tdd-critic before build.
 5. **N3, ruling tics.** Small once N6 exists, because gated actions then have something to cite.
 6. **N8, quarantine.** It is independent and can go at any point after 2.
-7. **N9, the fleet role pack.** Last: it should compose N1–N8, not invent around their absence.
+7. **N9, the fleet role pack.** Last: it should compose N1–N8 and N10–N12, not invent around their absence. It
+   carries the N10 threshold for its lead role.
 
 Each step is pulled by a named row in §Context. If a later run shows one isn't needed, it drops, per the priority
 principle.
@@ -147,3 +160,9 @@ principle.
 - **P4 (N7):** a declared predicate that fires emits exactly one `block` tic citing the evidence tic that tripped
   it.
 - **P5 (N8):** a quarantined test past its `--until` date turns the baseline red again.
+- **P6 (N10):** on a bus where a lead role emits only notes and verdicts, the delegation fold reports a ratio of 0 and
+  flags it. One `assign` from that role changes the ratio.
+- **P7 (N11):** an `assign` with no addressee tic citing it within N minutes shows as unacknowledged on the board.
+  A citing tic clears it.
+- **P8 (N12):** an `assign` declaring `needs: <ref>` is reported blocked while no tic satisfies `<ref>`, and open
+  once one does.
