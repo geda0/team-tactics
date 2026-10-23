@@ -78,8 +78,12 @@ checkout and let the next emit recreate it).
 - **Fetch is throttled:** at most once per `TICS_FETCH_TTL` seconds (default 60), tracked by a stamp file in the
   checkout's `.git`, with a short network timeout. `tics sync` and `tics log --fetch` force one. A failed fetch is
   silent and the read falls back to what it has, so offline still exits 0.
-  The stamp records the last **successful** fetch into `refs/remotes/origin/<branch>`; a failed fetch, or one
-  against a remote with no bus branch yet, never sets it. The network cap is both a wall-clock limit and a
+  Two stamps: the **success** stamp records the last successful fetch into `refs/remotes/origin/<branch>` and drives
+  "bus as of"; a failed fetch, or one against a remote with no bus branch yet, never sets it. The **attempt** stamp
+  records the last try of any outcome and drives the TTL, so a dead remote is retried once per TTL, not on every
+  read. A process fetches at most once per bus. (Measured before this rule: a dead remote cost ~10 s per
+  `claim-check`, ~20 s per guarded edit.) Known gap, deferred: fetches made by an emit's open/rebase don't set the
+  stamps, so the worst case is one extra fetch per TTL. The network cap is both a wall-clock limit and a
   low-speed limit, because the edit guard reads on every edit and a dead host must not hang it for minutes.
 - **Reads use read-only git only** (`ls-tree`, `cat-file`, `show`, `fetch` into the tracking ref) with
   `GIT_OPTIONAL_LOCKS=0`; never a plain `status`, which can rewrite the index. Duplicates across the worktree and

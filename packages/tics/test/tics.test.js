@@ -1367,3 +1367,19 @@ test("P6e (ADR 0026): TIC_STORE=git — tics log prints when the bus was last fe
     assert.match(board.stdout, /bus as of/i, "tics board shows the freshness line too: " + board.stdout);
   } finally { h.cleanup(); }
 });
+
+test("P6f (ADR 0026): TIC_STORE=git — with a remote that hangs, consecutive reads (log, claim-check) each finish in under a second", async () => {
+  const h = p6Hosts();
+  // a TCP server that accepts and never answers, in its own process so the readers' spawnSync can't stall it
+  const srv = cp.spawn(process.execPath, ["-e", "const s=require('net').createServer(()=>{});s.listen(0,'127.0.0.1',()=>console.log(s.address().port))"], { stdio: ["ignore", "pipe", "inherit"] });
+  try {
+    const port = await new Promise((res, rej) => { let b = ""; srv.stdout.on("data", (c) => { b += c; if (b.includes("\n")) res(b.split("\n")[0].trim()); }); srv.on("exit", () => rej(new Error("hang server exited"))); });
+    assert.strictEqual(srcLib(h.hostA, "emit_tic a '*' note from-A").status, 0);
+    assert.strictEqual(git(busOf(h.hostA), "remote", "set-url", "origin", "http://127.0.0.1:" + port + "/bus.git").status, 0);
+    read(h.hostA, "log");                                          // warm-up: may pay the fetch cap once
+    const timed = (...a) => { const t0 = Date.now(); const r = read(h.hostA, ...a); return { r, ms: Date.now() - t0 }; };
+    const runs = [timed("log"), timed("claim-check", "f.ts", "some/S"), timed("log")];
+    for (const { r } of runs) assert.strictEqual(r.status, 0, r.stdout + r.stderr);
+    assert.deepStrictEqual(runs.map(({ ms }) => ms < 1000), [true, true, true], "each read after the warm-up is fast, not paying a fetch against the hanging remote (ms): " + runs.map(({ ms }) => ms).join(", "));
+  } finally { srv.kill("SIGKILL"); h.cleanup(); }
+});
