@@ -44,6 +44,8 @@ Three store backends (set `TIC_STORE`):
   project's own git). Every host and session sees one bus. An emit commits locally first and pushes
   under a watchdog (`TICS_NET_TIMEOUT`, default 5 s), so a dead remote never hangs or loses a tic;
   after a failed attempt, emits and reads skip the network for `TICS_FETCH_TTL` seconds (default 60).
+  Sessions sharing one checkout serialize their local commits through a short lock (`TICS_LOCK_WAIT`,
+  default 3 × `TICS_NET_TIMEOUT`); the push itself is never locked.
   Readers show the union of local and fetched tics, never modifying the checkout, and `log` / `board`
   print `bus as of <last fetch>` so stale data is visible. `tics sync` publishes unpushed tics.
 

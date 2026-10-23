@@ -49,16 +49,34 @@ Two facts make a git transport cheap and safe:
 | `TICS_GIT_DIR` | the local checkout of the bus branch, default `.claude/state/tics.git`, never the project's own tree |
 
 **`emit_tic` with `TIC_STORE=git`:**
-1. Ensure `TICS_GIT_DIR` is a clone of `TICS_REMOTE` at `TICS_BRANCH`. On the first emit to an empty remote, create
-   the branch as an orphan.
+1. Ensure `TICS_GIT_DIR` exists: a local init with `origin` = `TICS_REMOTE` and an orphan `TICS_BRANCH` checkout. No
+   network at open (rule 1 below).
 2. Write the tic as one new spool file under `tics.d/` in that checkout, with a host-unique name
    (`<UTC ts>-<host-or-session>-<pid>-<random>.json`).
-3. Commit only that file, then push. On a rejected push: `fetch` and `rebase` onto the remote branch, then push
-   again, a bounded number of times (default 8, with jittered backoff). Rebase can't conflict (Context fact 1), so
-   retries converge.
+3. Under the checkout lock (below), stage **all** of `tics.d` (`add -A`, so a tic orphaned by any earlier lost race
+   rides along) and commit; release the lock; then push. On a rejected push: re-take the lock, `fetch` and `rebase`
+   onto the remote branch, release, and push again, a bounded number of times (default 8, with jittered backoff).
+   Rebase conflicts only in pathological cases (a filename collision); a failed rebase always aborts.
 4. If every retry fails, the tic **stays committed locally** and is pushed by the next emit, or by `tics sync`. An
    emit never drops a tic and never blocks the caller with an error exit (the same never-fail contract as today's
    `>> … || true`).
+
+**The per-checkout lock (P1b, P1c; architect contracts adr-0026-P1b / adr-0026-P1c).** Several sessions can emit
+through one bus checkout, and unserialized `add`/`commit`/`rebase` there silently dropped a tic (P1b, red 5/5).
+- A `mkdir` lock (`.git/tics-emit.lock`, holding the owner's pid) covers the **local** steps: add, commit, and the
+  fetch + rebase after a rejected push (the fetch is network, bounded by `TICS_NET_TIMEOUT`, and sits inside the
+  lock because the rebase needs it). It is **never held across the push**, so one hanging push can't stall other
+  emits.
+- The wait is bounded by `TICS_LOCK_WAIT` seconds (default 3 × `TICS_NET_TIMEOUT`). On giving up, the tic stays
+  uncommitted in the worktree: the reader still sees it, and the next publish or `tics sync` commits it.
+- A lock is **stale** when its pid is dead or it is older than 2 × `TICS_NET_TIMEOUT`. Only a waiter holding the
+  reclaim mutex (`.git/tics-emit.lock.reclaim`) may break it, and it re-checks staleness under the mutex first, so a
+  fresh lock taken in the meantime is never broken. A reclaim mutex older than 3 s was left by a crashed reclaimer
+  and is cleared.
+- Unlock removes the lock only if it holds this process's pid. Accepted residual: a narrow window between that
+  check and the removal, reachable only after a stale break.
+- A failed rebase aborts and then restores, from the object store, any `tics.d` file the abort removed that is not
+  already on the remote, so even a double hold can't delete a tic (P1c-4).
 
 **Keeping the project tree clean (P5):** when `TICS_GIT_DIR` sits inside `ROOT` (the default does), the store adds
 it to the project's `info/exclude` (located with `git rev-parse --git-path info/exclude`), never to a tracked
@@ -140,6 +158,9 @@ written. Hooks and agents both emit, so that froze sessions and broke the never-
 - **P4 (stable order):** two readers on different hosts render the same merged bus in the same order.
 - **P5 (project tree untouched):** after emits under `TIC_STORE=git`, `git status` of the project's own tree is
   unchanged.
+- **P1b (lossless on a shared checkout):** two emitters on one checkout racing a third host lose nothing.
+- **P1c (the lock contract):** a dead-pid or aged lock is broken; the checkout is clean after a rebase conflict; the
+  lock is never held across the push; a forced double hold never deletes a tic.
 - **P6 (the reader sees the bus):** with `TIC_STORE=git` (from `tdd.config` or the environment): (a) host A's
   `tics log` lists host B's tics and A's `claim-check` sees B's claim; (b) with the remote unreachable, A's local
   tics (unpushed included) are still listed and the read exits 0; (c) a read leaves the bus checkout's HEAD, index
@@ -150,6 +171,7 @@ written. Hooks and agents both emit, so that froze sessions and broke the never-
 
 1. **P1**: emit publishes to a bare remote, concurrent and lossless (the push-retry loop).
 2. **P5**: the bus lives in `TICS_GIT_DIR`; the project tree is untouched.
+2a. **P1b + P1c**: the per-checkout lock (added after the critic's re-audit found the shared-checkout loss).
 2b. **P6**: the reader reads the git bus (fetch on read, offline-safe). Added after dogfooding: P1 and P5 shipped
    a bus the fleet could write but not read, because no predicate covered the read side.
 3. **P3**: offline emit plus `tics sync`.
