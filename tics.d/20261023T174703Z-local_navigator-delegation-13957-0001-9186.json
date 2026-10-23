@@ -1,0 +1,1 @@
+{"ts":"2026-10-23T17:47:03Z","seq":108,"kind":"delegate","from":"project-manager","to":"dev-ops","phase":"off","layer":"app","scope":"app","session":"local_navigator-delegation","msg":"cut v0.70.0: hook telemetry stays local under TIC_STORE=git (ADR 0026 P7) + P1d hardening","ref":"release-0.70.0","result":""}
