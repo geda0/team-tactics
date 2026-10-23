@@ -1,0 +1,1 @@
+{"ts":"2026-10-23T09:53:28Z","seq":14,"kind":"verdict","from":"tdd-critic","to":"orchestrator","phase":"off","layer":"app","scope":"app","session":"local_navigator-delegation","msg":"ADR 0027 re-audit PASS: 277 tests 0 fail; mutants '*', width, '(no session)' all killed","ref":"59d8e7d","result":"pass"}
