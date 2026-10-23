@@ -1142,3 +1142,30 @@ test("MCC-1: tics mcp-install also writes a project .mcp.json (Claude Code) with
     assert.strictEqual(cfg.topKey, 1, "foreign top-level key preserved");
   } finally { fs.rmSync(d, { recursive: true, force: true }); }
 });
+
+test("P1 (ADR 0027): TIC_STORE=git — two concurrent emitters against one bare remote lose nothing", async () => {
+  const remote = fs.mkdtempSync(path.join(os.tmpdir(), "tics-remote-"));
+  const hostA = inst("git"), hostB = inst("git"), check = fs.mkdtempSync(path.join(os.tmpdir(), "tics-check-"));
+  const K = 8;
+  // each "host" emits K tics in a tight loop; both loops run at the same time against the same remote
+  const burst = (d, who) => new Promise((resolve) => {
+    const lib = path.join(d, ".claude", "hooks", "tics-lib.sh");
+    const script = 'export TICS_REMOTE="' + remote + '" TICS_SESSION="' + who + '"; . "' + lib + '"; ' +
+      'for i in $(seq 1 ' + K + '); do emit_tic ' + who + ' "*" note "' + who + '-$i"; done';
+    cp.spawn("bash", ["-c", script], { cwd: d, env: ENV, stdio: "ignore" }).on("close", resolve);
+  });
+  try {
+    git(remote, "init", "-q", "--bare");
+    await Promise.all([burst(hostA, "hostA"), burst(hostB, "hostB")]);
+    const cl = git(check, "clone", "-q", "--branch", "tics-bus", remote, "bus");
+    assert.strictEqual(cl.status, 0, "the remote has a tics-bus branch: " + cl.stderr);
+    const dir = path.join(check, "bus", "tics.d");
+    const msgs = fs.readdirSync(dir).filter((f) => f.endsWith(".json"))
+      .map((f) => JSON.parse(fs.readFileSync(path.join(dir, f), "utf8")).msg).sort();
+    const want = [];
+    for (const h of ["hostA", "hostB"]) for (let i = 1; i <= K; i++) want.push(h + "-" + i);
+    assert.deepStrictEqual(msgs, want.sort(), "every emitted tic reached the remote exactly once");
+  } finally {
+    for (const p of [remote, hostA, hostB, check]) fs.rmSync(p, { recursive: true, force: true });
+  }
+});
