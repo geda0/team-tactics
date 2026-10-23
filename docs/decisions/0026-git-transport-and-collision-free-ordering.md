@@ -137,7 +137,10 @@ hook identity (`subagent`, `run-suite`, `guard`, `witness`: the one list `tic.sh
 goes to the local jsonl: no git commit, no network, no lock. Hooks fire on every tool use, suite run and subagent
 stop, so publishing them would put minutes of network latency inside hooks and flood a shared, possibly public, bus.
 Agent tics still publish. Readers already union jsonl and the git bus, so `tics gate` and `tics cycle` still see the
-hook-signed signals.
+hook-signed signals **on the host that emitted them**. Cost, accepted: another host sees only that host's
+self-reported (agent) greens, so a `tics gate` run elsewhere may print "no hook-signed green", and with
+`ATTEST_ENFORCE=1` it blocks. The release gate is meant to run where the suite ran (the PM / dev-ops host); feeding a
+remote gate would need a published, attested summary tic, which is a later need, not this slice.
 - **P7 (hook-local):** under `TIC_STORE=git`, (a) a hook-identity emit creates no bus commit, starts no networked git
   and returns well inside the network watchdog (tested as < 2 s against a 3 s watchdog, so host speed can't flake it); (b) an agent emit right after it still publishes; (c) `tics gate` on a git-store install
   still counts the hook-signed green.
