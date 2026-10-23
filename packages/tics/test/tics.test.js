@@ -1574,3 +1574,115 @@ test("P3 (ADR 0026): TIC_STORE=git — the write side never hangs or loses a tic
     for (const p of [d, tmp]) fs.rmSync(p, { recursive: true, force: true });
   }
 });
+
+// P3d–P3g, P1b (ADR 0026 rules 3 and 4, critic re-audit): the shared failed-attempt record, its clearing by a
+// successful publish, sync staging uncommitted tics, and per-emit error capture on one shared checkout. hangSsh is
+// the P3 hanging-ssh marker script: each spawn is logged to a marker file (pid kept for cleanup), then sleeps 600 s.
+function hangSsh(tmp) {
+  const marker = path.join(tmp, "ssh-spawns"), pids = path.join(tmp, "ssh-pids"), ssh = path.join(tmp, "hang-ssh");
+  fs.writeFileSync(ssh, '#!/bin/sh\necho "$*" >> "' + marker + '"\necho $$ >> "' + pids + '"\nexec sleep 600\n', { mode: 0o755 });
+  const spawns = () => (fs.existsSync(marker) ? fs.readFileSync(marker, "utf8").trim().split("\n").filter(Boolean).length : 0);
+  const reap = () => {
+    const left = fs.existsSync(pids) ? fs.readFileSync(pids, "utf8").trim().split("\n").filter(Boolean) : [];
+    for (const p of left) { try { process.kill(-Number(p), "SIGKILL"); } catch (_) {} try { process.kill(Number(p), "SIGKILL"); } catch (_) {} }
+  };
+  return { ssh, spawns, reap };
+}
+const remoteMsgs = (bare) => git(bare, "ls-tree", "-r", "--name-only", "tics-bus").stdout.trim().split("\n").filter(Boolean)
+  .map((p) => { try { return JSON.parse(git(bare, "show", "tics-bus:" + p).stdout).msg; } catch (_) { return null; } }).filter(Boolean).sort();
+
+test("P3d (ADR 0026): TIC_STORE=git — a successful tics sync clears the failure record, so the next emit inside the TTL publishes at once", { timeout: 60000 }, async () => {
+  const d = inst("git"), tmp = fs.mkdtempSync(path.join(os.tmpdir(), "tics-p3d-")), hs = hangSsh(tmp);
+  const bare = path.join(tmp, "bare.git"), bus = busOf(d), HANG = { ...ENV, GIT_SSH_COMMAND: hs.ssh };
+  fs.appendFileSync(path.join(d, ".claude", "tdd.config"), 'TICS_REMOTE="ssh://hang/x.git"\nTICS_NET_TIMEOUT="3"\n');
+  try {
+    assert.strictEqual((await timedEmit(d, "emit_tic a '*' note hung-1", 30000, HANG)).status, 0);   // fails: records the failure
+    assert.strictEqual((await timedEmit(d, "emit_tic a '*' note hung-2", 30000, HANG)).status, 0);   // inside the TTL: skipped
+    git(tmp, "init", "-q", "--bare", bare);
+    assert.strictEqual(git(bus, "remote", "set-url", "origin", bare).status, 0);
+    const s = await timedRun("node", [BIN, "sync", d], { env: ENV }, 30000);
+    const after = await timedEmit(d, "emit_tic a '*' note after-sync", 30000, ENV);
+    assert.deepStrictEqual(
+      { sync: s.status, emit: after.status, remote: remoteMsgs(bare) },
+      { sync: 0, emit: 0, remote: ["after-sync", "hung-1", "hung-2"] },
+      "an emit right after a successful sync (still inside the default TTL of the failed attempt) publishes immediately (emit ms " + after.ms + ")");
+  } finally {
+    hs.reap();
+    for (const p of [d, tmp]) fs.rmSync(p, { recursive: true, force: true });
+  }
+});
+
+test("P3e (ADR 0026): TIC_STORE=git — a successful push refreshes 'bus as of' to no older than the emit", { timeout: 60000 }, async () => {
+  const h = p6Hosts();
+  const asOf = (r) => { const m = r.stdout.match(/bus as of (\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d(?:\.\d+)?Z)/); return m ? Date.parse(m[1]) : null; };
+  try {
+    assert.strictEqual(srcLib(h.hostA, "emit_tic a '*' note first-A").status, 0);
+    assert.strictEqual(read(h.hostA, "log").status, 0);                 // an earlier successful fetch: an older stamp
+    await new Promise((r) => setTimeout(r, 1500));                        // the stamps have one-second resolution
+    const emittedAt = Math.floor(Date.now() / 1000) * 1000;
+    assert.strictEqual(srcLib(h.hostA, "emit_tic a '*' note pushed-A").status, 0);
+    const published = git(h.remote, "show", "tics-bus:tics.d").stdout;
+    fs.renameSync(h.remote, h.gone);                                      // the log below cannot refresh the stamp itself
+    const log = read(h.hostA, "log");
+    const t = asOf(log);
+    assert.deepStrictEqual(
+      { published: published.split("\n").filter((l) => l.endsWith(".json")).length, status: log.status, hasTime: t !== null, notOlderThanEmit: t !== null && t >= emittedAt },
+      { published: 2, status: 0, hasTime: true, notOlderThanEmit: true },
+      "after a published emit at " + new Date(emittedAt).toISOString() + ", tics log shows: " + (log.stdout.match(/^.*bus as of.*$/m) || ["(no line)"])[0]);
+  } finally { h.cleanup(); }
+});
+
+test("P3f (ADR 0026): TIC_STORE=git — tics sync stages and publishes a tic file left uncommitted in the bus checkout", { timeout: 60000 }, async () => {
+  const h = p6Hosts();
+  try {
+    assert.strictEqual(srcLib(h.hostA, "emit_tic a '*' note committed-A").status, 0);
+    // an emit killed between writing its file and committing it
+    fs.writeFileSync(path.join(busOf(h.hostA), "tics.d", "20260101T000000Z-hostA-1-1.json"),
+      '{"ts":"2026-01-01T00:00:00Z","seq":2,"kind":"note","from":"a","to":"*","phase":"off","layer":"app","scope":"app","session":"hostA","msg":"uncommitted-A","ref":"","result":""}\n');
+    const s = await timedRun("node", [BIN, "sync", h.hostA], { env: ENV }, 30000);
+    assert.deepStrictEqual(
+      { sync: s.status, remote: remoteMsgs(h.remote) },
+      { sync: 0, remote: ["committed-A", "uncommitted-A"] },
+      "tics sync to a reachable remote publishes the uncommitted tic file");
+  } finally { h.cleanup(); }
+});
+
+test("P3g (ADR 0026): TIC_STORE=git — after a READ whose fetch fails, an emit inside the TTL skips the network (fast, no ssh spawn)", { timeout: 60000 }, async () => {
+  const d = inst("git"), tmp = fs.mkdtempSync(path.join(os.tmpdir(), "tics-p3g-")), hs = hangSsh(tmp);
+  const bare = path.join(tmp, "bare.git"), bus = busOf(d), HANG = { ...ENV, GIT_SSH_COMMAND: hs.ssh };
+  git(tmp, "init", "-q", "--bare", bare);
+  fs.appendFileSync(path.join(d, ".claude", "tdd.config"), 'TICS_REMOTE="' + bare + '"\nTICS_NET_TIMEOUT="3"\n');
+  try {
+    assert.strictEqual(srcLib(d, "emit_tic a '*' note before-hang").status, 0);     // published; no failure on record
+    assert.strictEqual(git(bus, "remote", "set-url", "origin", "ssh://hang/x.git").status, 0);
+    const r = await timedRun(path.join(d, ".claude", "hooks", "tics"), ["log", "--fetch"], { cwd: d, env: HANG }, 30000);
+    const afterRead = hs.spawns();
+    const e = await timedEmit(d, "emit_tic a '*' note after-failed-read", 30000, HANG);
+    assert.deepStrictEqual(
+      { read: r.status, readTriedNetwork: afterRead > 0, emit: e.status, fast: e.ms < 1000, emitSpawns: hs.spawns() - afterRead },
+      { read: 0, readTriedNetwork: true, emit: 0, fast: true, emitSpawns: 0 },
+      "a failed read is on the shared failure record, so the emit skips the network (read ms " + r.ms + ", emit ms " + e.ms + ")");
+  } finally {
+    hs.reap();
+    for (const p of [d, tmp]) fs.rmSync(p, { recursive: true, force: true });
+  }
+});
+
+test("P1b (ADR 0026): TIC_STORE=git — two emitters sharing ONE bus checkout, racing a third host, lose nothing and record no failure", { timeout: 60000 }, async () => {
+  const h = p6Hosts(), K = 6;
+  const burst = (d, who) => new Promise((resolve) => {
+    const script = 'export TICS_SESSION="' + who + '"; . "' + path.join(d, ".claude", "hooks", "tics-lib.sh") + '"; ' +
+      'for i in $(seq 1 ' + K + '); do emit_tic ' + who + ' "*" note "' + who + '-$i"; done';
+    cp.spawn("bash", ["-c", script], { cwd: d, env: ENV, stdio: "ignore" }).on("close", resolve);
+  });
+  try {
+    assert.strictEqual(srcLib(h.hostA, "emit_tic a '*' note A-open").status, 0);   // the shared checkout exists first
+    await Promise.all([burst(h.hostA, "A1"), burst(h.hostA, "A2"), burst(h.hostB, "B")]);
+    const want = ["A-open"];
+    for (const w of ["A1", "A2", "B"]) for (let i = 1; i <= K; i++) want.push(w + "-" + i);
+    assert.deepStrictEqual(
+      { remote: remoteMsgs(h.remote), failMarkers: [h.hostA, h.hostB].filter((d) => fs.existsSync(path.join(busOf(d), ".git", "tics-net-failed"))).map(path.basename) },
+      { remote: want.sort(), failMarkers: [] },
+      "every tic reaches the remote exactly once and no emit misreads a concurrent emit's error as a network failure");
+  } finally { h.cleanup(); }
+});
