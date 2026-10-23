@@ -9,16 +9,26 @@ function storePaths(targetDir, ignoreEnv) {
   // TICS_DIR / TICS_FILE let parallel worktree sections share ONE spool bus (see docs/tdd/sectioning.md).
   return { jsonl: (!ignoreEnv && process.env.TICS_FILE) || path.join(dir, "tics.jsonl"), spool: (!ignoreEnv && process.env.TICS_DIR) || path.join(dir, "tics.d") };
 }
+const SKIPPED_SET = new Set();   // keys of skipped lines (a file read via several worktree views counts once)
+let SKIPPED = 0;   // unparsable non-blank tic lines seen by loadTics since the last reset (surfaced only by tics log)
 function loadTics(targetDir, ignoreEnv) {
   const { jsonl, spool } = storePaths(targetDir, ignoreEnv);
-  const parse = (s) => { try { return JSON.parse(s); } catch (e) { return null; } };
   const out = [];
-  try { for (const l of fs.readFileSync(jsonl, "utf8").split("\n")) if (l.trim()) { const o = parse(l); if (o) out.push(o); } } catch (e) {}
-  try { for (const f of fs.readdirSync(spool)) if (f.endsWith(".json")) { const o = parse(fs.readFileSync(path.join(spool, f), "utf8").trim()); if (o) out.push(o); } } catch (e) {}
+  const lines = (name, text, base) => {
+    text.split("\n").forEach((l, i) => {
+      if (!l.trim()) return;
+      let o = null;
+      try { o = JSON.parse(l); } catch (e) {}
+      if (o && typeof o === "object" && !Array.isArray(o)) out.push({ o, f: name, i }); else SKIPPED_SET.add(path.resolve(base || "", name) + ":" + i);
+    });
+  };
+  try { lines(jsonl, fs.readFileSync(jsonl, "utf8")); } catch (e) {}
+  try { for (const f of fs.readdirSync(spool)) if (f.endsWith(".json")) { let c; try { c = fs.readFileSync(path.join(spool, f), "utf8"); } catch (e) { continue; } lines(f, c, spool); } } catch (e) {}
   const gs = gitStore(targetDir, ignoreEnv);
-  if (gs) for (const s of gitBusTics(gs).values()) { const o = parse(s.trim()); if (o) out.push(o); }
-  out.sort((a, b) => String(a.ts || "").localeCompare(String(b.ts || "")) || ((a.seq || 0) - (b.seq || 0)));
-  return out;
+  if (gs) for (const [f, s] of gitBusTics(gs)) lines(f, s, gs.dir);
+  const cmp = (a, b) => (a < b ? -1 : a > b ? 1 : 0);
+  out.sort((a, b) => String(a.o.ts || "").localeCompare(String(b.o.ts || "")) || ((a.o.seq || 0) - (b.o.seq || 0)) || cmp(a.f, b.f) || (a.i - b.i));
+  return out.map((e) => e.o);
 }
 // TIC_STORE=git read side (ADR 0026 §1): union of the bus checkout's working-tree tics.d (local, unpushed
 // included) and the remote-tracking tree origin/<TICS_BRANCH>, deduped by filename. A read never mutates the
@@ -156,9 +166,11 @@ function applyWindow(t, full) {
   return { rows: truncated ? t.slice(-READER_WINDOW) : t, total, truncated };
 }
 function ticsLog(targetDir, scopeFilter, all, showWitness, full) {
+  SKIPPED_SET.clear();
   let t = loadFor(targetDir, all);
   const fresh = busFreshness(targetDir);
   if (fresh) console.log(fresh);
+  if (SKIPPED_SET.size > 0) console.log(SKIPPED_SET.size + " unparsable tic line(s) skipped");
   if (scopeFilter) t = t.filter((x) => scopeMatch(x.scope, scopeFilter));
   if (!showWitness) t = t.filter((x) => !(x.kind === "note" && x.from === "witness"));
   if (!t.length) { console.log("No tics yet — the agent thread is empty (.claude/state/tics.jsonl)."); return 0; }
