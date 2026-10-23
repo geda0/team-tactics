@@ -1802,6 +1802,39 @@ test("P1d (ADR 0026): never-drop — a repeated $RANDOM within one second never 
         "tics log lists every valid tic line, whatever else its file holds:\n" + log.stdout);
     } finally { fs.rmSync(d, { recursive: true, force: true }); }
   });
+
+  await t.test("P1d-4 (ADR 0026): tics log reports the count of skipped unparsable tic lines when it is non-zero; board, inbox and a clean log stay silent", { timeout: 60000 }, () => {
+    const d = inst("spool"), dir = path.join(d, ".claude", "state", "tics.d");
+    const clean = inst("spool"), cleanDir = path.join(clean, ".claude", "state", "tics.d");
+    const tic = (seq, msg) => '{"ts":"2026-01-01T00:00:0' + seq + 'Z","seq":' + seq + ',"kind":"note","from":"a","to":"b","phase":"off","layer":"app","scope":"app","session":"","msg":"' + msg + '","ref":"","result":""}\n';
+    const out = (r) => r.stdout + r.stderr;
+    try {
+      fs.mkdirSync(dir, { recursive: true });
+      fs.mkdirSync(cleanDir, { recursive: true });
+      fs.writeFileSync(path.join(dir, "20260101T000001Z-111-12345.json"), 'not json at all\n' + tic(1, "after-garbage"));
+      fs.writeFileSync(path.join(dir, "20260101T000002Z-222-777.json"), tic(2, "clean-file"));
+      fs.writeFileSync(path.join(cleanDir, "20260101T000003Z-333-888.json"), tic(3, "only-clean"));
+      const log = read(d, "log"), board = read(d, "board"), inbox = read(d, "inbox", "b"), cleanLog = read(clean, "log");
+      assert.deepStrictEqual(
+        {
+          logStatus: log.status,
+          logListed: ["after-garbage", "clean-file"].filter((m) => log.stdout.includes(m)),
+          logReportsOne: /1 unparsable tic line\(s\) skipped/.test(out(log)),
+          boardMentions: /unparsable/.test(out(board)),
+          inboxMentions: /unparsable/.test(out(inbox)),
+          cleanLogMentions: /unparsable/.test(out(cleanLog)),
+        },
+        {
+          logStatus: 0,
+          logListed: ["after-garbage", "clean-file"],
+          logReportsOne: true,
+          boardMentions: false,
+          inboxMentions: false,
+          cleanLogMentions: false,
+        },
+        "only tics log reports skipped unparsable lines, and only when there are some:\n--- log\n" + out(log) + "--- board\n" + out(board) + "--- inbox\n" + out(inbox) + "--- clean log\n" + out(cleanLog));
+    } finally { fs.rmSync(d, { recursive: true, force: true }); fs.rmSync(clean, { recursive: true, force: true }); }
+  });
 });
 
 // P1c (ADR 0026, the architect's lock contract): the per-checkout mkdir lock covers LOCAL mutations only (add,
