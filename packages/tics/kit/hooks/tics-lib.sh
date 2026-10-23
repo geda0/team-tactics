@@ -58,9 +58,22 @@ _tic_git_open() {
   [ -d "$_gd/.git" ] && return 0
   mkdir -p "$_gd" 2>/dev/null || true
   _tic_git init -q 2>/dev/null
+  _tic_git_hide
   _tic_git remote add origin "${TICS_REMOTE:-}" 2>/dev/null
   if _tic_git fetch -q origin "$_gb" 2>/dev/null; then _tic_git checkout -q -B "$_gb" FETCH_HEAD 2>/dev/null
   else _tic_git checkout -q --orphan "$_gb" 2>/dev/null; fi
+}
+# P5: when the bus checkout sits inside the project's own git tree, list it in the project's info/exclude
+# (never a tracked .gitignore), so emits leave the project's status and HEAD untouched.
+_tic_git_hide() {
+  case "$_gd" in "$ROOT"/*) ;; *) return 0 ;; esac
+  _pg() { env -u GIT_DIR -u GIT_WORK_TREE -u GIT_INDEX_FILE -u GIT_PREFIX -u GIT_COMMON_DIR git -C "$ROOT" "$@"; }
+  _pp="$(_pg rev-parse --show-prefix 2>/dev/null)" || return 0
+  _ex="$(_pg rev-parse --git-path info/exclude 2>/dev/null)" || return 0
+  case "$_ex" in /*) ;; *) _ex="$ROOT/$_ex" ;; esac
+  _rel="/$_pp${_gd#"$ROOT"/}/"
+  mkdir -p "$(dirname "$_ex")" 2>/dev/null || true
+  grep -qxF "$_rel" "$_ex" 2>/dev/null || printf '%s\n' "$_rel" >> "$_ex" 2>/dev/null || true
 }
 # Commit the one new tic file, then push; on a rejected push fetch + rebase + retry (bounded, jittered).
 # If every try fails the tic stays committed locally and rides out with the next emit's push.
