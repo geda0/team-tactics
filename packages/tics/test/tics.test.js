@@ -1966,3 +1966,113 @@ test("P1c (ADR 0026): TIC_STORE=git — the per-checkout lock covers local mutat
     }
   });
 });
+
+// P1d-3 (ADR 0026): the reader fix must hold on the git-bus union path too (gitBusTics reads origin/tics-bus files
+// that are not in the local worktree), not only on the spool path. The merged file is crafted in a scratch clone.
+test("P1d-3 (ADR 0026): TIC_STORE=git — a fetched remote tic file holding two valid lines has both msgs listed by tics log", { timeout: 60000 }, () => {
+  const h = p6Hosts(), scratch = fs.mkdtempSync(path.join(os.tmpdir(), "tics-p1d3-"));
+  const tic = (seq, msg) => '{"ts":"2026-01-01T00:00:0' + seq + 'Z","seq":' + seq + ',"kind":"note","from":"b","to":"*","phase":"off","layer":"app","scope":"app","session":"hostB","msg":"' + msg + '","ref":"","result":""}\n';
+  try {
+    assert.strictEqual(srcLib(h.hostA, "emit_tic a '*' note base-A").status, 0);     // A's bus checkout exists and is published
+    assert.strictEqual(git(scratch, "clone", "-q", "--branch", "tics-bus", h.remote, "c").status, 0);
+    const c = path.join(scratch, "c"), name = "tics.d/20260101T000001Z-hostB-111-12345.json";
+    fs.writeFileSync(path.join(c, name), tic(1, "remote-merged-first") + tic(2, "remote-merged-second"));
+    assert.strictEqual(git(c, "add", "--", name).status, 0);
+    assert.strictEqual(git(c, "commit", "-q", "-m", "tic").status, 0);
+    assert.strictEqual(git(c, "push", "-q", "origin", "HEAD:refs/heads/tics-bus").status, 0);
+    const log = read(h.hostA, "log", "--fetch");
+    assert.deepStrictEqual(
+      { status: log.status, listed: ["base-A", "remote-merged-first", "remote-merged-second"].filter((m) => log.stdout.includes(m)) },
+      { status: 0, listed: ["base-A", "remote-merged-first", "remote-merged-second"] },
+      "tics log lists every valid tic line of a merged file fetched from origin/tics-bus:\n" + log.stdout);
+  } finally {
+    h.cleanup();
+    fs.rmSync(scratch, { recursive: true, force: true });
+  }
+});
+
+// P1e (ADR 0026, "The per-checkout lock"): characterization of the lock contract clauses the P1c suite left
+// unpinned (critic final audit mutants M3a, M3b, M4, M5a, M7). Each fixture builds the bus checkout with one emit,
+// then plants lock state under <bus>/.git. libIn(d, s) sources the installed lib with _gd set to that checkout, so
+// the lock functions can be driven directly. holdLive() spawns a live process to play a foreign, alive holder.
+const libIn = (d, s) => srcLib(d, "_gd='" + busOf(d) + "'; " + s);
+const holdLive = () => cp.spawn("sleep", ["60"], { stdio: "ignore" });
+const plantLock = (d, pid) => { fs.mkdirSync(lockDirOf(d)); fs.writeFileSync(path.join(lockDirOf(d), "pid"), pid + "\n"); };
+const lockPid = (d) => { try { return fs.readFileSync(path.join(lockDirOf(d), "pid"), "utf8").trim(); } catch (_) { return null; } };
+
+test("P1e (ADR 0026): TIC_STORE=git — the per-checkout lock: owner-only unlock, a re-checking reclaim mutex with a 3 s age bound, add -A", { timeout: 180000 }, async (t) => {
+  await t.test("P1e-1 (ADR 0026): unlock never removes a lock held by another, live process", { timeout: 60000 }, () => {
+    const h = p6Hosts(), holder = holdLive();
+    try {
+      assert.strictEqual(srcLib(h.hostA, "emit_tic a '*' note open-A").status, 0);
+      plantLock(h.hostA, holder.pid);
+      const r = libIn(h.hostA, "_tic_git_unlock");
+      assert.deepStrictEqual(
+        { status: r.status, lockExists: fs.existsSync(lockDirOf(h.hostA)), pid: lockPid(h.hostA) },
+        { status: 0, lockExists: true, pid: String(holder.pid) },
+        "_tic_git_unlock from a process that does not own the lock leaves it in place");
+    } finally { holder.kill("SIGKILL"); h.cleanup(); }
+  });
+
+  await t.test("P1e-2 (ADR 0026): a stale lock is not broken while another waiter holds a fresh reclaim mutex — the emit gives up and leaves its tic uncommitted", { timeout: 60000 }, async () => {
+    const h = p6Hosts();
+    try {
+      assert.strictEqual(srcLib(h.hostA, "emit_tic a '*' note open-A").status, 0);
+      const dead = String(cp.spawnSync("true").pid);
+      plantLock(h.hostA, dead);
+      fs.mkdirSync(lockDirOf(h.hostA) + ".reclaim");                                   // a live reclaimer, mid-reclaim
+      const e = await timedEmit(h.hostA, "emit_tic a '*' note while-reclaiming", 30000, { ...ENV, TICS_LOCK_WAIT: "1" });
+      assert.deepStrictEqual(
+        { e: e.status, pid: lockPid(h.hostA), reclaimHeld: fs.existsSync(lockDirOf(h.hostA) + ".reclaim"), committed: committedMsgs(busOf(h.hostA)).includes("while-reclaiming") },
+        { e: 0, pid: dead, reclaimHeld: true, committed: false },
+        "an emit facing a stale lock and a fresh reclaim mutex waits (ms " + e.ms + ") and never breaks the lock itself");
+    } finally { h.cleanup(); }
+  });
+
+  await t.test("P1e-3 (ADR 0026): under the reclaim mutex the lock is re-checked — one that is no longer stale is not broken", { timeout: 60000 }, () => {
+    const h = p6Hosts(), holder = holdLive(), scratch = fs.mkdtempSync(path.join(os.tmpdir(), "tics-p1e3-"));
+    const n = path.join(scratch, "stale-calls");
+    try {
+      assert.strictEqual(srcLib(h.hostA, "emit_tic a '*' note open-A").status, 0);
+      plantLock(h.hostA, holder.pid);
+      // the first look says stale; every later look (the re-check under the mutex) says it is held again
+      const r = libIn(h.hostA, "_tic_git_lock_stale() { echo x >> '" + n + "'; [ \"$(wc -l < '" + n + "' | tr -d ' ')\" = 1 ]; }; " +
+        "TICS_LOCK_WAIT=1 _tic_git_lock; echo \"rc=$?\"");
+      assert.deepStrictEqual(
+        { rc: (r.stdout.match(/rc=(\d+)/) || [])[1], pid: lockPid(h.hostA), reclaimLeft: fs.existsSync(lockDirOf(h.hostA) + ".reclaim") },
+        { rc: "1", pid: String(holder.pid), reclaimLeft: false },
+        "a lock that turned fresh between the first look and the re-check stays its holder's: " + r.stdout + r.stderr);
+    } finally { holder.kill("SIGKILL"); h.cleanup(); fs.rmSync(scratch, { recursive: true, force: true }); }
+  });
+
+  await t.test("P1e-4 (ADR 0026): a reclaim mutex older than 3 s (a crashed reclaimer) is cleared — the emit breaks the stale lock and commits", { timeout: 60000 }, async () => {
+    const h = p6Hosts();
+    try {
+      assert.strictEqual(srcLib(h.hostA, "emit_tic a '*' note open-A").status, 0);
+      plantLock(h.hostA, String(cp.spawnSync("true").pid));
+      const lr = lockDirOf(h.hostA) + ".reclaim", old = new Date(Date.now() - 6000);
+      fs.mkdirSync(lr);
+      fs.utimesSync(lr, old, old);
+      const e = await timedEmit(h.hostA, "emit_tic a '*' note after-crashed-reclaimer", 30000, { ...ENV, TICS_LOCK_WAIT: "2" });
+      assert.deepStrictEqual(
+        { e: e.status, committed: committedMsgs(busOf(h.hostA)).includes("after-crashed-reclaimer"), lockLeft: fs.existsSync(lockDirOf(h.hostA)), reclaimLeft: fs.existsSync(lr) },
+        { e: 0, committed: true, lockLeft: false, reclaimLeft: false },
+        "an emit facing a dead-pid lock and a 6 s old reclaim mutex (ms " + e.ms + ")");
+    } finally { h.cleanup(); }
+  });
+
+  await t.test("P1e-5 (ADR 0026): an emit stages ALL of tics.d — a tic file left uncommitted earlier is committed with it", { timeout: 60000 }, () => {
+    const h = p6Hosts();
+    const stray = '{"ts":"2026-01-01T00:00:00Z","seq":9,"kind":"note","from":"a","to":"*","phase":"off","layer":"app","scope":"app","session":"hostA","msg":"stray-uncommitted","ref":"","result":""}\n';
+    try {
+      assert.strictEqual(srcLib(h.hostA, "emit_tic a '*' note open-A").status, 0);
+      fs.writeFileSync(path.join(busOf(h.hostA), "tics.d", "20260101T000000Z-hostA-1-1.json"), stray);
+      assert.strictEqual(srcLib(h.hostA, "emit_tic a '*' note next-emit").status, 0);
+      const got = committedMsgs(busOf(h.hostA));
+      assert.deepStrictEqual(
+        { stray: got.includes("stray-uncommitted"), next: got.includes("next-emit") },
+        { stray: true, next: true },
+        "one emit commits its own tic and the stray one: " + JSON.stringify(got));
+    } finally { h.cleanup(); }
+  });
+});
