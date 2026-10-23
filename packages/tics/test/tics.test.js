@@ -1169,3 +1169,23 @@ test("P1 (ADR 0027): TIC_STORE=git — two concurrent emitters against one bare 
     for (const p of [remote, hostA, hostB, check]) fs.rmSync(p, { recursive: true, force: true });
   }
 });
+
+test("P5 (ADR 0027): TIC_STORE=git — emits leave the project's own git tree untouched (status and HEAD)", () => {
+  const remote = fs.mkdtempSync(path.join(os.tmpdir(), "tics-remote-")), d = inst("git");
+  try {
+    git(remote, "init", "-q", "--bare");
+    // the install is itself a git repo with a committed file; the default TICS_GIT_DIR sits inside its tree
+    git(d, "init", "-q");
+    fs.writeFileSync(path.join(d, "app.txt"), "x\n");
+    git(d, "add", "-A");
+    git(d, "commit", "-q", "-m", "base");
+    const before = git(d, "status", "--porcelain").stdout, head = git(d, "rev-parse", "HEAD").stdout;
+    const r = srcLib(d, 'export TICS_REMOTE="' + remote + '"; emit_tic a b note one; emit_tic a b note two');
+    assert.strictEqual(r.status, 0, r.stderr);
+    assert.ok(fs.existsSync(path.join(d, ".claude", "state", "tics.git", ".git")), "the bus checkout exists at the default TICS_GIT_DIR");
+    assert.strictEqual(git(d, "status", "--porcelain").stdout, before, "the project's git status is unchanged by emits");
+    assert.strictEqual(git(d, "rev-parse", "HEAD").stdout, head, "the project's HEAD did not move");
+  } finally {
+    for (const p of [remote, d]) fs.rmSync(p, { recursive: true, force: true });
+  }
+});
