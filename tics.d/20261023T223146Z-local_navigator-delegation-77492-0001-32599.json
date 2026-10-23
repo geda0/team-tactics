@@ -1,0 +1,1 @@
+{"ts":"2026-10-23T22:31:46Z","seq":225,"kind":"verdict","from":"orchestrator","to":"implementer","phase":"off","layer":"app","scope":"app","session":"local_navigator-delegation","msg":"draft review ADR 0029 I5/I6 green: identity allowlist on stored value, MCP grammar, JSON integers; forgeries replayed blocked","ref":"e8436f4","result":"accept"}
