@@ -73,10 +73,14 @@ written. Hooks and agents both emit, so that froze sessions and broke the never-
    init/orphan with no fetch; the first network operation is the push.
 2. **Every network call runs under a watchdog** (`TICS_NET_TIMEOUT`, default 5 s) that kills its process group.
    macOS has no `timeout(1)`, so the watchdog is plain bash.
-3. **Retry only on a non-fast-forward rejection** (fetch + rebase + push, bounded as before), never on a timeout or a
-   network error: retrying a hang multiplies it.
-4. **On a network failure, set the reader's attempt stamp and return 0.** Inside the TTL after a failed attempt,
-   emits skip the network entirely; the tics ride out with the next publish or `tics sync`.
+3. **Retry only on a rejection** (fetch + rebase + push, bounded as before): a non-fast-forward, or a lost race to
+   create or update the bus ref (`cannot lock ref` / `failed to update ref`, seen when two fresh hosts open the bus
+   at once). Never retry on a timeout or a network error: retrying a hang multiplies it. Each emit keeps its own
+   error capture, so concurrent emits on one checkout can't misread each other's failures.
+4. **On a network failure, mark it and return 0.** Reader and writer share one record of the last failed attempt
+   (whichever side failed), so inside the TTL after any failed attempt both emits and reads skip the network; the
+   tics ride out with the next publish or `tics sync`. A successful push or `tics sync` clears it and refreshes the
+   success stamp, so "bus as of" never lags a publish.
 5. **Rejected: a detached asynchronous push.** It would outlive the session and race concurrent emits on the same
    checkout.
 
