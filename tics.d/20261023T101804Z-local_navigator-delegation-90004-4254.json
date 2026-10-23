@@ -1,0 +1,1 @@
+{"ts":"2026-10-23T10:18:04Z","seq":15,"kind":"delegate","from":"orchestrator","to":"test-writer","phase":"red","layer":"app","scope":"app","session":"local_navigator-delegation","msg":"ADR 0026 P6 red: with TIC_STORE=git, tics log lists TICS_GIT_DIR/tics.d incl. another host's tics (fetch on read); offline still lists local, exit 0","ref":"adr-0026-P6","result":""}
