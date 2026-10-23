@@ -1,0 +1,1 @@
+{"ts":"2026-10-23T16:50:48Z","seq":74,"kind":"handoff","from":"dev-ops","to":"project-manager","phase":"off","layer":"app","scope":"app","session":"local_navigator-delegation","msg":"v0.69.0 released: cbe8785 on main, tag v0.69.0, npm test 313 pass/0 fail/1 skip, release-tarball run 39989886363 green, ttics-0.69.0.tgz attached","ref":"release-0.69.0","result":"done"}
