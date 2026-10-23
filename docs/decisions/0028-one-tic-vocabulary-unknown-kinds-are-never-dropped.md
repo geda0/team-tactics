@@ -34,7 +34,13 @@ lead's T-table result was dropped this way. `status`, used across the spool hist
    That is integrity, not loss: an agent must never be able to forge the referee, and a reader command is a usage
    error, not a tic.
 4. **Folds key on `ref` + `to`, never on kind** (ADR 0025 N11). A vocabulary mismatch must not be able to hide an
-   acknowledgement again.
+   acknowledgement again. Known gap, carried to the N11 slice: `openNeeds` still closes a need only on a `msg`.
+5. **The MCP surface speaks the same vocabulary** (`assign` and `status` included) but keeps rejecting an unknown kind
+   with a loud tool error instead of coercing it: its schema enum already tells the caller the valid set, so nothing is
+   silently lost.
+6. **Only the kind is case-folded.** FROM and TO are stored as given. The reserved hook identities are matched exactly;
+   a look-alike such as `Run-Suite` is recorded as an ordinary role, which can't impersonate the referee because every
+   reader compares `from` exactly. Readers (`log` and `inbox`) show `orig_kind`.
 
 ## Predicates
 

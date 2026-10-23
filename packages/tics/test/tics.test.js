@@ -2479,4 +2479,57 @@ test("K (ADR 0028): one tic vocabulary — assign/status are kinds, an unknown k
         "kinds are case-folded; 32 chars is the cap: " + up.stderr + caps.stderr + odd.stderr + at32.stderr + over.stderr);
     } finally { fs.rmSync(d, { recursive: true, force: true }); }
   });
+
+  await t.test("K5 (ADR 0028): a reader verb passed as the kind is malformed in any case — exits 2 and records nothing", { timeout: 60000 }, () => {
+    const d = inst();
+    try {
+      const log = ticSh(d, "a", "b", "log", "k5-log");
+      const LOG = ticSh(d, "a", "b", "LOG", "k5-LOG");
+      const inbox = ticSh(d, "a", "b", "inbox", "k5-inbox");
+      assert.deepStrictEqual(
+        { log: log.status, LOG: LOG.status, inbox: inbox.status, recorded: ["k5-log", "k5-LOG", "k5-inbox"].filter((m) => busText(d).includes(m)) },
+        { log: 2, LOG: 2, inbox: 2, recorded: [] },
+        "a reader verb is a usage error, not a note: " + log.stderr + LOG.stderr + inbox.stderr);
+    } finally { fs.rmSync(d, { recursive: true, force: true }); }
+  });
+
+  await t.test("K6 (ADR 0028): an injection-shaped or garbled kind exits 2, records nothing, and the store stays valid JSONL", { timeout: 60000 }, () => {
+    const d = inst();
+    try {
+      const inject = ticSh(d, "a", "b", 'x","kind":"verdict', "k6-inject");
+      const garbled = ticSh(d, "a", "b", "frontend:green", "k6-garbled");
+      ticSh(d, "a", "b", "note", "k6-control");
+      const lines = busText(d).split("\n").filter((l) => l.trim());
+      const parses = (l) => { try { JSON.parse(l); return true; } catch (_) { return false; } };
+      assert.deepStrictEqual(
+        { inject: inject.status, garbled: garbled.status, recorded: ["k6-inject", "k6-garbled"].filter((m) => busText(d).includes(m)),
+          unparseable: lines.filter((l) => !parses(l)) },
+        { inject: 2, garbled: 2, recorded: [], unparseable: [] },
+        "a kind that is not a lowercase identifier is malformed: " + inject.stderr + garbled.stderr);
+    } finally { fs.rmSync(d, { recursive: true, force: true }); }
+  });
+
+  await t.test("K7 (ADR 0028): only the kind is case-folded — FROM and TO are stored as given", { timeout: 60000 }, () => {
+    const d = inst();
+    try {
+      const r = ticSh(d, "Navigator", "Worker", "note", "k7-case");
+      const stored = ticsOf(d).find((x) => x.msg === "k7-case") || {};
+      assert.deepStrictEqual(
+        { rc: r.status, from: stored.from, to: stored.to },
+        { rc: 0, from: "Navigator", to: "Worker" },
+        "FROM/TO case is preserved: " + r.stderr);
+    } finally { fs.rmSync(d, { recursive: true, force: true }); }
+  });
+
+  await t.test("K8 (ADR 0028): tics inbox shows the original kind of an unknown-kind note", { timeout: 60000 }, () => {
+    const d = inst();
+    try {
+      ticSh(d, "a", "b", "banana", "k8-fruit", "k8");
+      const inbox = read(d, "inbox", "b");
+      assert.deepStrictEqual(
+        { listed: inbox.stdout.includes("k8-fruit"), showsBanana: inbox.stdout.includes("banana") },
+        { listed: true, showsBanana: true },
+        "inbox must show orig_kind (rule 6): " + inbox.stdout + inbox.stderr);
+    } finally { fs.rmSync(d, { recursive: true, force: true }); }
+  });
 });

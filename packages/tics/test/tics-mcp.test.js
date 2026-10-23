@@ -56,7 +56,7 @@ test("S2: tools/list returns exactly the 7 tools (inbox/board/review/log/map + e
   }
   const emit = tools.find(t=>t.name==="tic_emit");
   assert.deepStrictEqual(emit.inputSchema.properties.kind.enum,
-    ["delegate","handoff","stuck","verdict","msg","note","claim","release","contract","need","section","landmark"]);
+    ["delegate","handoff","stuck","verdict","msg","note","claim","release","contract","need","section","landmark","assign","status"]);   // ADR 0028 rule 5: one vocabulary
 });
 
 test("S4: tic_emit shells tic.sh for an agent-emittable kind (handoff appends ONE tic) BUT rejects signal/block/commit/session with isError and writes NOTHING (honesty boundary, ADR §3)", () => {
@@ -491,5 +491,21 @@ test("CP-3b: cross-surface honesty guard — the Cursor rule's hook-only-kind + 
     assert.match(rule, /unrefereed|self-reported/i, "the unrefereed/self-reported honesty claim survives");
     // W10 — single-source: point to tool-support.md for the enforcement detail, don't restate it.
     assert.match(rule, /tool-support\.md/, "W10: the rule points to docs/tdd/tool-support.md");
+  } finally { fs.rmSync(d, { recursive: true, force: true }); }
+});
+
+test("K9 (ADR 0028): the MCP surface speaks the same vocabulary — tic_emit accepts kinds assign and status and records them", () => {
+  const d = inst();
+  try {
+    const a = dispatch({ jsonrpc:"2.0", id:1, method:"tools/call",
+      params:{ name:"tic_emit", arguments:{ from:"orchestrator", to:"implementer", kind:"assign", msg:"k9-assign" } } }, { target:d });
+    const s = dispatch({ jsonrpc:"2.0", id:2, method:"tools/call",
+      params:{ name:"tic_emit", arguments:{ from:"implementer", to:"orchestrator", kind:"status", msg:"k9-status" } } }, { target:d });
+    const bus = path.join(d, ".claude", "state", "tics.jsonl");
+    const kindOf = (m) => ((fs.existsSync(bus) ? ticsOf(d) : []).find((x) => x.msg === m) || {}).kind;
+    assert.deepStrictEqual(
+      { assignErr: !!a.result.isError, statusErr: !!s.result.isError, assignKind: kindOf("k9-assign"), statusKind: kindOf("k9-status") },
+      { assignErr: false, statusErr: false, assignKind: "assign", statusKind: "status" },
+      "tic_emit must accept assign/status like tic.sh: " + callText(a) + " | " + callText(s));
   } finally { fs.rmSync(d, { recursive: true, force: true }); }
 });
