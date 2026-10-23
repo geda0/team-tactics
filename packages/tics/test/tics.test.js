@@ -1385,31 +1385,69 @@ test("P6f (ADR 0026): TIC_STORE=git — with a remote that hangs, consecutive re
 });
 
 // Times an emit in its own process group, hard-capped so a hanging emit fails the test instead of the runner;
-// the whole group (bash + git children) is killed on the cap.
-function timedEmit(d, s, capMs) {
+// the whole group (bash + git children) is killed on the cap. timedRun is the same for any command.
+function timedRun(cmd, args, opts, capMs) {
   return new Promise((res) => {
     const t0 = Date.now();
-    const c = cp.spawn("bash", ["-c", '. "' + path.join(d, ".claude", "hooks", "tics-lib.sh") + '"; ' + s], { cwd: d, detached: true, stdio: "ignore" });
+    const c = cp.spawn(cmd, args, Object.assign({ detached: true, stdio: "ignore" }, opts));
     const cap = setTimeout(() => { try { process.kill(-c.pid, "SIGKILL"); } catch (_) {} }, capMs);
-    c.on("exit", (status) => { clearTimeout(cap); res({ status, ms: Date.now() - t0 }); });
+    c.on("exit", (status) => { clearTimeout(cap); try { process.kill(-c.pid, "SIGKILL"); } catch (_) {} res({ status, ms: Date.now() - t0 }); });
   });
 }
+function timedEmit(d, s, capMs, env) {
+  return timedRun("bash", ["-c", '. "' + path.join(d, ".claude", "hooks", "tics-lib.sh") + '"; ' + s], { cwd: d, env: env || ENV }, capMs);
+}
 
-test("P3a (ADR 0026): TIC_STORE=git — with a remote that hangs, an emit exits 0 within 10 s with the tic committed locally, and a second emit within the TTL takes under 2 s", async () => {
-  const h = p6Hosts();
-  const srv = cp.spawn(process.execPath, ["-e", "const s=require('net').createServer(()=>{});s.listen(0,'127.0.0.1',()=>console.log(s.address().port))"], { stdio: ["ignore", "pipe", "inherit"] });
+// P3 (ADR 0026): the write side never hangs or loses a tic. No real network: the remote is ssh://hang/x.git and
+// GIT_SSH_COMMAND is a script that logs each spawn to a marker file (and its pid, for cleanup), then sleeps 600 s.
+test("P3 (ADR 0026): TIC_STORE=git — the write side never hangs or loses a tic", async (t) => {
+  const d = inst("git"), tmp = fs.mkdtempSync(path.join(os.tmpdir(), "tics-p3-"));
+  const marker = path.join(tmp, "ssh-spawns"), pids = path.join(tmp, "ssh-pids"), ssh = path.join(tmp, "hang-ssh");
+  const bare = path.join(tmp, "bare.git"), bus = busOf(d);
+  fs.writeFileSync(ssh, '#!/bin/sh\necho "$*" >> "' + marker + '"\necho $$ >> "' + pids + '"\nexec sleep 600\n', { mode: 0o755 });
+  fs.appendFileSync(path.join(d, ".claude", "tdd.config"), 'TICS_REMOTE="ssh://hang/x.git"\n');
+  const HANG = { ...ENV, GIT_SSH_COMMAND: ssh };
+  const spawns = () => (fs.existsSync(marker) ? fs.readFileSync(marker, "utf8").trim().split("\n").filter(Boolean).length : 0);
+  const ticFile = (msg) => { const dir = path.join(bus, "tics.d"); return (fs.existsSync(dir) ? fs.readdirSync(dir) : []).find((f) => fs.readFileSync(path.join(dir, f), "utf8").includes(msg)); };
+  const syncA = () => timedRun("node", [BIN, "sync", d], { env: ENV }, 30000);
   try {
-    const port = await new Promise((res, rej) => { let b = ""; srv.stdout.on("data", (c) => { b += c; if (b.includes("\n")) res(b.split("\n")[0].trim()); }); srv.on("exit", () => rej(new Error("hang server exited"))); });
-    assert.strictEqual(srcLib(h.hostA, "emit_tic a '*' note from-A").status, 0);   // online: the bus checkout exists
-    const bus = busOf(h.hostA), commits = () => git(bus, "log", "--format=%s").stdout.trim().split("\n").length;
-    assert.strictEqual(git(bus, "remote", "set-url", "origin", "http://127.0.0.1:" + port + "/bus.git").status, 0);
-    const before = commits();
-    const first = await timedEmit(h.hostA, "emit_tic a '*' note hung-1", 30000);
-    const afterFirst = commits();
-    const second = await timedEmit(h.hostA, "emit_tic a '*' note hung-2", 30000);
-    assert.deepStrictEqual(
-      { first: { status: first.status, fast: first.ms < 10000 }, committed: afterFirst - before, second: { status: second.status, fast: second.ms < 2000 } },
-      { first: { status: 0, fast: true }, committed: 1, second: { status: 0, fast: true } },
-      "offline-safe emit against a hanging remote (ms): first " + first.ms + ", second " + second.ms + "; commits before/after first/after second: " + before + "/" + afterFirst + "/" + commits());
-  } finally { srv.kill("SIGKILL"); h.cleanup(); }
+    await t.test("P3a (ADR 0026): a fresh install with a hanging remote — the first emit exits 0 within 10 s with the tic committed locally", async () => {
+      const first = await timedEmit(d, "emit_tic a '*' note hung-1", 30000, HANG);
+      const f = ticFile("hung-1");
+      const logged = git(bus, "log", "--name-only", "--format=").stdout;
+      const tracked = f ? git(bus, "ls-files", "--error-unmatch", "tics.d/" + f).status : null;
+      assert.deepStrictEqual(
+        { status: first.status, fast: first.ms < 10000, file: !!f, inLog: !!f && logged.includes("tics.d/" + f), tracked },
+        { status: 0, fast: true, file: true, inLog: true, tracked: 0 },
+        "first emit against ssh://hang (ms " + first.ms + ", ssh spawns " + spawns() + "); bus log: " + JSON.stringify(logged));
+    });
+    await t.test("P3b (ADR 0026): inside the TTL after a failed attempt, an emit and a read skip the network (fast, no ssh spawn)", async () => {
+      const before = spawns();
+      const second = await timedEmit(d, "emit_tic a '*' note hung-2", 30000, HANG);
+      const afterEmit = spawns();
+      const r = await timedRun(path.join(d, ".claude", "hooks", "tics"), ["log"], { cwd: d, env: HANG }, 30000);
+      assert.deepStrictEqual(
+        { status: second.status, fast: second.ms < 1000, emitSpawns: afterEmit - before, readStatus: r.status, readSpawns: spawns() - afterEmit },
+        { status: 0, fast: true, emitSpawns: 0, readStatus: 0, readSpawns: 0 },
+        "second emit (ms " + second.ms + ") and read (ms " + r.ms + ") inside the TTL; ssh spawns before/after emit/after read: " + before + "/" + afterEmit + "/" + spawns());
+    });
+    await t.test("P3c (ADR 0026): tics sync publishes every unpushed tic; a second sync publishes nothing new and exits 0", async () => {
+      git(tmp, "init", "-q", "--bare", bare);
+      assert.strictEqual(git(bus, "remote", "set-url", "origin", bare).status, 0, "the bus checkout has an origin to repoint");
+      const s1 = await syncA();
+      const files = git(bare, "ls-tree", "-r", "--name-only", "tics-bus").stdout.trim().split("\n").filter(Boolean);
+      const msgs = files.map((p) => { try { return JSON.parse(git(bare, "show", "tics-bus:" + p).stdout).msg; } catch (_) { return null; } }).filter(Boolean).sort();
+      const head1 = git(bare, "rev-parse", "--verify", "-q", "refs/heads/tics-bus").stdout.trim();
+      const s2 = await syncA();
+      const head2 = git(bare, "rev-parse", "--verify", "-q", "refs/heads/tics-bus").stdout.trim();
+      assert.deepStrictEqual(
+        { s1: s1.status, msgs, s2: s2.status, unchanged: !!head1 && head1 === head2 },
+        { s1: 0, msgs: ["hung-1", "hung-2"], s2: 0, unchanged: true },
+        "tics sync to a reachable bare remote (ms " + s1.ms + ", then " + s2.ms + "); tics-bus " + (head1 || "(missing)") + " -> " + (head2 || "(missing)"));
+    });
+  } finally {
+    const left = fs.existsSync(pids) ? fs.readFileSync(pids, "utf8").trim().split("\n").filter(Boolean) : [];
+    for (const p of left) { try { process.kill(-Number(p), "SIGKILL"); } catch (_) {} try { process.kill(Number(p), "SIGKILL"); } catch (_) {} }
+    for (const p of [d, tmp]) fs.rmSync(p, { recursive: true, force: true });
+  }
 });
