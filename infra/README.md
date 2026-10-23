@@ -10,7 +10,8 @@ control (email, Drive, 1:1). See `FOR-TESTERS.md` for recipient instructions.
 ### Local (after tag + green suite)
 
 ```bash
-# 1. Version bump (all four package.json lockstep) + commit + push main
+# 1. Version bump (all four package.json lockstep + the internal @ttics/* pins; npm install to resync
+#    package-lock.json) + commit + push main
 #    Tag MUST match version: package.json "0.33.0" → tag v0.33.0 (not the other way around)
 # 2. Tag the accepted commit (the one that already contains the bump)
 git tag -a v0.33.0 -m "v0.33.0"

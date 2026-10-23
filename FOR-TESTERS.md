@@ -59,7 +59,8 @@ Thank you — this directly shapes the next version.
 
 The evaluator tarball is **not** published to npm. After a green milestone:
 
-1. Bump all four `package.json` versions in lockstep and commit.
+1. Bump all four `package.json` versions in lockstep, plus the internal `@ttics/*` dependency pins, then run
+   `npm install` so `package-lock.json` follows (the B2 version test checks all three), and commit.
 2. Tag: `git tag -a v<version> -m "v<version>"` and `git push origin v<version>`.
 3. CI (`.github/workflows/release-tarball.yml`) runs the full suite, builds
    `ttics-<version>.tgz`, and attaches it to the GitHub Release for that tag.
