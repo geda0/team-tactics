@@ -1,0 +1,1 @@
+{"ts":"2026-10-23T17:15:59Z","seq":83,"kind":"delegate","from":"project-manager","to":"dev-ops","phase":"off","layer":"app","scope":"app","session":"local_navigator-delegation","msg":"patch release v0.69.1: suite host-speed independent (P1d clock stub)","ref":"release-0.69.1","result":""}
