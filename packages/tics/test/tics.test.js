@@ -1740,6 +1740,70 @@ test("P1b (ADR 0026): TIC_STORE=git — two emitters sharing ONE bus checkout, r
   } finally { h.cleanup(); }
 });
 
+// P1d (ADR 0026, never-drop, found by soak): two emits from ONE process in ONE second must land in two files even
+// when $RANDOM repeats, and the reader must never hide a valid tic because its file holds more than one line.
+// The collision is forced: bash 3.2+ returns the same next $RANDOM after re-seeding with RANDOM=<n>. The pair must
+// also share a UTC second, so it starts just past a second boundary; a pair that still straddles one is discarded
+// with its fixture and retried on a fresh one (sameSecondPair). perFileMsgs: one entry per tic file, its msgs line
+// by line ("<bad>" for a line that is not JSON), sorted, so a merged file shows up as one entry with two msgs.
+const perFileMsgs = (contents) => contents.map((c) => c.trim().split("\n").map((l) => { try { return JSON.parse(l).msg; } catch (_) { return "<bad>"; } }))
+  .sort((a, b) => JSON.stringify(a).localeCompare(JSON.stringify(b)));
+const spoolFiles = (dir) => (fs.existsSync(dir) ? fs.readdirSync(dir).filter((f) => f.endsWith(".json")).map((f) => fs.readFileSync(path.join(dir, f), "utf8")) : []);
+const remoteFiles = (bare) => git(bare, "ls-tree", "-r", "--name-only", "tics-bus").stdout.trim().split("\n").filter(Boolean).map((p) => git(bare, "show", "tics-bus:" + p).stdout);
+async function sameSecondPair(mk, a, b) {
+  for (let i = 0; i < 5; i++) {
+    const fx = mk();
+    await new Promise((r) => setTimeout(r, 1000 - (Date.now() % 1000) + 20));
+    const r = srcLib(fx.d, 's0=$(date -u +%s); RANDOM=12345; emit_tic a "*" note ' + a + '; RANDOM=12345; emit_tic a "*" note ' + b + '; echo "$s0 $(date -u +%s)"');
+    const [s0, s1] = r.stdout.trim().split(" ");
+    if (r.status === 0 && s0 === s1) return fx;
+    fx.cleanup();
+  }
+  throw new Error("could not run the emit pair inside one UTC second in 5 tries");
+}
+
+test("P1d (ADR 0026): never-drop — a repeated $RANDOM within one second never merges two tics, and the reader never hides one", { timeout: 120000 }, async (t) => {
+  await t.test("P1d-1 (ADR 0026): two emits from one process in one second with the same $RANDOM land in two files and both are listed (spool and git)", { timeout: 60000 }, async () => {
+    const sp = await sameSecondPair(() => { const d = inst("spool"); return { d, cleanup: () => fs.rmSync(d, { recursive: true, force: true }) }; }, "spool-a", "spool-b");
+    const h = await sameSecondPair(() => { const x = p6Hosts(); return { d: x.hostA, remote: x.remote, cleanup: x.cleanup }; }, "git-a", "git-b");
+    try {
+      const spLog = read(sp.d, "log").stdout, gLog = read(h.d, "log").stdout;
+      assert.deepStrictEqual(
+        {
+          spoolFiles: perFileMsgs(spoolFiles(path.join(sp.d, ".claude", "state", "tics.d"))),
+          spoolLog: ["spool-a", "spool-b"].filter((m) => spLog.includes(m)),
+          gitLocalFiles: perFileMsgs(spoolFiles(path.join(busOf(h.d), "tics.d"))),
+          gitRemoteFiles: perFileMsgs(remoteFiles(h.remote)),
+          gitLog: ["git-a", "git-b"].filter((m) => gLog.includes(m)),
+        },
+        {
+          spoolFiles: [["spool-a"], ["spool-b"]],
+          spoolLog: ["spool-a", "spool-b"],
+          gitLocalFiles: [["git-a"], ["git-b"]],
+          gitRemoteFiles: [["git-a"], ["git-b"]],
+          gitLog: ["git-a", "git-b"],
+        },
+        "each emit gets its own file holding exactly one tic, and tics log lists both");
+    } finally { sp.cleanup(); h.cleanup(); }
+  });
+
+  await t.test("P1d-2 (ADR 0026): the reader lists every valid tic line of a spool file — a file merged by the old naming bug, and a valid line after a garbage one", { timeout: 60000 }, () => {
+    const d = inst("spool"), dir = path.join(d, ".claude", "state", "tics.d");
+    const tic = (seq, msg) => '{"ts":"2026-01-01T00:00:0' + seq + 'Z","seq":' + seq + ',"kind":"note","from":"a","to":"*","phase":"off","layer":"app","scope":"app","session":"","msg":"' + msg + '","ref":"","result":""}\n';
+    try {
+      fs.mkdirSync(dir, { recursive: true });
+      fs.writeFileSync(path.join(dir, "20260101T000001Z-111-12345.json"), tic(1, "merged-first") + tic(2, "merged-second"));
+      fs.writeFileSync(path.join(dir, "20260101T000003Z-222-777.json"), tic(3, "single-file"));
+      fs.writeFileSync(path.join(dir, "20260101T000004Z-333-888.json"), '{"ts":"2026-01-01T00:00:04Z","seq":4,"kind":"no\n' + tic(5, "after-garbage"));
+      const log = read(d, "log");
+      assert.deepStrictEqual(
+        { status: log.status, listed: ["merged-first", "merged-second", "single-file", "after-garbage"].filter((m) => log.stdout.includes(m)) },
+        { status: 0, listed: ["merged-first", "merged-second", "single-file", "after-garbage"] },
+        "tics log lists every valid tic line, whatever else its file holds:\n" + log.stdout);
+    } finally { fs.rmSync(d, { recursive: true, force: true }); }
+  });
+});
+
 // P1c (ADR 0026, the architect's lock contract): the per-checkout mkdir lock covers LOCAL mutations only (add,
 // commit, the fetch+rebase after a rejected push), is never held across the push itself, and a stale lock is
 // broken when its recorded pid is dead OR its age exceeds 2 x TICS_NET_TIMEOUT; a failed rebase always aborts.
