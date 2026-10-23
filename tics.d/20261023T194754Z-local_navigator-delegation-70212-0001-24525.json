@@ -1,0 +1,1 @@
+{"ts":"2026-10-23T19:47:54Z","seq":182,"kind":"delegate","from":"orchestrator","to":"implementer","phase":"green","layer":"app","scope":"app","session":"local_navigator-delegation","msg":"ADR 0028 K8/K9 green: inbox shows note(orig_kind); MCP EMITTABLE_KINDS gains assign/status; LC_ALL=C on the kind class; no 'recorded' warning when TICS=0","ref":"adr-0028","result":""}
