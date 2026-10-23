@@ -77,38 +77,65 @@ _tic_git_hide() {
   grep -qxF "$_rel" "$_ex" 2>/dev/null || printf '%s\n' "$_rel" >> "$_ex" 2>/dev/null || true
 }
 # Commit the new tic file, then publish it (P3: bounded, never hangs, never drops the tic). Emits sharing one
-# checkout serialize on a per-checkout lock (git's index.lock would otherwise make a concurrent add/commit fail and
-# strand the file), and each stages all of tics.d, so a file left uncommitted by an earlier emit rides with this one.
-# If the lock can't be had within the bound, the file stays in the worktree for the next emit or `tics sync`.
+# checkout serialize their LOCAL steps (add, commit; the rebase after a rejected push) on a short per-checkout lock
+# that is never held across the push itself. Each stages ALL of tics.d, so a file left uncommitted by an earlier
+# emit (lock not had in time, or a failed commit) rides with this one or with the next `tics sync`.
 _tic_git_publish() {
   _tic_git_lock || return 0
-  _tic_git add -- tics.d 2>/dev/null
+  _tic_git add -A -- tics.d 2>/dev/null
   if _tic_git diff --cached --quiet 2>/dev/null || ! _tic_git commit -q -m "tic" 2>/dev/null; then
-    _tic_git_unlock; return 0   # nothing new: a concurrent emit already committed (and published) this file
+    _tic_git_unlock; return 0   # nothing new: a concurrent emit already committed (and publishes) this file
   fi
-  _tic_net_backoff || _tic_git_push || true
   _tic_git_unlock
+  _tic_net_backoff || _tic_git_push || true
   return 0
 }
-# Portable per-checkout mutex (macOS has no flock(1)): mkdir is atomic. The holder's pid is recorded, so a lock
-# left by a killed emit is reclaimed at once. Waits at most TICS_LOCK_WAIT seconds (default 3 x TICS_NET_TIMEOUT).
+# Portable per-checkout mutex (macOS has no flock(1)): mkdir is atomic. The holder's pid is recorded; a lock is
+# stale when that pid is dead OR the lock is older than 2 x TICS_NET_TIMEOUT (no holder keeps it longer). Only a
+# waiter holding the reclaim mutex (<lock>.reclaim, itself mkdir) may break the lock, and only after RE-CHECKING,
+# under that mutex, that it is still stale: so no waiter ever removes a fresh lock another waiter just took. The
+# reclaim mutex is held for microseconds; one older than 3 s is a crashed reclaimer's and is removed.
+# Waits at most TICS_LOCK_WAIT seconds (default 3 x TICS_NET_TIMEOUT).
 _tic_git_lock() {
-  _lk="$_gd/.git/tics-emit.lock"
+  _lk="$_gd/.git/tics-emit.lock"; _lr="$_lk.reclaim"
   _lw=$(( ${TICS_LOCK_WAIT:-$(( 3 * ${TICS_NET_TIMEOUT:-5} ))} * 20 ))
   while ! mkdir "$_lk" 2>/dev/null; do
-    _lp="$(cat "$_lk/pid" 2>/dev/null)"
-    if [ -n "$_lp" ] && ! kill -0 "$_lp" 2>/dev/null; then rm -rf "$_lk" 2>/dev/null; continue; fi
+    if _tic_git_lock_stale; then
+      if mkdir "$_lr" 2>/dev/null; then
+        _tic_git_lock_stale && rm -rf "$_lk" 2>/dev/null   # re-read pid and age under the reclaim mutex
+        rmdir "$_lr" 2>/dev/null
+        continue
+      fi
+      _tic_age_over "$_lr" 3 && rmdir "$_lr" 2>/dev/null
+    fi
     _lw=$((_lw - 1)); [ "$_lw" -gt 0 ] || return 1
     sleep 0.05
   done
   echo "$$" > "$_lk/pid" 2>/dev/null
   return 0
 }
-_tic_git_unlock() { rm -rf "$_gd/.git/tics-emit.lock" 2>/dev/null; return 0; }
-# Push HEAD to the bus branch. Only a non-fast-forward rejection is retried (fetch + rebase + push, bounded by
-# TICS_PUSH_TRIES, jittered); a timeout or network error is not, and records the failure (attempt stamp +
-# fail marker) so emits and reads inside TICS_FETCH_TTL skip the network. Unpublished tics stay committed
-# locally and ride out with the next push or `tics sync`. Returns 0 when published.
+# True when the lock at $_lk is stale: its recorded pid is dead, or its age exceeds 2 x TICS_NET_TIMEOUT.
+_tic_git_lock_stale() {
+  _lp="$(cat "$_lk/pid" 2>/dev/null)"
+  [ -n "$_lp" ] && ! kill -0 "$_lp" 2>/dev/null && return 0
+  _tic_age_over "$_lk" $(( 2 * ${TICS_NET_TIMEOUT:-5} ))
+}
+# True when PATH exists and its mtime is more than SECONDS ago (GNU stat, else BSD/macOS stat).
+_tic_age_over() {
+  _lm="$(stat -c %Y "$1" 2>/dev/null || stat -f %m "$1" 2>/dev/null)"
+  case "$_lm" in '' | *[!0-9]*) return 1 ;; esac
+  [ $(( $(date +%s) - _lm )) -gt "$2" ]
+}
+# Release the lock only if this process still holds it (a lock broken as stale may now be another emit's).
+_tic_git_unlock() {
+  [ "$(cat "$_gd/.git/tics-emit.lock/pid" 2>/dev/null)" = "$$" ] && rm -rf "$_gd/.git/tics-emit.lock" 2>/dev/null
+  return 0
+}
+# Push HEAD to the bus branch, unlocked. Only a non-fast-forward rejection is retried (fetch + rebase under the
+# lock, then push again unlocked; bounded by TICS_PUSH_TRIES, jittered); a failed rebase is always aborted. A
+# timeout or network error is not retried, and records the failure (attempt stamp + fail marker) so emits and
+# reads inside TICS_FETCH_TTL skip the network. Unpublished tics stay committed locally and ride out with the
+# next push or `tics sync`. Returns 0 when published.
 _tic_git_push() {
   _n=0
   while :; do
@@ -116,10 +143,28 @@ _tic_git_push() {
     [ "$_rc" -eq 0 ] && { _tic_net_ok; return 0; }
     [ "$_rc" -eq 2 ] || { _tic_net_fail; return 1; }
     _n=$((_n + 1)); [ "$_n" -ge "${TICS_PUSH_TRIES:-8}" ] && return 1
-    _tic_net fetch -q origin "$_gb" || { _tic_net_fail; return 1; }
-    _tic_git rebase -q FETCH_HEAD >/dev/null 2>&1 || _tic_git rebase --abort >/dev/null 2>&1
+    _tic_git_lock || return 1
+    if ! _tic_net fetch -q origin "$_gb"; then _tic_git_unlock; _tic_net_fail; return 1; fi
+    _tic_git rebase -q FETCH_HEAD >/dev/null 2>&1 || _tic_git_rebase_abort
+    _tic_git_unlock
     sleep "0.$(( (RANDOM % 4) + 1 ))"
   done
+}
+# Abort a failed rebase. The rebase runs only under the lock, but should a lock ever be double-held (broken as
+# stale while its holder still ran), `rebase --abort` resets to ORIG_HEAD and would delete a tic another process
+# committed meanwhile. So before aborting, note the in-rebase HEAD; afterwards, put back from the object store every
+# tics.d file it has that is missing from the worktree and not on the remote. It is left for the next emit or
+# `tics sync` to stage and commit (self-healing staging).
+_tic_git_rebase_abort() {
+  _rh="$(_tic_git rev-parse -q --verify HEAD 2>/dev/null)"
+  _tic_git rebase --abort >/dev/null 2>&1
+  [ -n "$_rh" ] || return 0
+  _tic_git ls-tree -r --name-only "$_rh" -- tics.d 2>/dev/null | while IFS= read -r _rf; do
+    [ -e "$_gd/$_rf" ] && continue
+    _tic_git cat-file -e "FETCH_HEAD:$_rf" 2>/dev/null && continue
+    _tic_git show "$_rh:$_rf" > "$_gd/$_rf" 2>/dev/null || rm -f "$_gd/$_rf" 2>/dev/null
+  done
+  return 0
 }
 # Run one networked git command under a watchdog: TICS_NET_TIMEOUT seconds (default 5), pure bash (macOS has no
 # timeout(1)). git and the sleeper each run in their own process group (set -m), so expiry kills git with its
@@ -183,15 +228,15 @@ _tic_net_backoff() {
 tics_sync() {
   [ "${TIC_STORE:-jsonl}" = "git" ] || { echo "tics sync: TIC_STORE is not git; nothing to publish"; return 0; }
   _tic_git_open
-  # the same per-checkout lock as an emit, so a sync never races an emit's add/commit/push on this checkout
+  # the same per-checkout lock as an emit, for the LOCAL steps only (add, commit); the push runs unlocked
   _tic_git_lock || { echo "tics sync: the bus checkout is busy; retry shortly"; return 0; }
   if [ -d "$_gd/tics.d" ]; then
-    _tic_git add -- tics.d 2>/dev/null
+    _tic_git add -A -- tics.d 2>/dev/null
     _tic_git diff --cached --quiet 2>/dev/null || _tic_git commit -q -m "tic" 2>/dev/null
   fi
-  _tic_git rev-parse -q --verify HEAD >/dev/null 2>&1 || { _tic_git_unlock; echo "tics sync: no local tics"; return 0; }
-  if ! _tic_git_push; then _tic_git_unlock; echo "tics sync: remote unreachable; local tics kept, retry later"; return 0; fi
   _tic_git_unlock
+  _tic_git rev-parse -q --verify HEAD >/dev/null 2>&1 || { echo "tics sync: no local tics"; return 0; }
+  _tic_git_push || { echo "tics sync: remote unreachable; local tics kept, retry later"; return 0; }
   date -u +%Y-%m-%dT%H:%M:%SZ > "$_gd/.git/tics-fetch-attempt" 2>/dev/null
   _tic_net fetch -q origin "+$_gb:refs/remotes/origin/$_gb" && _tic_net_ok
   echo "tics sync: published to origin/$_gb"
