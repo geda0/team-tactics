@@ -41,7 +41,18 @@ function gitStore(targetDir, ignoreEnv) {
   if (!fs.existsSync(path.join(dir, ".git"))) return null;   // no bus checkout yet -> today's behavior
   const ttl = parseInt(cfgVal(targetDir, "TICS_FETCH_TTL", "60", ignoreEnv), 10);
   const net = parseInt(cfgVal(targetDir, "TICS_NET_TIMEOUT", "5", ignoreEnv), 10);
-  return { dir, root: targetDir, net: isNaN(net) ? 5 : net, branch: cfgVal(targetDir, "TICS_BRANCH", "tics-bus", ignoreEnv), ttl: isNaN(ttl) ? 60 : ttl, stamp: path.join(dir, ".git", "tics-fetch-stamp"), attempt: path.join(dir, ".git", "tics-fetch-attempt") };
+  const remote = cfgVal(targetDir, "TICS_REMOTE", "", ignoreEnv);
+  const recFile = path.join(dir, ".git", "tics-remote");
+  let rec = null;
+  try { rec = fs.readFileSync(recFile, "utf8").trim(); } catch (e) {
+    const genv = Object.assign({}, process.env);
+    for (const k of ["GIT_DIR", "GIT_WORK_TREE", "GIT_INDEX_FILE", "GIT_PREFIX", "GIT_COMMON_DIR"]) delete genv[k];
+    const og = cp.spawnSync("git", ["-C", dir, "remote", "get-url", "origin"], { encoding: "utf8", stdio: ["ignore", "pipe", "ignore"], env: genv });
+    if (og.status === 0) { rec = og.stdout.trim(); try { fs.writeFileSync(recFile, rec + "\n"); } catch (e2) {} }   // legacy checkout: adopt origin
+  }
+  const trim = (u) => u.replace(/\/$/, "");
+  const mismatch = rec !== null && trim(rec) !== trim(remote) ? { origin: rec, remote } : null;
+  return { mismatch, dir, root: targetDir, net: isNaN(net) ? 5 : net, branch: cfgVal(targetDir, "TICS_BRANCH", "tics-bus", ignoreEnv), ttl: isNaN(ttl) ? 60 : ttl, stamp: path.join(dir, ".git", "tics-fetch-stamp"), attempt: path.join(dir, ".git", "tics-fetch-attempt") };
 }
 function busGit(gs, args, opts) {
   const env = Object.assign({}, process.env, { GIT_TERMINAL_PROMPT: "0", GIT_OPTIONAL_LOCKS: "0", GIT_HTTP_LOW_SPEED_LIMIT: "1000", GIT_HTTP_LOW_SPEED_TIME: "5" });
@@ -58,6 +69,7 @@ function busFetch(gs) {
 }
 const FETCHED = new Set();   // absolute bus dirs already fetched by THIS process (at most once per bus)
 function maybeFetch(gs) {
+  if (gs.mismatch) return;   // never fetch from the wrong remote
   if (!FORCE_FETCH && FETCHED.has(gs.dir)) return;
   let last = 0;   // the ATTEMPT stamp drives the TTL, so a dead remote is retried once per TTL, not every read
   try { last = fs.statSync(gs.attempt).mtimeMs; } catch (e) {}
@@ -106,9 +118,18 @@ function ticsSync(targetDir) {
   if (r.stdout) process.stdout.write(r.stdout);
   return 0;
 }
+function ticsRebind(targetDir) {
+  const lib = path.join(__dirname, "tics-lib.sh");
+  const env = Object.assign({}, process.env, { ROOT: targetDir });
+  for (const k of ["GIT_DIR", "GIT_WORK_TREE", "GIT_INDEX_FILE", "GIT_PREFIX", "GIT_COMMON_DIR"]) delete env[k];
+  const r = cp.spawnSync("bash", ["-c", '. "$1"; tics_rebind', "tics-rebind", lib], { cwd: targetDir, env, encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] });
+  if (r.stdout) process.stdout.write(r.stdout);
+  return 0;
+}
 function busFreshness(targetDir) {
   const gs = gitStore(targetDir);
   if (!gs) return null;
+  if (gs.mismatch) return "bus remote mismatch: checkout=" + gs.mismatch.origin + " config=" + gs.mismatch.remote + " — run tics rebind";
   let s = "";
   try { s = fs.readFileSync(gs.stamp, "utf8").trim(); } catch (e) {}
   return s ? "bus as of " + s : "bus as of: never fetched";
@@ -677,6 +698,7 @@ function main(argv, defaultRoot) {
     case "review": return ticsReview(target, scope, all);
     case "answer": return ticsAnswer(target, ansHandle, ansText, fromRole, all);
     case "sync": return ticsSync(target);
+    case "rebind": return ticsRebind(target);
     default: console.error("usage: tics <log [--scope S] | inbox <role> [--scope S] | conductor | claims | sections | board | roster | review | answer <handle> \"<text>\" | sync | claim-check <file> <scope> | claim-owner <file> | section-status <name> | fan-out <spec>] [--all]>"); return 2;
   }
 }
@@ -848,4 +870,4 @@ function ticsLandmarks(targetDir, all) {
   }
   return 0;
 }
-module.exports = { HOOK_IDENTITIES, setFetch, ticsSync, loadTics, loadSignalEvents, ticsLog, ticsInbox, ticsConductor, ticsClaims, ticsSections, ticsCycle, ticsGate, claimCheck, claimCheckCli, claimOwner, claimOwnerCli, claimSession, claimSessionCli, sectionStatus, sectionStatusCli, livenessTier, fleetModel, ticsBoard, ticsRoster, ticsReview, ticsAnswer, fanOut, greenAttestation, attestationTally, isHookSignedRed, cfgStr, evidenceFor, openNeeds, main, toolTally, ticsLandmarks, landmarkMap, ticsWhere, ticsHow };
+module.exports = { HOOK_IDENTITIES, setFetch, ticsSync, ticsRebind, loadTics, loadSignalEvents, ticsLog, ticsInbox, ticsConductor, ticsClaims, ticsSections, ticsCycle, ticsGate, claimCheck, claimCheckCli, claimOwner, claimOwnerCli, claimSession, claimSessionCli, sectionStatus, sectionStatusCli, livenessTier, fleetModel, ticsBoard, ticsRoster, ticsReview, ticsAnswer, fanOut, greenAttestation, attestationTally, isHookSignedRed, cfgStr, evidenceFor, openNeeds, main, toolTally, ticsLandmarks, landmarkMap, ticsWhere, ticsHow };

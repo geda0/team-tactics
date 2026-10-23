@@ -64,11 +64,15 @@ _tic_git() { env -u GIT_DIR -u GIT_WORK_TREE -u GIT_INDEX_FILE -u GIT_PREFIX -u 
   git -C "$_gd" -c user.name=tics -c user.email=tics@localhost "$@"; }
 _tic_git_open() {
   _gd="${TICS_GIT_DIR:-$ROOT/.claude/state/tics.git}"; _gb="${TICS_BRANCH:-tics-bus}"
-  [ -d "$_gd/.git" ] && return 0
+  if [ -d "$_gd/.git" ]; then   # a legacy checkout with no record adopts its current origin
+    [ -e "$_gd/.git/tics-remote" ] || _tic_git remote get-url origin > "$_gd/.git/tics-remote" 2>/dev/null
+    return 0
+  fi
   mkdir -p "$_gd" 2>/dev/null || true
   _tic_git init -q 2>/dev/null
   _tic_git_hide
   _tic_git remote add origin "${TICS_REMOTE:-}" 2>/dev/null
+  printf '%s\n' "${TICS_REMOTE:-}" > "$_gd/.git/tics-remote" 2>/dev/null
   # P3 local first: no fetch here. The tic is committed before any network call; a remote bus branch is
   # integrated by the push's non-fast-forward retry (rebase), and the reader unions the tracking tree.
   _tic_git checkout -q --orphan "$_gb" 2>/dev/null
@@ -96,8 +100,17 @@ _tic_git_publish() {
     _tic_git_unlock; return 0   # nothing new: a concurrent emit already committed (and publishes) this file
   fi
   _tic_git_unlock
+  _tic_git_moved && return 0   # ADR 0026: a moved bus is not a network failure; keep the commit, push nothing
   _tic_net_backoff || _tic_git_push || true
   return 0
+}
+# True when the configured TICS_REMOTE differs from the remote the checkout was created for (the record in
+# .git/tics-remote; one trailing "/" trimmed, no other normalization). A deliberate `git remote set-url` is an
+# operator act, not a mismatch. A record-less legacy checkout adopts its current origin. `tics rebind` moves it.
+_tic_git_moved() {
+  [ -e "$_gd/.git/tics-remote" ] || _tic_git remote get-url origin > "$_gd/.git/tics-remote" 2>/dev/null
+  _mr="$(cat "$_gd/.git/tics-remote" 2>/dev/null)"
+  [ "${_mr%/}" != "${TICS_REMOTE:-}" ] && [ "${_mr%/}" != "${TICS_REMOTE%/}" ]
 }
 # Portable per-checkout mutex (macOS has no flock(1)): mkdir is atomic. The holder's pid is recorded; a lock is
 # stale when that pid is dead OR the lock is older than 2 x TICS_NET_TIMEOUT (no holder keeps it longer). Only a
@@ -245,9 +258,36 @@ tics_sync() {
   fi
   _tic_git_unlock
   _tic_git rev-parse -q --verify HEAD >/dev/null 2>&1 || { echo "tics sync: no local tics"; return 0; }
+  _tic_git_moved && { echo "tics sync: bus remote mismatch: checkout=$(cat "$_gd/.git/tics-remote" 2>/dev/null) config=${TICS_REMOTE:-} — run tics rebind"; return 0; }
   _tic_git_push || { echo "tics sync: remote unreachable; local tics kept, retry later"; return 0; }
   date -u +%Y-%m-%dT%H:%M:%SZ > "$_gd/.git/tics-fetch-attempt" 2>/dev/null
   _tic_net fetch -q origin "+$_gb:refs/remotes/origin/$_gb" && _tic_net_ok
   echo "tics sync: published to origin/$_gb"
+  return 0
+}
+# `tics rebind` (ADR 0026): move the bus to the configured TICS_REMOTE, carrying only the tics the OLD remote
+# does not have. The old checkout is set aside (<dir>.old-<epoch>), a fresh one is opened for the new remote
+# (its bus branch fetched if it exists), and the unpushed tic files are copied in, committed and pushed.
+tics_rebind() {
+  [ "${TIC_STORE:-jsonl}" = "git" ] || { echo "tics rebind: TIC_STORE is not git; nothing to move"; return 0; }
+  _gd="${TICS_GIT_DIR:-$ROOT/.claude/state/tics.git}"; _gb="${TICS_BRANCH:-tics-bus}"
+  [ -d "$_gd/.git" ] || { echo "tics rebind: no bus checkout yet; nothing to move"; return 0; }
+  _tic_git_moved || { echo "tics rebind: bus already on ${TICS_REMOTE:-}"; return 0; }
+  _rbt="$_gd.rebind-$$"; rm -rf "$_rbt"; mkdir -p "$_rbt"
+  { _tic_git ls-files -- tics.d; _tic_git ls-files -o --exclude-standard -- tics.d; } 2>/dev/null | sort -u | while IFS= read -r _rf; do
+    [ -f "$_gd/$_rf" ] || continue
+    _tic_git cat-file -e "refs/remotes/origin/$_gb:$_rf" 2>/dev/null && continue
+    mkdir -p "$_rbt/$(dirname "$_rf")"; cp "$_gd/$_rf" "$_rbt/$_rf"
+  done
+  _rbo="$_gd.old-$(date +%s)-$$"
+  mv "$_gd" "$_rbo" || { echo "tics rebind: cannot move the old checkout"; return 0; }
+  _tic_git_open
+  if _tic_net fetch -q origin "+$_gb:refs/remotes/origin/$_gb"; then
+    _tic_git checkout -q -B "$_gb" "refs/remotes/origin/$_gb" 2>/dev/null
+  fi
+  if [ -d "$_rbt/tics.d" ]; then mkdir -p "$_gd/tics.d"; cp -R "$_rbt/tics.d/." "$_gd/tics.d/"; fi
+  rm -rf "$_rbt"
+  _tic_git_publish
+  echo "tics rebind: bus moved to ${TICS_REMOTE:-}; old checkout kept at $_rbo"
   return 0
 }
