@@ -67,8 +67,19 @@ first created: a checkout made before this slice is not hidden retroactively (ad
 checkout and let the next emit recreate it).
 
 **The read side:**
-- `tics` with `TIC_STORE=git` fetches `TICS_BRANCH` (best effort, offline-safe) and reads `TICS_GIT_DIR/tics.d/`
-  exactly as it reads a spool. Every existing view (log, inbox, board, cycle, gate) works unchanged.
+- `tics` with `TIC_STORE=git` reads the **union** of the checkout's working-tree `tics.d/` (local, including
+  unpushed) and the fetched remote-tracking tree (`origin/<TICS_BRANCH>`, read with `ls-tree` / `cat-file`),
+  deduplicated by filename. The fold sits at the one seam every view uses (`storePaths` / `loadTics`), so log,
+  inbox, board, cycle, gate, claim-check and claim-owner all see the bus. claim-check matters most: the edit
+  guard calls it on every edit.
+- **A read never mutates the bus checkout:** no rebase, merge or checkout. A fetch only updates the remote-tracking
+  ref. Mutating on read would race concurrent emits on the same checkout and could lose unpushed work; the union
+  is lossless by construction.
+- **Fetch is throttled:** at most once per `TICS_FETCH_TTL` seconds (default 60), tracked by a stamp file in the
+  checkout's `.git`, with a short network timeout. `tics sync` and `tics log --fetch` force one. A failed fetch is
+  silent and the read falls back to what it has, so offline still exits 0.
+- **Freshness is visible:** `log` and `board` print "bus as of <last fetch>", so stale data is never mistaken for
+  live (the same spirit as ADR 0025 N13).
 - **`tics sync`** = fetch + rebase + push of any unpushed local tics. It is idempotent.
 
 ### 2. Collision-free ordering (`seq` becomes advisory)
@@ -100,9 +111,11 @@ checkout and let the next emit recreate it).
 - **P4 (stable order):** two readers on different hosts render the same merged bus in the same order.
 - **P5 (project tree untouched):** after emits under `TIC_STORE=git`, `git status` of the project's own tree is
   unchanged.
-- **P6 (the reader sees the bus):** with `TIC_STORE=git` (from `tdd.config` or the environment), `tics log` lists
-  the tics in `TICS_GIT_DIR/tics.d/`, including ones another host published, which it fetches on read. With the
-  remote unreachable it still lists the local ones and exits 0, and a read never drops a local unpushed tic.
+- **P6 (the reader sees the bus):** with `TIC_STORE=git` (from `tdd.config` or the environment): (a) host A's
+  `tics log` lists host B's tics and A's `claim-check` sees B's claim; (b) with the remote unreachable, A's local
+  tics (unpushed included) are still listed and the read exits 0; (c) a read leaves the bus checkout's HEAD, index
+  and working tree unchanged; (d) a second read within `TICS_FETCH_TTL` does no fetch; (e) `log` shows when the bus
+  was last fetched.
 
 ## Slices (red→green, one behavior each)
 
