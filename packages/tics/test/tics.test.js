@@ -458,6 +458,24 @@ test("V3 (ADR 0027): a stale no-session role holding a claim reads STUCK; two no
   assert.deepStrictEqual(m.collisions, [], "two no-session roles on one scope are not two live sessions (no false collision)");
 });
 
+test("V4 (ADR 0027): a signal-only role is a member; every hook identity tic.sh reserves (subagent, witness too) creates none", () => {
+  const TV = require(path.join(__dirname, "..", "kit", "hooks", "tics-view.cjs"));
+  const now = Date.UTC(2026, 9, 23, 0, 0, 0);
+  const ts = new Date(now - 5000).toISOString();
+  // the real fleet: dev-ops only ever emits signals; SubagentStop and witness telemetry carry no session
+  const tics = [
+    { seq: 1, kind: "signal", from: "dev-ops", to: "fleet", session: "", ts },
+    { seq: 2, kind: "handoff", from: "subagent", to: "orchestrator", session: "", ts },
+    { seq: 3, kind: "note", from: "witness", to: "fleet", session: "", ts },
+  ];
+  const ticSh = fs.readFileSync(path.join(__dirname, "..", "kit", "hooks", "tic.sh"), "utf8");
+  const reserved = ticSh.match(/case "\$\{1:-\}" in (subagent\|[^)]*)\)/)[1].split("|").sort();
+  const m = TV.fleetModel("/tmp/nonexistent-v4", tics, { nowMs: now });
+  const names = m.members.map((x) => x.session).sort();
+  assert.deepStrictEqual(names, ["dev-ops (no session)"], "the signal-only role is a member; subagent/witness hook telemetry is not");
+  assert.deepStrictEqual([...(TV.HOOK_IDENTITIES || [])].sort(), reserved, "the view's hook identities match the ones tic.sh reserves");
+});
+
 test("E8-1: greenAttestation classifies a green signal as hook-signed (from=run-suite) vs self-reported (role), null otherwise; never throws", () => {
   const TV = require(path.join(__dirname, "..", "kit", "hooks", "tics-view.cjs"));
   // a green signal from the suite-runner hook is real proof
