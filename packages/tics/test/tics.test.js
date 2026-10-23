@@ -1267,28 +1267,95 @@ test("P5 (ADR 0026): TIC_STORE=git — emits leave the project's own git tree un
   }
 });
 
-test("P6 (ADR 0026): TIC_STORE=git — tics log lists local and other-host tics (fetched on read), and stays offline-safe", () => {
+// P6 (ADR 0026) shared setup: two "hosts" whose tdd.config names one bare remote, so emit and read both see it
+// with no env plumbing. busOf(d) is the default TICS_GIT_DIR checkout.
+function p6Hosts(extraA) {
   const remote = fs.mkdtempSync(path.join(os.tmpdir(), "tics-remote-")), gone = remote + "-gone";
   const hostA = inst("git"), hostB = inst("git");
-  // TICS_REMOTE lives in each install's tdd.config, so emit and read both see it with no env plumbing
   for (const d of [hostA, hostB]) fs.appendFileSync(path.join(d, ".claude", "tdd.config"), 'TICS_REMOTE="' + remote + '"\n');
+  if (extraA) fs.appendFileSync(path.join(hostA, ".claude", "tdd.config"), extraA);
+  git(remote, "init", "-q", "--bare");
+  const cleanup = () => { for (const p of [remote, gone, hostA, hostB]) fs.rmSync(p, { recursive: true, force: true }); };
+  return { remote, gone, hostA, hostB, cleanup };
+}
+const busOf = (d) => path.join(d, ".claude", "state", "tics.git");
+
+test("P6a (ADR 0026): TIC_STORE=git — host A's tics log lists host B's tic and A's claim-check sees B's claim", () => {
+  const h = p6Hosts();
   try {
-    git(remote, "init", "-q", "--bare");
-    assert.strictEqual(srcLib(hostA, "emit_tic a '*' note from-A").status, 0);
-    assert.strictEqual(srcLib(hostB, "emit_tic b '*' note from-B").status, 0);
-    const online = read(hostA, "log");
-    assert.strictEqual(online.status, 0, online.stderr);
-    assert.match(online.stdout, /from-A/, "the local tic is listed: " + online.stdout);
-    assert.match(online.stdout, /from-B/, "the other host's tic is fetched on read: " + online.stdout);
-    // the remote goes away; A emits a tic that cannot be pushed
-    fs.renameSync(remote, gone);
-    assert.strictEqual(srcLib(hostA, "emit_tic a '*' note offline-A").status, 0);
-    const offline = read(hostA, "log");
+    assert.strictEqual(srcLib(h.hostA, "emit_tic a '*' note from-A").status, 0);
+    assert.strictEqual(srcLib(h.hostB, "emit_tic b '*' note from-B").status, 0);
+    assert.strictEqual(srcLib(h.hostB, "export TICS_SCOPE='auth/S1'; emit_tic b '*' claim f.ts f.ts").status, 0);
+    const log = read(h.hostA, "log");
+    assert.strictEqual(log.status, 0, log.stderr);
+    assert.match(log.stdout, /from-A/, "the local tic is listed: " + log.stdout);
+    assert.match(log.stdout, /from-B/, "the other host's tic is fetched on read: " + log.stdout);
+    const cc = read(h.hostA, "claim-check", "f.ts", "ord/S2");
+    assert.strictEqual(cc.status, 3, "A (scope ord/S2) is blocked by B's claim on f.ts in auth/S1: " + cc.stdout + cc.stderr);
+    assert.match(cc.stdout, /auth\/S1/, "the conflict names B's scope");
+  } finally { h.cleanup(); }
+});
+
+test("P6b (ADR 0026): TIC_STORE=git — with the remote unreachable, A's local tics (unpushed included) are listed and the read exits 0", () => {
+  const h = p6Hosts();
+  try {
+    assert.strictEqual(srcLib(h.hostA, "emit_tic a '*' note from-A").status, 0);
+    assert.strictEqual(srcLib(h.hostB, "emit_tic b '*' note from-B").status, 0);
+    read(h.hostA, "log");                                          // online read: fetches B's tic
+    fs.renameSync(h.remote, h.gone);                               // the remote goes away
+    assert.strictEqual(srcLib(h.hostA, "emit_tic a '*' note offline-A").status, 0);
+    const offline = read(h.hostA, "log");
     assert.strictEqual(offline.status, 0, "an offline read still exits 0: " + offline.stderr);
     assert.match(offline.stdout, /offline-A/, "a local unpushed tic is never dropped: " + offline.stdout);
     assert.match(offline.stdout, /from-A/, "earlier local tics are still listed offline");
     assert.match(offline.stdout, /from-B/, "already-fetched tics are still listed offline");
-  } finally {
-    for (const p of [remote, gone, hostA, hostB]) fs.rmSync(p, { recursive: true, force: true });
-  }
+  } finally { h.cleanup(); }
+});
+
+test("P6c (ADR 0026): TIC_STORE=git — a read that fetches a new remote tic leaves the bus checkout's HEAD, index and working tree unchanged", () => {
+  const h = p6Hosts();
+  try {
+    assert.strictEqual(srcLib(h.hostA, "emit_tic a '*' note from-A").status, 0);
+    assert.strictEqual(srcLib(h.hostB, "emit_tic b '*' note new-B").status, 0);   // on the remote, not integrated by A
+    const bus = busOf(h.hostA), idx = path.join(bus, ".git", "index");
+    const snap = () => ({
+      head: git(bus, "rev-parse", "HEAD").stdout,
+      status: git(bus, "status", "--porcelain").stdout,
+      idxMtime: fs.statSync(idx).mtimeMs,
+      idxHash: require("crypto").createHash("sha1").update(fs.readFileSync(idx)).digest("hex"),
+    });
+    const before = snap();
+    const log = read(h.hostA, "log");
+    assert.strictEqual(log.status, 0, log.stderr);
+    assert.match(log.stdout, /new-B/, "the read fetched B's new tic (so a rebasing reader would move HEAD): " + log.stdout);
+    assert.deepStrictEqual(snap(), before, "HEAD, index and working tree of the bus checkout are untouched by the read");
+  } finally { h.cleanup(); }
+});
+
+test("P6d (ADR 0026): TIC_STORE=git — a second read within TICS_FETCH_TTL does not fetch; tics log --fetch forces one", () => {
+  const h = p6Hosts('TICS_FETCH_TTL="3600"\n');
+  try {
+    assert.strictEqual(srcLib(h.hostA, "emit_tic a '*' note from-A").status, 0);
+    assert.strictEqual(srcLib(h.hostB, "emit_tic b '*' note from-B").status, 0);
+    const first = read(h.hostA, "log");
+    assert.match(first.stdout, /from-B/, "the first read fetches: " + first.stdout);
+    assert.strictEqual(srcLib(h.hostB, "emit_tic b '*' note late-B").status, 0);
+    const second = read(h.hostA, "log");
+    assert.strictEqual(second.status, 0, second.stderr);
+    assert.match(second.stdout, /from-B/, "the second read still lists what was fetched");
+    assert.doesNotMatch(second.stdout, /late-B/, "a read inside the TTL does not fetch: " + second.stdout);
+    const forced = read(h.hostA, "log", "--fetch");
+    assert.strictEqual(forced.status, 0, forced.stderr);
+    assert.match(forced.stdout, /late-B/, "tics log --fetch forces a fetch: " + forced.stdout);
+  } finally { h.cleanup(); }
+});
+
+test("P6e (ADR 0026): TIC_STORE=git — tics log prints when the bus was last fetched", () => {
+  const h = p6Hosts();
+  try {
+    assert.strictEqual(srcLib(h.hostA, "emit_tic a '*' note from-A").status, 0);
+    const log = read(h.hostA, "log");
+    assert.strictEqual(log.status, 0, log.stderr);
+    assert.match(log.stdout, /bus as of/i, "a freshness line is shown: " + log.stdout);
+  } finally { h.cleanup(); }
 });
