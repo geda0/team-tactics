@@ -109,3 +109,30 @@ are in ADR 0025. What the distributed run taught:
 
 The priority principle holds: this run **pulled** the coordination features it needed. The order is
 in ADR 0025 §4: transport first, then the read-side folds that make the bus legible at fleet scale.
+
+## Field learnings — fleet trial of 0.70 on tics-project (2026-10-23)
+
+The first run of the new transport on real hosts: two cloud lanes (lead, worker), an Intel Mac coordinator, and the
+delegation session, on one git bus. Retro: tics-project `docs/retro/2026-10-trial-0.70.md`, every claim cited by tic.
+
+- **The transport works on real networks.** Cross-host reads, freshness without `--fetch`, every role on the board,
+  a dead remote (5.4 s once, then 0.32 s under backoff, nothing lost, `tics sync` to 0 unpushed), 20/20 concurrent
+  emits on one checkout, and zero hook tics on the bus. Transport needs N1, P6, P3, P1b/c, P7 and ADR 0027 are proven.
+- **Coordination on top still runs on convention, and convention broke at the first dispatch.** The brief said
+  `assign`; `tic.sh` rejected it (rc 2), so the lead sent `delegate`; the worker's poller matched `assign` and saw
+  nothing for 11 m 40 s. Neither side got an error, and the coordinator first misdiagnosed it as an idle session.
+  → **One vocabulary end to end**, an unknown kind is never dropped (recorded as `note` + `orig_kind`), and **ack
+  folds key on `ref` + `to`, never on kind**.
+- **The install is part of the product.** `ttics update` dropped the fleet's own release-gate hook (fixed in 0.70.1),
+  the kit repo's dogfood install had drifted from the shipped kit, and a moved `TICS_REMOTE` was silently ignored
+  (fixed: recorded remote + `tics rebind`). → test the update path against real adopter installs, and guard dogfood
+  drift.
+- **Referee liveness needs the kit version.** Every lane's hooks were armed from the kit the session *started* on,
+  not the trial's, and the tracked `session-started` file proved nothing. → gitignore state markers; "referee armed:
+  kit <v>".
+- **Latency and noise are the next costs.** About 2 s per published emit; a board flooded by stale history and false
+  collisions; an inbox buried under broadcasts; every bus commit titled `tic`. → batched publish (coordination kinds
+  immediate), a dormant tier, collisions on work kinds only, a role column with open dispatches, `inbox --since`.
+
+Order (architect rulings on the bus): tics-kinds → state markers + N13 kit → batched publish → board → ordering and
+inbox. The next trial runs after the first four, with the same T-table.
