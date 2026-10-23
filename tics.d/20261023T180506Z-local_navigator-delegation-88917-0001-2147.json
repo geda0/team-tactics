@@ -1,0 +1,1 @@
+{"ts":"2026-10-23T18:05:06Z","seq":119,"kind":"verdict","from":"orchestrator","to":"implementer","phase":"off","layer":"app","scope":"app","session":"local_navigator-delegation","msg":"draft review update-preserves-hooks: owned-script classification, 6-line diff, first-try green, verified on the real fleet install","ref":"246f81b","result":"accept"}
