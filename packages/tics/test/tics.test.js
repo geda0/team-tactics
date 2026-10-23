@@ -1792,6 +1792,69 @@ test("P7 (ADR 0026): TIC_STORE=git — hook telemetry stays local; agent tics st
   });
 });
 
+// P8 (ADR 0026, "A moved bus fails loud; tics rebind moves it", architect contract ref trial): the checkout's origin
+// is set once, so a later TICS_REMOTE change must not keep publishing to the old remote. On a mismatch an emit commits
+// locally but does not push; log/board print the mismatch line; `tics rebind` moves the bus carrying only unpushed tics.
+// p8Moved: host A publishes p8-old to OLD, then tdd.config's TICS_REMOTE is rewritten to NEW and A emits p8-after-move.
+function p8Moved() {
+  const h = p6Hosts(), NEW = fs.mkdtempSync(path.join(os.tmpdir(), "tics-remote-new-"));
+  git(NEW, "init", "-q", "--bare");
+  const cfg = path.join(h.hostA, ".claude", "tdd.config");
+  const oldEmit = srcLib(h.hostA, "emit_tic test-writer '*' note p8-old");
+  fs.writeFileSync(cfg, fs.readFileSync(cfg, "utf8").replace('TICS_REMOTE="' + h.remote + '"', 'TICS_REMOTE="' + NEW + '"'));
+  const moved = srcLib(h.hostA, "emit_tic test-writer '*' note p8-after-move");
+  const cleanup = () => { h.cleanup(); fs.rmSync(NEW, { recursive: true, force: true }); };
+  return { A: h.hostA, OLD: h.remote, NEW, cfg, oldEmit, moved, cleanup };
+}
+const busHeadMsgs = (bus) => git(bus, "ls-tree", "-r", "--name-only", "HEAD", "--", "tics.d").stdout.trim().split("\n").filter(Boolean)
+  .map((p) => { try { return JSON.parse(git(bus, "show", "HEAD:" + p).stdout).msg; } catch (_) { return null; } }).filter(Boolean).sort();
+
+test("P8 (ADR 0026): TIC_STORE=git — a moved TICS_REMOTE fails loud and tics rebind moves the bus", { timeout: 180000 }, async (t) => {
+  await t.test("P8a (ADR 0026): after TICS_REMOTE changes, an emit exits 0, commits locally, and nothing reaches the old remote", { timeout: 60000 }, () => {
+    const s = p8Moved();
+    try {
+      const oldRemote = remoteMsgs(s.OLD), newRemote = remoteMsgs(s.NEW);
+      assert.deepStrictEqual(
+        { oldEmitStatus: s.oldEmit.status, movedEmitStatus: s.moved.status,
+          committedLocally: busHeadMsgs(busOf(s.A)).includes("p8-after-move"),
+          oldHasOld: oldRemote.includes("p8-old"), oldHasMoved: oldRemote.includes("p8-after-move"),
+          newHasMoved: newRemote.includes("p8-after-move") },
+        { oldEmitStatus: 0, movedEmitStatus: 0, committedLocally: true, oldHasOld: true, oldHasMoved: false, newHasMoved: false },
+        "OLD tics-bus: " + JSON.stringify(oldRemote) + "\nNEW tics-bus: " + JSON.stringify(newRemote) + "\nemit stderr: " + s.moved.stderr);
+    } finally { s.cleanup(); }
+  });
+
+  await t.test("P8b (ADR 0026): on a remote mismatch, tics log and tics board print the mismatch line naming both URLs and tics rebind", { timeout: 60000 }, () => {
+    const s = p8Moved();
+    try {
+      const log = read(s.A, "log"), board = read(s.A, "board");
+      const logOut = log.stdout + log.stderr, boardOut = board.stdout + board.stderr;
+      const shows = (out) => ({ mismatch: out.includes("bus remote mismatch"), oldUrl: out.includes(s.OLD), newUrl: out.includes(s.NEW), rebind: out.includes("tics rebind") });
+      assert.deepStrictEqual(
+        { log: shows(logOut), board: shows(boardOut) },
+        { log: { mismatch: true, oldUrl: true, newUrl: true, rebind: true }, board: { mismatch: true, oldUrl: true, newUrl: true, rebind: true } },
+        "tics log:\n" + logOut + "\ntics board:\n" + boardOut);
+    } finally { s.cleanup(); }
+  });
+
+  await t.test("P8c (ADR 0026): tics rebind publishes exactly the unpushed tics to the new remote, not the old history, and later emits publish there", { timeout: 60000 }, () => {
+    const s = p8Moved();
+    try {
+      const rb = cp.spawnSync("node", [BIN, "rebind", s.A], { encoding: "utf8", env: ENV });
+      const afterRebind = remoteMsgs(s.NEW);
+      const next = srcLib(s.A, "emit_tic test-writer '*' note p8-new");
+      const afterNext = remoteMsgs(s.NEW);
+      const log = read(s.A, "log"), logOut = log.stdout + log.stderr;
+      assert.deepStrictEqual(
+        { rebindStatus: rb.status, newHasMoved: afterRebind.includes("p8-after-move"), newHasOld: afterRebind.includes("p8-old"),
+          nextStatus: next.status, newHasNext: afterNext.includes("p8-new"), mismatchAfter: logOut.includes("bus remote mismatch") },
+        { rebindStatus: 0, newHasMoved: true, newHasOld: false, nextStatus: 0, newHasNext: true, mismatchAfter: false },
+        "rebind: " + rb.stdout + rb.stderr + "\nNEW tics-bus after rebind: " + JSON.stringify(afterRebind) +
+        "\nNEW tics-bus after p8-new: " + JSON.stringify(afterNext) + "\ntics log:\n" + logOut);
+    } finally { s.cleanup(); }
+  });
+});
+
 test("P1b (ADR 0026): TIC_STORE=git — two emitters sharing ONE bus checkout, racing a third host, lose nothing and record no failure", { timeout: 60000 }, async () => {
   const h = p6Hosts(), K = 6;
   const burst = (d, who) => new Promise((resolve) => {
