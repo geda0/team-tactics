@@ -66,6 +66,20 @@ it to the project's `info/exclude` (located with `git rev-parse --git-path info/
 first created: a checkout made before this slice is not hidden retroactively (add the line by hand, or delete the
 checkout and let the next emit recreate it).
 
+**Bounded and lossless on the write side (P3):** measured on the first build, a single emit against a dead remote
+ran for minutes, and one killed mid-open left no tic at all, because `_tic_git_open` fetched before the tic was
+written. Hooks and agents both emit, so that froze sessions and broke the never-drop promise. The rules:
+1. **Local first.** The tic is written and committed before any network call. Opening the bus checkout is a local
+   init/orphan with no fetch; the first network operation is the push.
+2. **Every network call runs under a watchdog** (`TICS_NET_TIMEOUT`, default 5 s) that kills its process group.
+   macOS has no `timeout(1)`, so the watchdog is plain bash.
+3. **Retry only on a non-fast-forward rejection** (fetch + rebase + push, bounded as before), never on a timeout or a
+   network error: retrying a hang multiplies it.
+4. **On a network failure, set the reader's attempt stamp and return 0.** Inside the TTL after a failed attempt,
+   emits skip the network entirely; the tics ride out with the next publish or `tics sync`.
+5. **Rejected: a detached asynchronous push.** It would outlive the session and race concurrent emits on the same
+   checkout.
+
 **The read side:**
 - `tics` with `TIC_STORE=git` reads the **union** of the checkout's working-tree `tics.d/` (local, including
   unpushed) and the fetched remote-tracking tree (`origin/<TICS_BRANCH>`, read with `ls-tree` / `cat-file`),
@@ -116,8 +130,9 @@ checkout and let the next emit recreate it).
   messages equals the 2K emitted. *First red test, `packages/tics/test/tics.test.js`.*
 - **P2 (no identity collision):** across the same run, every tic file name is unique, and the reader's merged log
   lists 2K distinct entries even when `seq` values repeat.
-- **P3 (offline-safe):** with the remote unreachable, emits still exit 0 and the tics are committed locally. After
-  the remote returns, `tics sync` publishes all of them, and a re-run of `tics sync` publishes nothing new.
+- **P3 (offline-safe, bounded):** with a remote that hangs, (a) the first emit, even on a fresh install, exits 0
+  within ~10 s with its tic committed locally; (b) a second emit inside the TTL exits in < 1 s without touching the
+  network; (c) after the remote returns, `tics sync` publishes all of them, and a re-run publishes nothing new.
 - **P4 (stable order):** two readers on different hosts render the same merged bus in the same order.
 - **P5 (project tree untouched):** after emits under `TIC_STORE=git`, `git status` of the project's own tree is
   unchanged.
