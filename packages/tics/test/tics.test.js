@@ -1220,7 +1220,7 @@ test("MCC-1: tics mcp-install also writes a project .mcp.json (Claude Code) with
   } finally { fs.rmSync(d, { recursive: true, force: true }); }
 });
 
-test("P1 (ADR 0026): TIC_STORE=git — two concurrent emitters against one bare remote lose nothing", async () => {
+test("P1 (ADR 0026): TIC_STORE=git — two concurrent emitters against one bare remote lose nothing", { timeout: 60000 }, async () => {
   const remote = fs.mkdtempSync(path.join(os.tmpdir(), "tics-remote-"));
   const hostA = inst("git"), hostB = inst("git"), check = fs.mkdtempSync(path.join(os.tmpdir(), "tics-check-"));
   const K = 8;
@@ -1247,7 +1247,7 @@ test("P1 (ADR 0026): TIC_STORE=git — two concurrent emitters against one bare 
   }
 });
 
-test("P5 (ADR 0026): TIC_STORE=git — emits leave the project's own git tree untouched (status and HEAD)", () => {
+test("P5 (ADR 0026): TIC_STORE=git — emits leave the project's own git tree untouched (status and HEAD)", { timeout: 60000 }, () => {
   const remote = fs.mkdtempSync(path.join(os.tmpdir(), "tics-remote-")), d = inst("git");
   try {
     git(remote, "init", "-q", "--bare");
@@ -1280,7 +1280,7 @@ function p6Hosts(extraA) {
 }
 const busOf = (d) => path.join(d, ".claude", "state", "tics.git");
 
-test("P6a (ADR 0026): TIC_STORE=git — host A's tics log lists host B's tic and A's claim-check sees B's claim", () => {
+test("P6a (ADR 0026): TIC_STORE=git — host A's tics log lists host B's tic and A's claim-check sees B's claim", { timeout: 60000 }, () => {
   const h = p6Hosts();
   try {
     assert.strictEqual(srcLib(h.hostA, "emit_tic a '*' note from-A").status, 0);
@@ -1299,7 +1299,7 @@ test("P6a (ADR 0026): TIC_STORE=git — host A's tics log lists host B's tic and
   } finally { h.cleanup(); }
 });
 
-test("P6b (ADR 0026): TIC_STORE=git — with the remote unreachable, A's local tics (unpushed included) are listed and the read exits 0", () => {
+test("P6b (ADR 0026): TIC_STORE=git — with the remote unreachable, A's local tics (unpushed included) are listed and the read exits 0", { timeout: 60000 }, () => {
   const h = p6Hosts();
   try {
     assert.strictEqual(srcLib(h.hostA, "emit_tic a '*' note from-A").status, 0);
@@ -1315,7 +1315,7 @@ test("P6b (ADR 0026): TIC_STORE=git — with the remote unreachable, A's local t
   } finally { h.cleanup(); }
 });
 
-test("P6c (ADR 0026): TIC_STORE=git — a read that fetches a new remote tic leaves the bus checkout's HEAD, index and working tree unchanged", () => {
+test("P6c (ADR 0026): TIC_STORE=git — a read that fetches a new remote tic leaves the bus checkout's HEAD, index and working tree unchanged", { timeout: 60000 }, () => {
   const h = p6Hosts();
   try {
     assert.strictEqual(srcLib(h.hostA, "emit_tic a '*' note from-A").status, 0);
@@ -1337,7 +1337,7 @@ test("P6c (ADR 0026): TIC_STORE=git — a read that fetches a new remote tic lea
   } finally { h.cleanup(); }
 });
 
-test("P6d (ADR 0026): TIC_STORE=git — a second read within TICS_FETCH_TTL does not fetch; tics log --fetch forces one", () => {
+test("P6d (ADR 0026): TIC_STORE=git — a second read within TICS_FETCH_TTL does not fetch; tics log --fetch forces one", { timeout: 60000 }, () => {
   const h = p6Hosts('TICS_FETCH_TTL="3600"\n');
   try {
     assert.strictEqual(srcLib(h.hostA, "emit_tic a '*' note from-A").status, 0);
@@ -1355,7 +1355,7 @@ test("P6d (ADR 0026): TIC_STORE=git — a second read within TICS_FETCH_TTL does
   } finally { h.cleanup(); }
 });
 
-test("P6e (ADR 0026): TIC_STORE=git — tics log prints when the bus was last fetched", () => {
+test("P6e (ADR 0026): TIC_STORE=git — tics log prints when the bus was last fetched", { timeout: 60000 }, () => {
   const h = p6Hosts();
   try {
     assert.strictEqual(srcLib(h.hostA, "emit_tic a '*' note from-A").status, 0);
@@ -1368,7 +1368,7 @@ test("P6e (ADR 0026): TIC_STORE=git — tics log prints when the bus was last fe
   } finally { h.cleanup(); }
 });
 
-test("P6f (ADR 0026): TIC_STORE=git — with a remote that hangs, consecutive reads (log, claim-check) each finish in under a second", async () => {
+test("P6f (ADR 0026): TIC_STORE=git — with a remote that hangs, consecutive reads (log, claim-check) each finish in under a second", { timeout: 60000 }, async () => {
   const h = p6Hosts();
   // a TCP server that accepts and never answers, in its own process so the readers' spawnSync can't stall it
   const srv = cp.spawn(process.execPath, ["-e", "const s=require('net').createServer(()=>{});s.listen(0,'127.0.0.1',()=>console.log(s.address().port))"], { stdio: ["ignore", "pipe", "inherit"] });
@@ -1386,7 +1386,7 @@ test("P6f (ADR 0026): TIC_STORE=git — with a remote that hangs, consecutive re
 
 // P6g: the reader's fetch must be bounded even when git's transport helper (here the ssh command) hangs, and must
 // not leave that helper running: killing only the direct `git fetch` child is not enough.
-test("P6g (ADR 0026): TIC_STORE=git — a read whose fetch hits a hanging ssh helper exits 0 within 8 s, lists local tics and leaves no helper alive", async () => {
+test("P6g (ADR 0026): TIC_STORE=git — a read whose fetch hits a hanging ssh helper exits 0 within 8 s, lists local tics and leaves no helper alive", { timeout: 60000 }, async () => {
   const d = inst("git"), tmp = fs.mkdtempSync(path.join(os.tmpdir(), "tics-p6g-"));
   const bare = path.join(tmp, "bare.git"), pids = path.join(tmp, "ssh-pids"), ssh = path.join(tmp, "hang-ssh"), out = path.join(tmp, "log.out");
   const bus = busOf(d);
@@ -1411,6 +1411,88 @@ test("P6g (ADR 0026): TIC_STORE=git — a read whose fetch hits a hanging ssh he
       "tics log against a hanging ssh helper (ms " + r.ms + ", ssh pids " + pidList().join(",") + "); output: " + JSON.stringify(listed));
   } finally {
     for (const p of pidList()) { try { process.kill(-p, "SIGKILL"); } catch (_) {} try { process.kill(p, "SIGKILL"); } catch (_) {} }
+    for (const p of [d, tmp]) fs.rmSync(p, { recursive: true, force: true });
+  }
+});
+
+// P6h–P6k (ADR 0026): read-side contract rules — the success stamp, the freshness line, the offline exit code and
+// the once-per-process fetch. A "failed fetch" is a real attempt against a remote renamed away (TICS_FETCH_TTL="0"
+// or --fetch); the attempt stamp changing is the evidence that the read did try the network.
+const stampOf = (d, f) => { const p = path.join(busOf(d), ".git", f); return fs.existsSync(p) ? fs.readFileSync(p, "utf8") : null; };
+
+test("P6h (ADR 0026): TIC_STORE=git — a failed fetch leaves the success stamp untouched (a prior stamp keeps its content, an absent one stays absent)", { timeout: 60000 }, () => {
+  const h = p6Hosts('TICS_FETCH_TTL="0"\n');
+  try {
+    assert.strictEqual(srcLib(h.hostA, "emit_tic a '*' note from-A").status, 0);
+    assert.strictEqual(read(h.hostA, "log").status, 0);                     // online read: a successful fetch
+    const okStamp = stampOf(h.hostA, "tics-fetch-stamp");
+    fs.renameSync(h.remote, h.gone);                                          // the remote goes away
+    const att0 = stampOf(h.hostA, "tics-fetch-attempt");
+    const r1 = read(h.hostA, "log");                                          // failed fetch over a prior success
+    const kept = stampOf(h.hostA, "tics-fetch-stamp"), att1 = stampOf(h.hostA, "tics-fetch-attempt");
+    fs.rmSync(path.join(busOf(h.hostA), ".git", "tics-fetch-stamp"));       // as if never fetched successfully
+    const r2 = read(h.hostA, "log");                                          // failed fetch with no prior success
+    assert.deepStrictEqual(
+      { hadStamp: !!okStamp, r1: r1.status, attempted1: att1 !== att0, kept, r2: r2.status, attempted2: stampOf(h.hostA, "tics-fetch-attempt") !== att1, absent: stampOf(h.hostA, "tics-fetch-stamp") },
+      { hadStamp: true, r1: 0, attempted1: true, kept: okStamp, r2: 0, attempted2: true, absent: null },
+      "the success stamp records successful fetches only");
+  } finally { h.cleanup(); }
+});
+
+test("P6i (ADR 0026): TIC_STORE=git — tics log's 'bus as of' line carries an ISO-8601 time after a successful fetch and is unchanged by a later failed fetch", { timeout: 60000 }, () => {
+  const h = p6Hosts('TICS_FETCH_TTL="0"\n');
+  const freshLine = (r) => (r.stdout.match(/^.*bus as of.*$/m) || [null])[0];
+  try {
+    assert.strictEqual(srcLib(h.hostA, "emit_tic a '*' note from-A").status, 0);
+    const online = read(h.hostA, "log");
+    fs.renameSync(h.remote, h.gone);
+    const att0 = stampOf(h.hostA, "tics-fetch-attempt");
+    const offline = read(h.hostA, "log");
+    assert.match(String(freshLine(online)), /bus as of \d{4}-\d\d-\d\dT\d\d:\d\d/, "after a successful fetch the line names when: " + online.stdout);
+    assert.deepStrictEqual(
+      { status: offline.status, attempted: stampOf(h.hostA, "tics-fetch-attempt") !== att0, line: freshLine(offline) },
+      { status: 0, attempted: true, line: freshLine(online) },
+      "a failed fetch does not move the freshness line: " + offline.stdout);
+  } finally { h.cleanup(); }
+});
+
+test("P6j (ADR 0026): TIC_STORE=git — a read whose forced fetch really fails (remote gone) exits 0 and lists the local tics", { timeout: 60000 }, () => {
+  const h = p6Hosts();
+  try {
+    assert.strictEqual(srcLib(h.hostA, "emit_tic a '*' note from-A").status, 0);
+    fs.renameSync(h.remote, h.gone);
+    assert.strictEqual(srcLib(h.hostA, "emit_tic a '*' note offline-A").status, 0);
+    const att0 = stampOf(h.hostA, "tics-fetch-attempt");
+    const r = read(h.hostA, "log", "--fetch");
+    assert.deepStrictEqual(
+      { status: r.status, attempted: stampOf(h.hostA, "tics-fetch-attempt") !== att0, fromA: /from-A/.test(r.stdout), offlineA: /offline-A/.test(r.stdout) },
+      { status: 0, attempted: true, fromA: true, offlineA: true },
+      "tics log --fetch against a vanished remote: " + r.stdout + r.stderr);
+  } finally { h.cleanup(); }
+});
+
+// P6k: the default `tics log` loads the bus more than once (current bus + each worktree's), yet fetches it once.
+test("P6k (ADR 0026): TIC_STORE=git — with TICS_FETCH_TTL=0 one tics log against a hanging ssh helper spawns it once and takes one watchdog period, not two", { timeout: 60000 }, async () => {
+  const d = inst("git"), tmp = fs.mkdtempSync(path.join(os.tmpdir(), "tics-p6k-"));
+  const bare = path.join(tmp, "bare.git"), marker = path.join(tmp, "ssh-spawns"), pids = path.join(tmp, "ssh-pids"), ssh = path.join(tmp, "hang-ssh");
+  const bus = busOf(d);
+  fs.writeFileSync(ssh, '#!/bin/sh\necho "$*" >> "' + marker + '"\necho $$ >> "' + pids + '"\nexec sleep 600\n', { mode: 0o755 });
+  git(tmp, "init", "-q", "--bare", bare);
+  fs.appendFileSync(path.join(d, ".claude", "tdd.config"), 'TICS_REMOTE="' + bare + '"\n');
+  const spawns = () => (fs.existsSync(marker) ? fs.readFileSync(marker, "utf8").trim().split("\n").filter(Boolean).length : 0);
+  try {
+    assert.strictEqual(srcLib(d, "emit_tic a '*' note before-hang").status, 0);
+    assert.strictEqual(git(bus, "remote", "set-url", "origin", "ssh://hang/x.git").status, 0);
+    fs.appendFileSync(path.join(d, ".claude", "tdd.config"), 'TICS_FETCH_TTL="0"\nTICS_NET_TIMEOUT="3"\n');
+    fs.rmSync(path.join(bus, ".git", "tics-fetch-attempt"), { force: true });
+    const r = await timedRun(path.join(d, ".claude", "hooks", "tics"), ["log"], { cwd: d, env: { ...ENV, GIT_SSH_COMMAND: ssh } }, 30000);
+    assert.deepStrictEqual(
+      { status: r.status, sshSpawns: spawns(), onePeriod: r.ms < 5500 },
+      { status: 0, sshSpawns: 1, onePeriod: true },
+      "one tics log with a 3 s watchdog (ms " + r.ms + ")");
+  } finally {
+    const left = fs.existsSync(pids) ? fs.readFileSync(pids, "utf8").trim().split("\n").filter(Boolean) : [];
+    for (const p of left) { try { process.kill(-Number(p), "SIGKILL"); } catch (_) {} try { process.kill(Number(p), "SIGKILL"); } catch (_) {} }
     for (const p of [d, tmp]) fs.rmSync(p, { recursive: true, force: true });
   }
 });
@@ -1441,7 +1523,7 @@ function timedEmit(d, s, capMs, env) {
 
 // P3 (ADR 0026): the write side never hangs or loses a tic. No real network: the remote is ssh://hang/x.git and
 // GIT_SSH_COMMAND is a script that logs each spawn to a marker file (and its pid, for cleanup), then sleeps 600 s.
-test("P3 (ADR 0026): TIC_STORE=git — the write side never hangs or loses a tic", async (t) => {
+test("P3 (ADR 0026): TIC_STORE=git — the write side never hangs or loses a tic", { timeout: 120000 }, async (t) => {
   const d = inst("git"), tmp = fs.mkdtempSync(path.join(os.tmpdir(), "tics-p3-"));
   const marker = path.join(tmp, "ssh-spawns"), pids = path.join(tmp, "ssh-pids"), ssh = path.join(tmp, "hang-ssh");
   const bare = path.join(tmp, "bare.git"), bus = busOf(d);
@@ -1452,7 +1534,7 @@ test("P3 (ADR 0026): TIC_STORE=git — the write side never hangs or loses a tic
   const ticFile = (msg) => { const dir = path.join(bus, "tics.d"); return (fs.existsSync(dir) ? fs.readdirSync(dir) : []).find((f) => fs.readFileSync(path.join(dir, f), "utf8").includes(msg)); };
   const syncA = () => timedRun("node", [BIN, "sync", d], { env: ENV }, 30000);
   try {
-    await t.test("P3a (ADR 0026): a fresh install with a hanging remote — the first emit exits 0 within 10 s with the tic committed locally", async () => {
+    await t.test("P3a (ADR 0026): a fresh install with a hanging remote — the first emit exits 0 within 10 s with the tic committed locally", { timeout: 60000 }, async () => {
       const first = await timedEmit(d, "emit_tic a '*' note hung-1", 30000, HANG);
       const f = ticFile("hung-1");
       const logged = git(bus, "log", "--name-only", "--format=").stdout;
@@ -1462,7 +1544,7 @@ test("P3 (ADR 0026): TIC_STORE=git — the write side never hangs or loses a tic
         { status: 0, fast: true, file: true, inLog: true, tracked: 0 },
         "first emit against ssh://hang (ms " + first.ms + ", ssh spawns " + spawns() + "); bus log: " + JSON.stringify(logged));
     });
-    await t.test("P3b (ADR 0026): inside the TTL after a failed attempt, an emit and a read skip the network (fast, no ssh spawn)", async () => {
+    await t.test("P3b (ADR 0026): inside the TTL after a failed attempt, an emit and a read skip the network (fast, no ssh spawn)", { timeout: 60000 }, async () => {
       const before = spawns();
       const second = await timedEmit(d, "emit_tic a '*' note hung-2", 30000, HANG);
       const afterEmit = spawns();
@@ -1472,7 +1554,7 @@ test("P3 (ADR 0026): TIC_STORE=git — the write side never hangs or loses a tic
         { status: 0, fast: true, emitSpawns: 0, readStatus: 0, readSpawns: 0 },
         "second emit (ms " + second.ms + ") and read (ms " + r.ms + ") inside the TTL; ssh spawns before/after emit/after read: " + before + "/" + afterEmit + "/" + spawns());
     });
-    await t.test("P3c (ADR 0026): tics sync publishes every unpushed tic; a second sync publishes nothing new and exits 0", async () => {
+    await t.test("P3c (ADR 0026): tics sync publishes every unpushed tic; a second sync publishes nothing new and exits 0", { timeout: 60000 }, async () => {
       git(tmp, "init", "-q", "--bare", bare);
       assert.strictEqual(git(bus, "remote", "set-url", "origin", bare).status, 0, "the bus checkout has an origin to repoint");
       const s1 = await syncA();
