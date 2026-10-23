@@ -6,7 +6,7 @@ const { TV, PKG, installTics } = require("../index.js");
 
 const argv = process.argv.slice(2);
 let scope = null, all = true, fromRole = null, showWitness = false; const rest = [];   // whole-picture by default (merge every worktree's bus); --here restricts to the local bus
-for (let i = 0; i < argv.length; i++) { const a = argv[i]; if (a === "--scope") scope = argv[++i] || ""; else if (a === "--all") all = true; else if (a === "--here") all = false; else if (a === "--from") fromRole = argv[++i] || null; else if (a === "--witness") showWitness = true; else rest.push(a); }
+for (let i = 0; i < argv.length; i++) { const a = argv[i]; if (a === "--scope") scope = argv[++i] || ""; else if (a === "--all") all = true; else if (a === "--here") all = false; else if (a === "--from") fromRole = argv[++i] || null; else if (a === "--witness") showWitness = true; else if (a === "--fetch") TV.setFetch(true); else rest.push(a); }
 const KNOWN = ["log", "inbox", "conductor", "claims", "sections", "board", "roster", "review", "cycle", "gate", "claim-check", "answer", "init", "install", "update", "selftest", "mcp", "mcp-install", "help"];
 const cmd = KNOWN.indexOf(rest[0]) !== -1 ? rest.shift() : "help";
 const role = cmd === "inbox" ? rest.shift() : null;

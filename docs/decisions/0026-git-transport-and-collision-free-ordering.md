@@ -78,6 +78,12 @@ checkout and let the next emit recreate it).
 - **Fetch is throttled:** at most once per `TICS_FETCH_TTL` seconds (default 60), tracked by a stamp file in the
   checkout's `.git`, with a short network timeout. `tics sync` and `tics log --fetch` force one. A failed fetch is
   silent and the read falls back to what it has, so offline still exits 0.
+  The stamp records the last **successful** fetch into `refs/remotes/origin/<branch>`; a failed fetch, or one
+  against a remote with no bus branch yet, never sets it. The network cap is both a wall-clock limit and a
+  low-speed limit, because the edit guard reads on every edit and a dead host must not hang it for minutes.
+- **Reads use read-only git only** (`ls-tree`, `cat-file`, `show`, `fetch` into the tracking ref) with
+  `GIT_OPTIONAL_LOCKS=0`; never a plain `status`, which can rewrite the index. Duplicates across the worktree and
+  the tracking tree collapse by filename, so a tic appears once.
 - **Freshness is visible:** `log` and `board` print "bus as of <last fetch>", so stale data is never mistaken for
   live (the same spirit as ADR 0025 N13).
 - **`tics sync`** = fetch + rebase + push of any unpushed local tics. It is idempotent.

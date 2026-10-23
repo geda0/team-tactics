@@ -15,8 +15,71 @@ function loadTics(targetDir, ignoreEnv) {
   const out = [];
   try { for (const l of fs.readFileSync(jsonl, "utf8").split("\n")) if (l.trim()) { const o = parse(l); if (o) out.push(o); } } catch (e) {}
   try { for (const f of fs.readdirSync(spool)) if (f.endsWith(".json")) { const o = parse(fs.readFileSync(path.join(spool, f), "utf8").trim()); if (o) out.push(o); } } catch (e) {}
+  const gs = gitStore(targetDir, ignoreEnv);
+  if (gs) for (const s of gitBusTics(gs).values()) { const o = parse(s.trim()); if (o) out.push(o); }
   out.sort((a, b) => String(a.ts || "").localeCompare(String(b.ts || "")) || ((a.seq || 0) - (b.seq || 0)));
   return out;
+}
+// TIC_STORE=git read side (ADR 0026 §1): union of the bus checkout's working-tree tics.d (local, unpushed
+// included) and the remote-tracking tree origin/<TICS_BRANCH>, deduped by filename. A read never mutates the
+// checkout: the only write is a TTL-throttled fetch into the remote-tracking ref (+ a stamp file in .git).
+let FORCE_FETCH = false;
+function setFetch(on) { FORCE_FETCH = !!on; }
+function cfgVal(targetDir, key, def, ignoreEnv) { return (!ignoreEnv && process.env[key]) || cfgStr(targetDir, key, def); }
+function gitStore(targetDir, ignoreEnv) {
+  if (cfgVal(targetDir, "TIC_STORE", "jsonl", ignoreEnv) !== "git") return null;
+  const dir = path.resolve(targetDir, cfgVal(targetDir, "TICS_GIT_DIR", path.join(".claude", "state", "tics.git"), ignoreEnv));
+  if (!fs.existsSync(path.join(dir, ".git"))) return null;   // no bus checkout yet -> today's behavior
+  const ttl = parseInt(cfgVal(targetDir, "TICS_FETCH_TTL", "60", ignoreEnv), 10);
+  return { dir, branch: cfgVal(targetDir, "TICS_BRANCH", "tics-bus", ignoreEnv), ttl: isNaN(ttl) ? 60 : ttl, stamp: path.join(dir, ".git", "tics-fetch-stamp") };
+}
+function busGit(gs, args, opts) {
+  const env = Object.assign({}, process.env, { GIT_TERMINAL_PROMPT: "0", GIT_OPTIONAL_LOCKS: "0", GIT_HTTP_LOW_SPEED_LIMIT: "1000", GIT_HTTP_LOW_SPEED_TIME: "5" });
+  for (const k of ["GIT_DIR", "GIT_WORK_TREE", "GIT_INDEX_FILE", "GIT_PREFIX", "GIT_COMMON_DIR"]) delete env[k];
+  return cp.spawnSync("git", ["-C", gs.dir, "-c", "gc.auto=0", "-c", "maintenance.auto=false"].concat(args), Object.assign({ env, stdio: ["pipe", "pipe", "ignore"], timeout: 5000 }, opts || {}));
+}
+function maybeFetch(gs) {
+  let last = 0;
+  try { last = fs.statSync(gs.stamp).mtimeMs; } catch (e) {}
+  if (!FORCE_FETCH && last && (Date.now() - last) < gs.ttl * 1000) return;
+  FORCE_FETCH = false;
+  try {
+    const r = busGit(gs, ["fetch", "-q", "origin", "+" + gs.branch + ":refs/remotes/origin/" + gs.branch]);
+    // the stamp records the last SUCCESSFUL fetch only (a failure, or a remote with no branch yet, never sets it)
+    if (r.status === 0) fs.writeFileSync(gs.stamp, new Date().toISOString() + "\n");
+  } catch (e) {}
+}
+function gitBusTics(gs) {
+  const files = new Map();   // filename -> raw json
+  try { maybeFetch(gs); } catch (e) {}
+  const local = path.join(gs.dir, "tics.d");
+  try { for (const f of fs.readdirSync(local)) if (f.endsWith(".json")) files.set(f, fs.readFileSync(path.join(local, f), "utf8")); } catch (e) {}
+  try {
+    const ref = "refs/remotes/origin/" + gs.branch;
+    const ls = busGit(gs, ["ls-tree", "--name-only", ref, "tics.d/"], { encoding: "utf8" });
+    if (ls.status !== 0) return files;
+    const want = ls.stdout.split("\n").map((l) => l.trim()).filter((l) => l.endsWith(".json") && !files.has(path.basename(l)));
+    if (!want.length) return files;
+    const r = busGit(gs, ["cat-file", "--batch"], { input: want.map((p) => ref + ":" + p).join("\n") + "\n", maxBuffer: 256 * 1024 * 1024 });
+    const buf = r.stdout || Buffer.alloc(0);
+    let pos = 0, i = 0;
+    while (pos < buf.length && i < want.length) {
+      const nl = buf.indexOf(10, pos); if (nl < 0) break;
+      const hdr = buf.slice(pos, nl).toString("utf8").split(" "); pos = nl + 1;
+      const name = path.basename(want[i++]);
+      if (hdr[1] !== "blob") continue;   // "<obj> missing"
+      const size = parseInt(hdr[2], 10);
+      files.set(name, buf.slice(pos, pos + size).toString("utf8")); pos += size + 1;
+    }
+  } catch (e) {}
+  return files;
+}
+function busFreshness(targetDir) {
+  const gs = gitStore(targetDir);
+  if (!gs) return null;
+  let s = "";
+  try { s = fs.readFileSync(gs.stamp, "utf8").trim(); } catch (e) {}
+  return s ? "bus as of " + s : "bus as of: never fetched";
 }
 function worktreeDirs(targetDir) {
   try {
@@ -71,6 +134,8 @@ function applyWindow(t, full) {
 }
 function ticsLog(targetDir, scopeFilter, all, showWitness, full) {
   let t = loadFor(targetDir, all);
+  const fresh = busFreshness(targetDir);
+  if (fresh) console.log(fresh);
   if (scopeFilter) t = t.filter((x) => scopeMatch(x.scope, scopeFilter));
   if (!showWitness) t = t.filter((x) => !(x.kind === "note" && x.from === "witness"));
   if (!t.length) { console.log("No tics yet — the agent thread is empty (.claude/state/tics.jsonl)."); return 0; }
@@ -343,6 +408,8 @@ function ticsReview(targetDir, scopeFilter, all) {
 function ticsBoard(targetDir, all) {
   const tics = loadFor(targetDir, all);
   const model = fleetModel(targetDir, tics);
+  const fresh = busFreshness(targetDir);
+  if (fresh) console.log(fresh);
   if (!model.members.length) { console.log("No fleet activity yet — the agent bus is empty."); return 0; }
   console.log("Fleet board:");
   const scopes = Object.keys(model.byScope).sort((a, b) => {
@@ -540,7 +607,7 @@ function fanOut(targetDir, specPath) {
 }
 function main(argv, defaultRoot) {
   let scope = null, all = true, fromRole = null, showWitness = false, full = false; const rest = [];   // whole-picture by default (merge every worktree's bus); --here restricts to the local bus
-  for (let i = 0; i < argv.length; i++) { const a = argv[i]; if (a === "--scope") scope = argv[++i] || ""; else if (a === "--all") all = true; else if (a === "--here") all = false; else if (a === "--from") fromRole = argv[++i] || null; else if (a === "--witness") showWitness = true; else if (a === "--full") full = true; else rest.push(a); }
+  for (let i = 0; i < argv.length; i++) { const a = argv[i]; if (a === "--scope") scope = argv[++i] || ""; else if (a === "--all") all = true; else if (a === "--here") all = false; else if (a === "--from") fromRole = argv[++i] || null; else if (a === "--witness") showWitness = true; else if (a === "--full") full = true; else if (a === "--fetch") setFetch(true); else rest.push(a); }
   const cmd = rest.shift();
   const role = cmd === "inbox" ? rest.shift() : null;
   const cfFile = cmd === "claim-check" ? rest.shift() : null;
@@ -746,4 +813,4 @@ function ticsLandmarks(targetDir, all) {
   }
   return 0;
 }
-module.exports = { HOOK_IDENTITIES, loadTics, loadSignalEvents, ticsLog, ticsInbox, ticsConductor, ticsClaims, ticsSections, ticsCycle, ticsGate, claimCheck, claimCheckCli, claimOwner, claimOwnerCli, claimSession, claimSessionCli, sectionStatus, sectionStatusCli, livenessTier, fleetModel, ticsBoard, ticsRoster, ticsReview, ticsAnswer, fanOut, greenAttestation, attestationTally, isHookSignedRed, cfgStr, evidenceFor, openNeeds, main, toolTally, ticsLandmarks, landmarkMap, ticsWhere, ticsHow };
+module.exports = { HOOK_IDENTITIES, setFetch, loadTics, loadSignalEvents, ticsLog, ticsInbox, ticsConductor, ticsClaims, ticsSections, ticsCycle, ticsGate, claimCheck, claimCheckCli, claimOwner, claimOwnerCli, claimSession, claimSessionCli, sectionStatus, sectionStatusCli, livenessTier, fleetModel, ticsBoard, ticsRoster, ticsReview, ticsAnswer, fanOut, greenAttestation, attestationTally, isHookSignedRed, cfgStr, evidenceFor, openNeeds, main, toolTally, ticsLandmarks, landmarkMap, ticsWhere, ticsHow };
