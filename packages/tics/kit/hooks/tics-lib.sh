@@ -76,13 +76,35 @@ _tic_git_hide() {
   mkdir -p "$(dirname "$_ex")" 2>/dev/null || true
   grep -qxF "$_rel" "$_ex" 2>/dev/null || printf '%s\n' "$_rel" >> "$_ex" 2>/dev/null || true
 }
-# Commit the one new tic file, then publish it (P3: bounded, never hangs, never drops the tic).
+# Commit the new tic file, then publish it (P3: bounded, never hangs, never drops the tic). Emits sharing one
+# checkout serialize on a per-checkout lock (git's index.lock would otherwise make a concurrent add/commit fail and
+# strand the file), and each stages all of tics.d, so a file left uncommitted by an earlier emit rides with this one.
+# If the lock can't be had within the bound, the file stays in the worktree for the next emit or `tics sync`.
 _tic_git_publish() {
-  _tic_git add -- "${1#"$_gd"/}" 2>/dev/null && _tic_git commit -q -m "tic" 2>/dev/null || return 0
-  _tic_net_backoff && return 0
-  _tic_git_push || true
+  _tic_git_lock || return 0
+  _tic_git add -- tics.d 2>/dev/null
+  if _tic_git diff --cached --quiet 2>/dev/null || ! _tic_git commit -q -m "tic" 2>/dev/null; then
+    _tic_git_unlock; return 0   # nothing new: a concurrent emit already committed (and published) this file
+  fi
+  _tic_net_backoff || _tic_git_push || true
+  _tic_git_unlock
   return 0
 }
+# Portable per-checkout mutex (macOS has no flock(1)): mkdir is atomic. The holder's pid is recorded, so a lock
+# left by a killed emit is reclaimed at once. Waits at most TICS_LOCK_WAIT seconds (default 3 x TICS_NET_TIMEOUT).
+_tic_git_lock() {
+  _lk="$_gd/.git/tics-emit.lock"
+  _lw=$(( ${TICS_LOCK_WAIT:-$(( 3 * ${TICS_NET_TIMEOUT:-5} ))} * 20 ))
+  while ! mkdir "$_lk" 2>/dev/null; do
+    _lp="$(cat "$_lk/pid" 2>/dev/null)"
+    if [ -n "$_lp" ] && ! kill -0 "$_lp" 2>/dev/null; then rm -rf "$_lk" 2>/dev/null; continue; fi
+    _lw=$((_lw - 1)); [ "$_lw" -gt 0 ] || return 1
+    sleep 0.05
+  done
+  echo "$$" > "$_lk/pid" 2>/dev/null
+  return 0
+}
+_tic_git_unlock() { rm -rf "$_gd/.git/tics-emit.lock" 2>/dev/null; return 0; }
 # Push HEAD to the bus branch. Only a non-fast-forward rejection is retried (fetch + rebase + push, bounded by
 # TICS_PUSH_TRIES, jittered); a timeout or network error is not, and records the failure (attempt stamp +
 # fail marker) so emits and reads inside TICS_FETCH_TTL skip the network. Unpublished tics stay committed
@@ -104,7 +126,7 @@ _tic_git_push() {
 # ssh/helper children, and a git that finishes first takes the sleeper down with it. Nothing is left running.
 # Returns 0 ok, 2 rejected (non-fast-forward or a lost ref race), 1 timeout or any other failure.
 _tic_net() {
-  _ne="$_gd/.git/tics-net.err"; _om=; case $- in *m*) _om=1 ;; esac
+  _ne="$_gd/.git/tics-net.$$.err"; _om=; case $- in *m*) _om=1 ;; esac
   {
     set -m
     GIT_TERMINAL_PROMPT=0 _tic_git "$@" >/dev/null 2>"$_ne" </dev/null & _np=$!
@@ -113,25 +135,37 @@ _tic_net() {
     kill -KILL -- -"$_wp"; wait "$_wp"
     [ -n "$_om" ] || set +m
   } 2>/dev/null
-  [ "$_nrc" -eq 0 ] && return 0
+  _nrc2=1
   # a lost race on the remote ref (another emitter updated it mid-push) is a rejection too, not a network error
-  grep -qE '\[rejected\]|non-fast-forward|fetch first|cannot lock ref|failed to update ref' "$_ne" 2>/dev/null && return 2
-  return 1
+  if [ "$_nrc" -eq 0 ]; then _nrc2=0
+  elif grep -qE '\[rejected\]|non-fast-forward|fetch first|cannot lock ref|failed to update ref' "$_ne" 2>/dev/null; then _nrc2=2
+  elif grep -qE "couldn't find remote ref" "$_ne" 2>/dev/null; then _nrc2=3   # reachable, no bus branch yet
+  fi
+  rm -f "$_ne" 2>/dev/null
+  return "$_nrc2"
 }
 # The reader's fetch (tics-view.cjs, ADR 0026): refresh origin/<branch> in the bus at BUS_DIR under the same
 # watchdog as the writer, so a hanging transport helper is killed with git. tics_fetch BUS_DIR BRANCH; returns
-# _tic_net's code. Stamps stay with the caller.
+# _tic_net's code. It keeps the one shared failure record (rule 4): a failed fetch marks it, so emits inside the
+# TTL skip the network too (the reader keeps its own attempt stamp); a successful one clears it. A reachable remote with no bus branch yet clears the
+# fail marker but never sets the success stamp.
 tics_fetch() {
   _gd="$1"; _gb="$2"
-  _tic_net -c gc.auto=0 -c maintenance.auto=false fetch -q origin "+$_gb:refs/remotes/origin/$_gb"
+  _tic_net -c gc.auto=0 -c maintenance.auto=false fetch -q origin "+$_gb:refs/remotes/origin/$_gb"; _frc=$?
+  case "$_frc" in
+    0) _tic_net_ok ;;
+    3) rm -f "$_gd/.git/tics-net-failed" 2>/dev/null ;;
+    *) _tic_net_mark ;;   # the reader already wrote its own attempt stamp
+  esac
+  return "$_frc"
 }
 # The network-failure record, shared with the reader (tics-view.cjs gitStore): the attempt stamp drives the
 # reader's fetch TTL; the fail marker (epoch seconds) tells emits the last attempt failed.
 _tic_net_fail() {
   date -u +%Y-%m-%dT%H:%M:%SZ > "$_gd/.git/tics-fetch-attempt" 2>/dev/null
-  date +%s > "$_gd/.git/tics-net-failed" 2>/dev/null
-  return 0
+  _tic_net_mark
 }
+_tic_net_mark() { date +%s > "$_gd/.git/tics-net-failed" 2>/dev/null; return 0; }
 # A successful push leaves origin/<branch> equal to what was pushed, so it also refreshes the success stamp.
 _tic_net_ok() {
   rm -f "$_gd/.git/tics-net-failed" 2>/dev/null
