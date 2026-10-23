@@ -6,6 +6,12 @@ const { test } = require("node:test");
 const assert = require("node:assert");
 const fs = require("fs"), os = require("os"), path = require("path"), cp = require("child_process");
 const ROOT = path.join(__dirname, "..", "..", "..");        // test -> team-tactics -> packages -> repo root
+// Shelling out to git, per the convention in worktree-bus.test.js: git exports GIT_DIR/GIT_INDEX_FILE
+// into hooks, so a suite run INSIDE our own pre-commit gate would otherwise inherit the wrong repo;
+// and identity is passed inline because a CI runner has none configured. spawnSync (not execFileSync)
+// so a non-zero exit is a value we can assert on with git's stderr attached, not an opaque throw.
+const GIT_ENV = (() => { const e = { ...process.env }; ["GIT_DIR", "GIT_INDEX_FILE", "GIT_WORK_TREE", "GIT_PREFIX", "GIT_COMMON_DIR", "GIT_NAMESPACE", "GIT_EXEC_PATH"].forEach((k) => delete e[k]); return e; })();
+const git = (d, ...a) => cp.spawnSync("git", ["-C", d, "-c", "user.email=a@b.c", "-c", "user.name=x", ...a], { encoding: "utf8", env: GIT_ENV });
 
 test("FOR-TESTERS.md guides a peer to install, says what to try, and respects the proprietary terms", () => {
   const f = path.join(ROOT, "FOR-TESTERS.md");
@@ -47,7 +53,7 @@ test("infra/release-tarball.sh exists and release:tarball is wired", () => {
 // (asserting the archive output would deadlock the pre-commit gate, since the tarball reflects the
 // COMMITTED tree). Today: 94 fossil files are tracked and there is no `.gitattributes` — so this is RED.
 test("H1a: the release artifact excludes dev cruft — fossils untracked + .gitattributes export-ignore covers them", () => {
-  const tracked = cp.execFileSync("git", ["-C", ROOT, "ls-files", "claim-session", "claim-owner"], { encoding: "utf8" }).trim();
+  const tracked = git(ROOT, "ls-files", "claim-session", "claim-owner").stdout.trim();
   assert.strictEqual(tracked, "", "the fossil dirs claim-session/ + claim-owner/ are no longer tracked");
 
   const ga = path.join(ROOT, ".gitattributes");
@@ -102,13 +108,25 @@ test("W11: no markdown the kit ships to adopters carries a stray tool-call artif
 test("the release git-archive tarball SHIPS the full-team preset helper (a bare scripts/ export-ignore strips it)", () => {
   // The real artifact is `git archive` filtered by .gitattributes. A bare `scripts/ export-ignore`
   // matches the nested preset scripts/ dir and strips the browser-QA helper, crashing the installer
-  // (v0.66.0 bug). Assert the ACTUAL archive output. Archive a WORKING-tree-reflecting tree via
-  // `git stash create` (|| HEAD) so an in-progress fix is seen and the pre-commit gate never deadlocks.
-  const stash = cp.execFileSync("git", ["-C", ROOT, "stash", "create"], { encoding: "utf8" }).trim();
-  const tree = stash || "HEAD";
+  // (v0.66.0 bug). Assert the ACTUAL archive output, against a WORKING-TREE-reflecting tree so an
+  // in-progress fix is seen and the pre-commit gate never deadlocks.
+  //
+  // `git stash create` is the only OBJECT-WRITING git call in this suite, and it made this the one
+  // flaky test we had: it needs a writable index (and an identity to author the stash commit), so it
+  // died on the CI runner during the v0.68.2 release run and flaked on a fresh clone. It is also
+  // unnecessary in exactly the case that broke it — a fresh checkout has nothing uncommitted, so
+  // there is no working tree to reflect. Decide with a READ-ONLY `status`, pay for a stash object
+  // only when the tree is genuinely dirty, and fall back to HEAD if even that fails, so the test
+  // reports on the archive rather than dying on infrastructure. The assertion is unchanged.
+  const tree = (() => {
+    if (!git(ROOT, "status", "--porcelain").stdout.trim()) return "HEAD";
+    const r = git(ROOT, "stash", "create");
+    return r.status === 0 && r.stdout.trim() ? r.stdout.trim() : "HEAD";
+  })();
   const out = path.join(os.tmpdir(), "ttics-helper-pack-" + process.pid + ".tgz");
   try {
-    cp.execFileSync("git", ["-C", ROOT, "archive", "--format=tar.gz", "-o", out, tree]);
+    const ar = git(ROOT, "archive", "--format=tar.gz", "-o", out, tree);
+    assert.strictEqual(ar.status, 0, "git archive must succeed: " + (ar.stderr || "").trim());
     const list = cp.execFileSync("tar", ["-tzf", out], { encoding: "utf8" }).split("\n");
     assert.ok(
       list.includes("packages/team-tactics/kit/presets/full-team/scripts/smoke-verify.cjs"),
