@@ -15,7 +15,7 @@ _tics_lib_dir="$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")" && pwd)"
 _tic_esc() { printf '%s' "$1" | tr -d '\r\n' | sed 's/\\/\\\\/g; s/"/\\"/g'; }
 # ADR 0029: EXTRA_JSON allowlist — zero or more ,"key":int|"plain string"; no fixed-field keys. 0 = ok.
 _tic_extra_ok() {
-  local rest="$1" re_i='^,"([A-Za-z_][A-Za-z0-9_]*)":(-?[0-9]+)' re_s='^,"([A-Za-z_][A-Za-z0-9_]*)":"([^"\[:cntrl:]]*)"'
+  local rest="$1" re_i='^,"([A-Za-z_][A-Za-z0-9_]*)":(-?(0|[1-9][0-9]*))' re_s='^,"([A-Za-z_][A-Za-z0-9_]*)":"([^"\[:cntrl:]]*)"'
   local LC_ALL=C
   case "$rest" in *$'\n'*|*$'\r'*) return 1 ;; esac
   while [ -n "$rest" ]; do

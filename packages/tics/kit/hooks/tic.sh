@@ -13,6 +13,10 @@ HERE="$(cd "$(dirname "$0")" && pwd)"; ROOT="$(cd "$HERE/../.." && pwd)"
 # into a positional slot (shifted args) — reject so garbled junk never reaches the append-only bus.
 case "${1:-}" in -*) echo "tic.sh: FROM ('$1') looks like a flag — usage: tic.sh FROM TO KIND MSG [REF] [RESULT]. Nothing recorded." >&2; exit 2 ;; esac
 case "${2:-}" in -*) echo "tic.sh: TO ('$2') looks like a flag — usage: tic.sh FROM TO KIND MSG [REF] [RESULT]. Nothing recorded." >&2; exit 2 ;; esac
+# ADR 0029 rule 1b: identities are allowlisted, whole-string, byte-wise (a newline/control byte/space/non-ASCII fails).
+_id_re='^[A-Za-z0-9][A-Za-z0-9._:@-]{0,63}$'
+( LC_ALL=C; [[ "${1:-}" =~ $_id_re ]] ) || { echo "tic.sh: FROM is not a valid identity (allowed: [A-Za-z0-9][A-Za-z0-9._:@-]{0,63}). Nothing recorded." >&2; exit 2; }
+if [ "${2:-}" != "*" ]; then ( LC_ALL=C; [[ "${2:-}" =~ $_id_re ]] ) || { echo "tic.sh: TO is not a valid identity (allowed: [A-Za-z0-9][A-Za-z0-9._:@-]{0,63} or *). Nothing recorded." >&2; exit 2; }; fi
 case "${1:-}" in subagent|run-suite|guard|witness) echo "tic.sh: FROM ('$1') is a hook-only identity — agents cannot self-assert it (reserved for the run-suite/subagent/guard/witness hooks). Nothing recorded." >&2; exit 2 ;; esac
 case "${3:-}" in
   delegate|handoff|signal|block|stuck|verdict|msg|note|claim|release|contract|need|section|session|commit|landmark)
