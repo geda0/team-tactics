@@ -443,7 +443,7 @@ test("V1w (ADR 0027): a tic with the '*' wildcard session counts toward its role
   assert.deepStrictEqual(names, ["b (no session)"], 'the "*" wildcard is not a session: the tic counts toward its role, and no member is "*"');
 });
 
-test("V1+V2 (ADR 0027): fleetModel lists a role with no session id as a member (board shows it), but hook telemetry creates none", () => {
+test("V1+V2 (ADR 0027): fleetModel lists a role with no session id as a member, but hook telemetry creates none", () => {
   const TV = require(path.join(__dirname, "..", "kit", "hooks", "tics-view.cjs"));
   const now = Date.UTC(2026, 9, 23, 0, 0, 0);
   const ts = new Date(now - 5000).toISOString();
