@@ -1,0 +1,1 @@
+{"ts":"2026-10-23T19:36:25Z","seq":172,"kind":"delegate","from":"orchestrator","to":"tdd-critic","phase":"off","layer":"app","scope":"app","session":"local_navigator-delegation","msg":"audit ADR 0028 slice (one vocabulary, never drop unknown kinds)","ref":"adr-0028","result":""}
