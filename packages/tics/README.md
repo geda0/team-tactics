@@ -33,12 +33,19 @@ A **tic** is one structured communication unit appended to an append-only bus. E
 ts  seq  kind  from  to  phase  layer  scope  msg  ref  result
 ```
 
-Two store backends (set `TIC_STORE`):
+Three store backends (set `TIC_STORE`):
 
 - `jsonl` (default) — append one line per tic to `.claude/state/tics.jsonl`.
 - `spool` — write one file per tic under `.claude/state/tics.d/` (concurrency-safe; parallel
   worktrees can share a spool). `TICS_DIR` / `TICS_FILE` redirect the spool / jsonl path so
   several worktrees write to one bus.
+- `git` (ADR 0026) — one file per tic, committed to a bus branch (`TICS_BRANCH`, default `tics-bus`)
+  of `TICS_REMOTE`, checked out in `TICS_GIT_DIR` (default `.claude/state/tics.git`, hidden from the
+  project's own git). Every host and session sees one bus. An emit commits locally first and pushes
+  under a watchdog (`TICS_NET_TIMEOUT`, default 5 s), so a dead remote never hangs or loses a tic;
+  after a failed attempt, emits and reads skip the network for `TICS_FETCH_TTL` seconds (default 60).
+  Readers show the union of local and fetched tics, never modifying the checkout, and `log` / `board`
+  print `bus as of <last fetch>` so stale data is visible. `tics sync` publishes unpushed tics.
 
 **Scope** is ambient and resolved per emit: `TICS_SCOPE` (per-call, for fan-out) → the
 `.claude/state/scope` file → the active layer → `*`. Convention: `<section>/<pair>`. `phase`
@@ -121,6 +128,7 @@ file, catching collisions before any pair starts (auto-claim catches them at run
 - `--all` / `--here` — `log`/`conductor`/`claims`/`sections`/`gate` **merge every git worktree's
   bus BY DEFAULT** (whole-picture telemetry, deduped); `--here` restricts to the local bus. `--all`
   is the explicit form of the default.
+- `--fetch` — with `TIC_STORE=git`, `log` fetches the bus now instead of waiting out `TICS_FETCH_TTL`.
 
 ### npx surface
 
