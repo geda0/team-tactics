@@ -1,0 +1,1 @@
+{"ts":"2026-10-23T10:19:17Z","seq":17,"kind":"delegate","from":"orchestrator","to":"implementer","phase":"green","layer":"app","scope":"app","session":"local_navigator-delegation","msg":"ADR 0026 P6 green: loadTics reads TICS_GIT_DIR/tics.d when TIC_STORE=git (env or tdd.config), best-effort fetch+rebase on read, never drop local unpushed","ref":"adr-0026-P6","result":""}
