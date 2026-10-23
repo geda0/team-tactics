@@ -1,14 +1,14 @@
-# 0027 — A git transport for the spool (`TIC_STORE=git`), and collision-free ordering (`seq` becomes advisory)
+# 0026 — A git transport for the spool (`TIC_STORE=git`), and collision-free ordering (`seq` becomes advisory)
 
 - **Status:** **Proposed.** It is built red→green through the phase×layer gate (layer `app`, package `@ttics/tics`).
-  The first failing test pins predicate **P1** from ADR 0026. This ADR is the seam; the code follows slice by slice
+  The first failing test pins predicate **P1** from ADR 0025. This ADR is the seam; the code follows slice by slice
   (§Slices).
 - **Date:** 2026-10-23
 - **Deciders:** navigator (the pull: "a bus that reaches every host"), architect (the store seam, the lossless
   append-only argument, ordering without a global counter), product-owner (the opt-in and default-safe framing;
   solo installs see no change).
 - **Relates to:**
-  - **0026 (field learnings, fleet run)**: needs **N1** (git transport) and **N2** (collision-free ordering), and
+  - **0025 (field learnings, fleet run)**: needs **N1** (git transport) and **N2** (collision-free ordering), and
     predicate **P1**.
   - **0015 (parallel isolation via worktrees)**: the spool shared across worktrees (`TICS_DIR`). This ADR extends
     the same one-file-per-tic store across hosts.
@@ -23,7 +23,7 @@ The spool store (`TIC_STORE=spool`) writes one JSON file per tic. Its filename i
 `<UTC ts>-<pid>-<RANDOM>.json`, so concurrent writers never touch the same file. That property is what made it safe
 across worktrees (0015). It stops at the disk: `TICS_DIR` is a path, and a second host can't see it.
 
-ADR 0026's adopter needed the bus across four machines and cloud sessions, where cross-session messages could not
+ADR 0025's adopter needed the bus across four machines and cloud sessions, where cross-session messages could not
 reach back. It rebuilt the spool by hand: commit each tic file to a dedicated branch, fetch/rebase/retry on push. That
 was the only channel that reached every participant. It also exposed the ordering flaw. `emit_tic` computes
 `seq = (lines in the local store) + 1`, a count only the local host can see, so two hosts handed out the same `seq`

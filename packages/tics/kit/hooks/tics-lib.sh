@@ -48,7 +48,7 @@ emit_tic() {
   return 0
 }
 
-# TIC_STORE=git (ADR 0027): the bus is a branch (TICS_BRANCH, default tics-bus) of TICS_REMOTE, checked out in
+# TIC_STORE=git (ADR 0026): the bus is a branch (TICS_BRANCH, default tics-bus) of TICS_REMOTE, checked out in
 # TICS_GIT_DIR (default .claude/state/tics.git), never the project's own tree. Each tic is one NEW spool file, so
 # commits from different hosts touch disjoint paths: a rebase cannot conflict and a retried push loses nothing.
 _tic_git() { env -u GIT_DIR -u GIT_WORK_TREE -u GIT_INDEX_FILE -u GIT_PREFIX -u GIT_COMMON_DIR \

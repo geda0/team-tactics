@@ -1143,7 +1143,7 @@ test("MCC-1: tics mcp-install also writes a project .mcp.json (Claude Code) with
   } finally { fs.rmSync(d, { recursive: true, force: true }); }
 });
 
-test("P1 (ADR 0027): TIC_STORE=git — two concurrent emitters against one bare remote lose nothing", async () => {
+test("P1 (ADR 0026): TIC_STORE=git — two concurrent emitters against one bare remote lose nothing", async () => {
   const remote = fs.mkdtempSync(path.join(os.tmpdir(), "tics-remote-"));
   const hostA = inst("git"), hostB = inst("git"), check = fs.mkdtempSync(path.join(os.tmpdir(), "tics-check-"));
   const K = 8;
@@ -1170,7 +1170,7 @@ test("P1 (ADR 0027): TIC_STORE=git — two concurrent emitters against one bare 
   }
 });
 
-test("P5 (ADR 0027): TIC_STORE=git — emits leave the project's own git tree untouched (status and HEAD)", () => {
+test("P5 (ADR 0026): TIC_STORE=git — emits leave the project's own git tree untouched (status and HEAD)", () => {
   const remote = fs.mkdtempSync(path.join(os.tmpdir(), "tics-remote-")), d = inst("git");
   try {
     git(remote, "init", "-q", "--bare");
