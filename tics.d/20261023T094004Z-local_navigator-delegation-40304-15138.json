@@ -1,0 +1,1 @@
+{"ts":"2026-10-23T09:40:04Z","seq":3,"kind":"delegate","from":"orchestrator","to":"implementer","phase":"green","layer":"app","scope":"app","session":"local_navigator-delegation","msg":"ADR 0027 V4 green: memberId excludes by hook identity only (export HOOK_IDENTITIES = tic.sh's 4); drop HOOK_KINDS; fix ADR §2 wording","ref":"adr-0027-V4","result":""}
