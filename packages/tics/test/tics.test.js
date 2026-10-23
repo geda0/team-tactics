@@ -422,6 +422,25 @@ test("G1: fleetModel collision ignores the '*' wildcard session (no false collis
   assert.deepStrictEqual(dup && dup.sessions, ["sessX", "sessY"], "two real distinct sessions on a scope is a genuine collision");
 });
 
+test("V1+V2 (ADR 0027): fleetModel lists a role with no session id as a member (board shows it), but hook telemetry creates none", () => {
+  const TV = require(path.join(__dirname, "..", "kit", "hooks", "tics-view.cjs"));
+  const now = Date.UTC(2026, 9, 23, 0, 0, 0);
+  const ts = new Date(now - 5000).toISOString();
+  // the fleet shape: the leader never sets a session id; the auditor does; hook telemetry has none
+  const tics = [
+    { seq: 1, kind: "note", from: "leader", to: "fleet", session: "", ts },
+    { seq: 2, kind: "verdict", from: "auditor", to: "fleet", session: "sessAud", ts },
+    { seq: 3, kind: "signal", from: "run-suite", to: "*", session: "", result: "red", ts },
+    { seq: 4, kind: "block", from: "guard", to: "orchestrator", session: "", ts },
+  ];
+  const m = TV.fleetModel("/tmp/nonexistent-v1", tics, { nowMs: now });
+  const names = m.members.map((x) => x.session).sort();
+  assert.deepStrictEqual(names, ["leader (no session)", "sessAud"], "the no-session leader is a member; hook telemetry (signal/block) is not");
+  const leader = m.members.find((x) => x.session === "leader (no session)");
+  assert.strictEqual(leader.liveness, "live", "the role member carries liveness from its last tic");
+  assert.strictEqual(leader.lastTs, ts, "and its last ts");
+});
+
 test("E8-1: greenAttestation classifies a green signal as hook-signed (from=run-suite) vs self-reported (role), null otherwise; never throws", () => {
   const TV = require(path.join(__dirname, "..", "kit", "hooks", "tics-view.cjs"));
   // a green signal from the suite-runner hook is real proof
