@@ -21,11 +21,13 @@ lead's T-table result was dropped this way. `status`, used across the spool hist
 ## Decision
 
 1. **`assign` and `status` are kinds.** They are ADR 0025's vocabulary and appear throughout the fleet's history.
-2. **An unknown but well-formed kind is never dropped.** `tic.sh` records and publishes it as kind `note`, keeping the
+2. **An unknown but well-formed kind is never dropped.** Well-formed means a lowercase identifier,
+   `[a-z][a-z0-9_-]*`; anything else (e.g. `frontend:green`, the symptom of shifted arguments) is malformed (rule 3). `tic.sh` records and publishes it as kind `note`, keeping the
    original in a field `orig_kind`, prints a warning on stderr, and exits **0**. Not nonzero: a `set -e` caller must
    not abort, and a caller that ignores the rc must still lose nothing. Coercing to `note` means an unknown kind can
    never be read by a gate or a fold as a verdict, a signal or a block. `tics log` shows `orig_kind`.
-3. **Malformed calls stay hard rejects (rc 2, nothing recorded):** a flag-shaped FROM or TO, a reserved hook identity
+3. **Malformed calls stay hard rejects (rc 2, nothing recorded):** a flag-shaped FROM or TO, a kind that isn't a
+   lowercase identifier, a reserved hook identity
    as FROM (`subagent`, `run-suite`, `guard`, `witness`), and a reader verb passed as the kind (`log`, `inbox`, ...).
    That is integrity, not loss: an agent must never be able to forge the referee, and a reader command is a usage
    error, not a tic.
@@ -37,7 +39,8 @@ lead's T-table result was dropped this way. `status`, used across the spool hist
 - **K1:** `tic.sh` with kind `assign` or `status` exits 0 and the tic reaches the store with that kind.
 - **K2:** kind `banana` exits 0 with a warning on stderr; the stored tic has kind `note` and `orig_kind: "banana"`; it
   is published under `TIC_STORE=git`; `tics log` shows `banana`.
-- **K3:** FROM `run-suite` (or any reserved hook identity) or FROM `-x` exits 2 and records nothing.
+- **K3:** FROM `run-suite` (or any reserved hook identity) or FROM `-x` exits 2 and records nothing; so does a kind
+  that isn't a lowercase identifier (`frontend:green`).
 
 ## Slices
 
