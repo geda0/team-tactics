@@ -441,6 +441,23 @@ test("V1+V2 (ADR 0027): fleetModel lists a role with no session id as a member (
   assert.strictEqual(leader.lastTs, ts, "and its last ts");
 });
 
+test("V3 (ADR 0027): a stale no-session role holding a claim reads STUCK; two no-session roles on one scope are not a collision", () => {
+  const TV = require(path.join(__dirname, "..", "kit", "hooks", "tics-view.cjs"));
+  const now = Date.UTC(2026, 9, 23, 0, 0, 0);
+  const stale = new Date(now - 3600 * 1000).toISOString(), live = new Date(now - 5000).toISOString();
+  const tics = [
+    { seq: 1, kind: "claim", from: "leader", to: "fleet", session: "", scope: "q11", ref: "Q11", ts: stale },
+    { seq: 2, kind: "note", from: "macm12", to: "fleet", session: "", scope: "q16", ts: live },
+    { seq: 3, kind: "note", from: "coordinator", to: "fleet", session: "", scope: "q16", ts: live },
+  ];
+  const m = TV.fleetModel("/tmp/nonexistent-v3", tics, { nowMs: now });
+  const leader = m.members.find((x) => x.session === "leader (no session)");
+  assert.ok(leader, "the no-session leader is a member");
+  assert.strictEqual(leader.scope, "q11", "its no-session claim gives it a held scope");
+  assert.strictEqual(leader.stuck, true, "stale + holding a claim = STUCK, as for a session");
+  assert.deepStrictEqual(m.collisions, [], "two no-session roles on one scope are not two live sessions (no false collision)");
+});
+
 test("E8-1: greenAttestation classifies a green signal as hook-signed (from=run-suite) vs self-reported (role), null otherwise; never throws", () => {
   const TV = require(path.join(__dirname, "..", "kit", "hooks", "tics-view.cjs"));
   // a green signal from the suite-runner hook is real proof
