@@ -200,7 +200,7 @@ function ticsLog(targetDir, scopeFilter, all, showWitness, full) {
   for (const x of rows) {
     const when = (x.ts || "").slice(11, 19) || "--:--:--";
     const arrow = ((x.from || "?") + " -> " + (x.to || "*")).padEnd(28);
-    const kind = (x.kind || "?").padEnd(9);
+    const kind = ((x.kind || "?") + (x.orig_kind ? "(" + x.orig_kind + ")" : "")).padEnd(9);
     const ctx = ("[" + (x.layer || "?") + "/" + (x.phase || "?") + " " + (x.scope || "*") + "]").padEnd(22);
     console.log(String(x.seq || "").padStart(3) + "  " + when + "  " + arrow + kind + ctx + " " + (x.msg || "") + (x._count > 1 ? " x" + x._count : "") + (x.result ? "  (" + x.result + ")" : ""));
   }
