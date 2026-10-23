@@ -1,0 +1,1 @@
+{"ts":"2026-10-23T16:12:38Z","seq":52,"kind":"delegate","from":"orchestrator","to":"test-writer","phase":"red","layer":"app","scope":"app","session":"local_navigator-delegation","msg":"P1d-4 red: tics log reports 'N unparsable tic line(s) skipped' only when N>0; inbox/board silent","ref":"adr-0026-P1d","result":""}
