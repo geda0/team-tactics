@@ -118,6 +118,13 @@ _tic_net() {
   grep -qE '\[rejected\]|non-fast-forward|fetch first|cannot lock ref|failed to update ref' "$_ne" 2>/dev/null && return 2
   return 1
 }
+# The reader's fetch (tics-view.cjs, ADR 0026): refresh origin/<branch> in the bus at BUS_DIR under the same
+# watchdog as the writer, so a hanging transport helper is killed with git. tics_fetch BUS_DIR BRANCH; returns
+# _tic_net's code. Stamps stay with the caller.
+tics_fetch() {
+  _gd="$1"; _gb="$2"
+  _tic_net -c gc.auto=0 -c maintenance.auto=false fetch -q origin "+$_gb:refs/remotes/origin/$_gb"
+}
 # The network-failure record, shared with the reader (tics-view.cjs gitStore): the attempt stamp drives the
 # reader's fetch TTL; the fail marker (epoch seconds) tells emits the last attempt failed.
 _tic_net_fail() {
