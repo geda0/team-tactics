@@ -31,21 +31,25 @@ function gitStore(targetDir, ignoreEnv) {
   const dir = path.resolve(targetDir, cfgVal(targetDir, "TICS_GIT_DIR", path.join(".claude", "state", "tics.git"), ignoreEnv));
   if (!fs.existsSync(path.join(dir, ".git"))) return null;   // no bus checkout yet -> today's behavior
   const ttl = parseInt(cfgVal(targetDir, "TICS_FETCH_TTL", "60", ignoreEnv), 10);
-  return { dir, branch: cfgVal(targetDir, "TICS_BRANCH", "tics-bus", ignoreEnv), ttl: isNaN(ttl) ? 60 : ttl, stamp: path.join(dir, ".git", "tics-fetch-stamp") };
+  return { dir, branch: cfgVal(targetDir, "TICS_BRANCH", "tics-bus", ignoreEnv), ttl: isNaN(ttl) ? 60 : ttl, stamp: path.join(dir, ".git", "tics-fetch-stamp"), attempt: path.join(dir, ".git", "tics-fetch-attempt") };
 }
 function busGit(gs, args, opts) {
   const env = Object.assign({}, process.env, { GIT_TERMINAL_PROMPT: "0", GIT_OPTIONAL_LOCKS: "0", GIT_HTTP_LOW_SPEED_LIMIT: "1000", GIT_HTTP_LOW_SPEED_TIME: "5" });
   for (const k of ["GIT_DIR", "GIT_WORK_TREE", "GIT_INDEX_FILE", "GIT_PREFIX", "GIT_COMMON_DIR"]) delete env[k];
   return cp.spawnSync("git", ["-C", gs.dir, "-c", "gc.auto=0", "-c", "maintenance.auto=false"].concat(args), Object.assign({ env, stdio: ["pipe", "pipe", "ignore"], timeout: 5000 }, opts || {}));
 }
+const FETCHED = new Set();   // absolute bus dirs already fetched by THIS process (at most once per bus)
 function maybeFetch(gs) {
-  let last = 0;
-  try { last = fs.statSync(gs.stamp).mtimeMs; } catch (e) {}
+  if (!FORCE_FETCH && FETCHED.has(gs.dir)) return;
+  let last = 0;   // the ATTEMPT stamp drives the TTL, so a dead remote is retried once per TTL, not every read
+  try { last = fs.statSync(gs.attempt).mtimeMs; } catch (e) {}
   if (!FORCE_FETCH && last && (Date.now() - last) < gs.ttl * 1000) return;
   FORCE_FETCH = false;
+  FETCHED.add(gs.dir);
+  try { fs.writeFileSync(gs.attempt, new Date().toISOString() + "\n"); } catch (e) {}
   try {
     const r = busGit(gs, ["fetch", "-q", "origin", "+" + gs.branch + ":refs/remotes/origin/" + gs.branch]);
-    // the stamp records the last SUCCESSFUL fetch only (a failure, or a remote with no branch yet, never sets it)
+    // the success stamp records the last SUCCESSFUL fetch only (a failure, or a remote with no branch yet, never sets it)
     if (r.status === 0) fs.writeFileSync(gs.stamp, new Date().toISOString() + "\n");
   } catch (e) {}
 }
