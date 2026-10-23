@@ -1,0 +1,1 @@
+{"ts":"2026-10-23T18:05:13Z","seq":120,"kind":"delegate","from":"project-manager","to":"dev-ops","phase":"off","layer":"app","scope":"app","session":"local_navigator-delegation","msg":"patch v0.70.1: ttics update keeps user hooks in .claude/hooks/ (fleet's release-gate.sh)","ref":"release-0.70.1","result":""}
