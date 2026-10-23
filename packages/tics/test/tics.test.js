@@ -1289,6 +1289,9 @@ test("P6a (ADR 0026): TIC_STORE=git — host A's tics log lists host B's tic and
     const log = read(h.hostA, "log");
     assert.strictEqual(log.status, 0, log.stderr);
     assert.match(log.stdout, /from-A/, "the local tic is listed: " + log.stdout);
+    assert.strictEqual((log.stdout.match(/from-A/g) || []).length, 1, "A's own tic (in the working tree AND on origin/tics-bus) is listed exactly once: " + log.stdout);
+    const here = read(h.hostA, "log", "--here");                  // the bus union alone, without the cross-worktree merge
+    assert.strictEqual((here.stdout.match(/from-A/g) || []).length, 1, "the union read lists A's own tic exactly once: " + here.stdout);
     assert.match(log.stdout, /from-B/, "the other host's tic is fetched on read: " + log.stdout);
     const cc = read(h.hostA, "claim-check", "f.ts", "ord/S2");
     assert.strictEqual(cc.status, 3, "A (scope ord/S2) is blocked by B's claim on f.ts in auth/S1: " + cc.stdout + cc.stderr);
@@ -1318,9 +1321,11 @@ test("P6c (ADR 0026): TIC_STORE=git — a read that fetches a new remote tic lea
     assert.strictEqual(srcLib(h.hostA, "emit_tic a '*' note from-A").status, 0);
     assert.strictEqual(srcLib(h.hostB, "emit_tic b '*' note new-B").status, 0);   // on the remote, not integrated by A
     const bus = busOf(h.hostA), idx = path.join(bus, ".git", "index");
+    // read-only snapshot: --no-optional-locks so `status` never refreshes/rewrites the index itself (racy git)
+    const roGit = (...a) => cp.spawnSync("git", ["--no-optional-locks", "-C", bus, ...a], { encoding: "utf8", env: { ...ENV, GIT_OPTIONAL_LOCKS: "0" } });
     const snap = () => ({
-      head: git(bus, "rev-parse", "HEAD").stdout,
-      status: git(bus, "status", "--porcelain").stdout,
+      head: roGit("rev-parse", "HEAD").stdout,
+      status: roGit("status", "--porcelain").stdout,
       idxMtime: fs.statSync(idx).mtimeMs,
       idxHash: require("crypto").createHash("sha1").update(fs.readFileSync(idx)).digest("hex"),
     });
@@ -1357,5 +1362,8 @@ test("P6e (ADR 0026): TIC_STORE=git — tics log prints when the bus was last fe
     const log = read(h.hostA, "log");
     assert.strictEqual(log.status, 0, log.stderr);
     assert.match(log.stdout, /bus as of/i, "a freshness line is shown: " + log.stdout);
+    const board = read(h.hostA, "board");
+    assert.strictEqual(board.status, 0, board.stderr);
+    assert.match(board.stdout, /bus as of/i, "tics board shows the freshness line too: " + board.stdout);
   } finally { h.cleanup(); }
 });
