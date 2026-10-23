@@ -1,0 +1,1 @@
+{"ts":"2026-10-23T19:38:28Z","seq":176,"kind":"delegate","from":"orchestrator","to":"test-writer","phase":"red","layer":"app","scope":"app","session":"local_navigator-delegation","msg":"K5-K9: reader verbs rc 2 any case; injection-shaped kind rc 2 + bus stays valid JSON; FROM case preserved; inbox shows note(orig_kind); MCP accepts assign/status","ref":"adr-0028","result":""}
