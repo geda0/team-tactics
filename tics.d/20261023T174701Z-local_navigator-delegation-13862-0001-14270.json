@@ -1,0 +1,1 @@
+{"ts":"2026-10-23T17:47:01Z","seq":107,"kind":"note","from":"orchestrator","to":"*","phase":"off","layer":"app","scope":"app","session":"local_navigator-delegation","msg":"snag: the dogfood install (.claude/hooks) silently drifted from packages/*/kit — hook probe published until 'cli.js update .'; needs a drift guard","ref":"dogfood","result":"landmark"}
