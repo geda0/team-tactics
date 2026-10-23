@@ -1,0 +1,1 @@
+{"ts":"2026-10-23T17:33:51Z","seq":93,"kind":"delegate","from":"orchestrator","to":"tdd-critic","phase":"off","layer":"app","scope":"app","session":"local_navigator-delegation","msg":"audit hook-local slice (main..adr-0026-hook-local)","ref":"adr-0026-hook-local","result":""}
