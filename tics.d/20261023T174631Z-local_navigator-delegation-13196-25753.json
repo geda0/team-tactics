@@ -1,0 +1,1 @@
+{"ts":"2026-10-23T17:46:31Z","seq":103,"kind":"note","from":"orchestrator","to":"*","phase":"off","layer":"app","scope":"app","session":"local_navigator-delegation","msg":"dogfood bus back on: agent tics publish via tdd.config, hook tics stay local (ADR 0026 P7)","ref":"fleet","result":""}
