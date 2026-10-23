@@ -1730,11 +1730,21 @@ test("P3g (ADR 0026): TIC_STORE=git — after a READ whose fetch fails, an emit 
 // from a hook identity (subagent, run-suite, guard, witness) goes to the local jsonl — no bus commit, no network, no
 // lock — while agent tics still publish, and the reader's union still counts the hook-signed green.
 test("P7 (ADR 0026): TIC_STORE=git — hook telemetry stays local; agent tics still publish", { timeout: 180000 }, async (t) => {
+  await t.test("P7d (ADR 0026): the hook-local downgrade is git-only — under TIC_STORE=spool a hook emit still writes one spool file and no jsonl", { timeout: 60000 }, async () => {
+    const d = inst("spool"), sp = path.join(d, ".claude", "state", "tics.d"), jsonl = path.join(d, ".claude", "state", "tics.jsonl");
+    try {
+      const r = srcLib(d, "emit_tic run-suite '*' signal 'p7d green' '' green");
+      const files = fs.existsSync(sp) ? fs.readdirSync(sp).filter((f) => f.endsWith(".json")) : [];
+      assert.deepStrictEqual({ status: r.status, spoolFiles: files.length, jsonl: fs.existsSync(jsonl) }, { status: 0, spoolFiles: 1, jsonl: false });
+    } finally { fs.rmSync(d, { recursive: true, force: true }); }
+  });
+
   await t.test("P7a (ADR 0026): a hook-identity emit against a hanging remote returns well under the network watchdog, spawns no ssh, adds no bus commit, and lands in tics.jsonl", { timeout: 60000 }, async () => {
     const d = inst("git"), tmp = fs.mkdtempSync(path.join(os.tmpdir(), "tics-p7a-")), hs = hangSsh(tmp);
     const bus = busOf(d), HANG = { ...ENV, GIT_SSH_COMMAND: hs.ssh };
     const jsonl = path.join(d, ".claude", "state", "tics.jsonl");
-    fs.appendFileSync(path.join(d, ".claude", "tdd.config"), 'TICS_REMOTE="ssh://hang/x.git"\nTICS_NET_TIMEOUT="3"\n');
+    fs.appendFileSync(path.join(d, ".claude", "tdd.config"), 'TICS_REMOTE="ssh://hang/x.git"\nTICS_NET_TIMEOUT="10"\n');
+    // bound derived from the watchdog: any network or lock wait costs >= 10 s, a local write tens of ms
     const commits = () => (fs.existsSync(bus) ? Number(git(bus, "rev-list", "--count", "HEAD").stdout.trim() || 0) : 0);
     try {
       const before = commits();
@@ -1745,9 +1755,9 @@ test("P7 (ADR 0026): TIC_STORE=git — hook telemetry stays local; agent tics st
       const local = fs.existsSync(jsonl) ? ticsOf(d).map((x) => x.from + ":" + x.msg).sort() : [];
       assert.deepStrictEqual(
         { status: [runSuite.status, guard.status, subagent.status, witness.status],
-          fast: [runSuite.ms < 2000, guard.ms < 2000, subagent.ms < 2000, witness.ms < 2000],
-          sshSpawns: hs.spawns(), newBusCommits: commits() - before, local },
-        { status: [0, 0, 0, 0], fast: [true, true, true, true], sshSpawns: 0, newBusCommits: 0,
+          fast: [runSuite.ms < 5000, guard.ms < 5000, subagent.ms < 5000, witness.ms < 5000],
+          sshSpawns: hs.spawns(), newBusCommits: commits() - before, busOpened: fs.existsSync(bus), local },
+        { status: [0, 0, 0, 0], fast: [true, true, true, true], sshSpawns: 0, newBusCommits: 0, busOpened: false,
           local: ["guard:p7-guard", "run-suite:suite green", "subagent:p7-subagent", "witness:p7-witness"] },
         "hook emits against ssh://hang (ms run-suite/guard/subagent/witness: " + [runSuite.ms, guard.ms, subagent.ms, witness.ms].join("/") + ")");
     } finally {
