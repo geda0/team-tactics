@@ -2454,4 +2454,29 @@ test("K (ADR 0028): one tic vocabulary — assign/status are kinds, an unknown k
         "malformed calls stay hard rejects");
     } finally { fs.rmSync(d, { recursive: true, force: true }); }
   });
+
+  await t.test("K4 (ADR 0028): a kind is case-folded before the rules apply, and an identifier over 32 characters is malformed", { timeout: 60000 }, () => {
+    const d = inst();
+    const k32 = "a".repeat(32), k33 = "a".repeat(33);
+    try {
+      const up = ticSh(d, "a", "b", "Assign", "k4-assign", "k4");
+      const caps = ticSh(d, "a", "b", "STATUS", "k4-status", "k4");
+      const odd = ticSh(d, "a", "b", "Banana", "k4-banana", "k4");
+      const at32 = ticSh(d, "a", "b", k32, "k4-at32", "k4");
+      const over = ticSh(d, "a", "b", k33, "k4-over32", "k4");
+      const of = (m) => ticsOf(d).find((x) => x.msg === m) || {};
+      assert.deepStrictEqual(
+        { up: up.status, upKind: of("k4-assign").kind,
+          caps: caps.status, capsKind: of("k4-status").kind,
+          odd: odd.status, oddKind: of("k4-banana").kind, oddOrig: of("k4-banana").orig_kind,
+          at32: at32.status, at32Kind: of("k4-at32").kind, at32Orig: of("k4-at32").orig_kind,
+          over: over.status, overRecorded: busText(d).includes("k4-over32") },
+        { up: 0, upKind: "assign",
+          caps: 0, capsKind: "status",
+          odd: 0, oddKind: "note", oddOrig: "banana",
+          at32: 0, at32Kind: "note", at32Orig: k32,
+          over: 2, overRecorded: false },
+        "kinds are case-folded; 32 chars is the cap: " + up.stderr + caps.stderr + odd.stderr + at32.stderr + over.stderr);
+    } finally { fs.rmSync(d, { recursive: true, force: true }); }
+  });
 });
