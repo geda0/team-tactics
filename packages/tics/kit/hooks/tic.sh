@@ -2,7 +2,9 @@
 # tic.sh — EMIT one tic. Not a wired hook; call from Bash:
 #   .claude/hooks/tic.sh FROM TO KIND MSG [REF] [RESULT]
 # To READ tics, use the reader: .claude/hooks/tics inbox <role> [--scope <s>]  (or log/conductor/claims)
-# Kinds: delegate handoff signal block stuck verdict msg note claim release contract need section session commit.
+# Kinds: delegate handoff signal block stuck verdict msg note claim release contract need section session commit
+# landmark assign status. A kind is case-folded first; an unknown lowercase identifier (<= 32 chars) is never dropped:
+# it is recorded as `note` with orig_kind (ADR 0028). Anything else is rc 2, nothing recorded.
 set -uo pipefail
 HERE="$(cd "$(dirname "$0")" && pwd)"; ROOT="$(cd "$HERE/../.." && pwd)"
 # shellcheck disable=SC1091
