@@ -1229,19 +1229,72 @@ test("P1 (ADR 0026): TIC_STORE=git — two concurrent emitters against one bare 
     const lib = path.join(d, ".claude", "hooks", "tics-lib.sh");
     const script = 'export TICS_REMOTE="' + remote + '" TICS_SESSION="' + who + '"; . "' + lib + '"; ' +
       'for i in $(seq 1 ' + K + '); do emit_tic ' + who + ' "*" note "' + who + '-$i"; done';
-    cp.spawn("bash", ["-c", script], { cwd: d, env: ENV, stdio: "ignore" }).on("close", resolve);
+    const ch = cp.spawn("bash", ["-c", script], { cwd: d, env: ENV, stdio: ["ignore", "ignore", "pipe"] });
+    let err = ""; ch.stderr.on("data", (b) => { err += b; });
+    ch.on("close", (code) => { stderrs[who] = { code, err }; resolve(); });
   });
+  const stderrs = {};
+  // Diagnostics only (never changes what P1 asserts): classify each missing msg as on-remote,
+  // local-committed-unpushed, worktree-only, or GONE, with each host's bus state.
+  const diagnose = (got, want) => {
+    const missing = want.filter((m) => !got.includes(m));
+    const out = ["missing: " + JSON.stringify(missing), "extra/dup: " + JSON.stringify(got.filter((m, i) => !want.includes(m) || got.indexOf(m) !== i))];
+    const remoteMsgs = new Set(got);
+    for (const [h, d] of [["hostA", hostA], ["hostB", hostB]]) {
+      const bus = path.join(d, ".claude", "state", "tics.git");
+      const msgsOf = (txt) => txt.split("\n").filter(Boolean).map((l) => { try { return JSON.parse(l).msg; } catch (e) { return "?unparsable"; } });
+      const hasTrack = git(bus, "rev-parse", "-q", "--verify", "origin/tics-bus").status === 0;
+      const range = hasTrack ? "origin/tics-bus..HEAD" : "HEAD";
+      const unpushedLog = git(bus, "log", "--format=%s", range).stdout.trim().split("\n").filter(Boolean);
+      const headFiles = git(bus, "ls-tree", "-r", "--name-only", "HEAD", "--", "tics.d").stdout.trim().split("\n").filter(Boolean);
+      const committed = new Set(headFiles.flatMap((f) => msgsOf(git(bus, "show", "HEAD:" + f).stdout)));
+      const unpushedMsgs = [...committed].filter((m) => !remoteMsgs.has(m));
+      const dir = path.join(bus, "tics.d");
+      const wt = new Set(fs.existsSync(dir) ? fs.readdirSync(dir).filter((f) => f.endsWith(".json")).flatMap((f) => msgsOf(fs.readFileSync(path.join(dir, f), "utf8"))) : []);
+      const porcelain = git(bus, "--no-optional-locks", "status", "--porcelain").stdout.trim();
+      const gd = path.join(bus, ".git");
+      const netFailed = fs.existsSync(path.join(gd, "tics-net-failed")) ? "yes (" + fs.readFileSync(path.join(gd, "tics-net-failed"), "utf8").trim() + ")" : "no";
+      const errs = fs.existsSync(gd) ? fs.readdirSync(gd).filter((f) => /^tics-net\..*\.err$/.test(f)).map((f) => f + ": " + fs.readFileSync(path.join(gd, f), "utf8").trim()) : [];
+      const locks = fs.existsSync(gd) ? fs.readdirSync(gd).filter((f) => f.startsWith("tics-emit.lock")) : [];
+      const rebasing = ["rebase-merge", "rebase-apply"].filter((f) => fs.existsSync(path.join(gd, f)));
+      out.push("[" + h + "] exit=" + (stderrs[h] && stderrs[h].code) + " track=" + hasTrack +
+        "\n  unpushed commits (" + range + "): " + unpushedLog.length + " " + JSON.stringify(unpushedLog) +
+        "\n  unpushed tic msgs: " + JSON.stringify(unpushedMsgs) +
+        "\n  status --porcelain: " + JSON.stringify(porcelain) +
+        "\n  tics-net-failed: " + netFailed + "  lock: " + JSON.stringify(locks) + "  rebase: " + JSON.stringify(rebasing) +
+        "\n  net .err: " + JSON.stringify(errs) +
+        "\n  stderr: " + JSON.stringify(((stderrs[h] && stderrs[h].err) || "").slice(-2000)));
+      for (const m of missing.filter((m) => m.startsWith(h + "-"))) {
+        const cls = remoteMsgs.has(m) ? "on-remote" : committed.has(m) ? "local-committed-unpushed" : wt.has(m) ? "worktree-only" : "GONE";
+        out.push("  CLASS " + m + ": " + cls);
+      }
+    }
+    return out.join("\n");
+  };
   try {
     git(remote, "init", "-q", "--bare");
     await Promise.all([burst(hostA, "hostA"), burst(hostB, "hostB")]);
     const cl = git(check, "clone", "-q", "--branch", "tics-bus", remote, "bus");
     assert.strictEqual(cl.status, 0, "the remote has a tics-bus branch: " + cl.stderr);
     const dir = path.join(check, "bus", "tics.d");
-    const msgs = fs.readdirSync(dir).filter((f) => f.endsWith(".json"))
-      .map((f) => JSON.parse(fs.readFileSync(path.join(dir, f), "utf8")).msg).sort();
     const want = [];
     for (const h of ["hostA", "hostB"]) for (let i = 1; i <= K; i++) want.push(h + "-" + i);
-    assert.deepStrictEqual(msgs, want.sort(), "every emitted tic reached the remote exactly once");
+    const msgs = fs.readdirSync(dir).filter((f) => f.endsWith(".json")).map((f) => {
+      const txt = fs.readFileSync(path.join(dir, f), "utf8");
+      try { return JSON.parse(txt).msg; } catch (e) {
+        // diagnostics only: a spool file that is not ONE tic still fails P1, now with its name, content and history
+        const all = fs.readdirSync(dir).filter((g) => g.endsWith(".json")).sort();
+        const hist = git(path.join(check, "bus"), "log", "--format=%h %s", "--", "tics.d/" + f).stdout.trim();
+        const lines = txt.split("\n").filter(Boolean).map((l) => { try { return JSON.parse(l).msg; } catch (e2) { return "?"; } });
+        e.message += "\nP1-DIAG unparsable remote file " + f + " (" + lines.length + " lines, msgs " + JSON.stringify(lines) + ")\n" + txt +
+          "\n  history: " + JSON.stringify(hist) + "\n  remote files: " + JSON.stringify(all) + "\n" +
+          diagnose(fs.readdirSync(dir).filter((g) => g.endsWith(".json") && g !== f).map((g) => JSON.parse(fs.readFileSync(path.join(dir, g), "utf8")).msg).concat(lines), want.slice().sort());
+        throw e;
+      }
+    }).sort();
+    want.sort();
+    const same = JSON.stringify(msgs) === JSON.stringify(want);
+    assert.deepStrictEqual(msgs, want, "every emitted tic reached the remote exactly once" + (same ? "" : "\nP1-DIAG\n" + diagnose(msgs, want)));
   } finally {
     for (const p of [remote, hostA, hostB, check]) fs.rmSync(p, { recursive: true, force: true });
   }
