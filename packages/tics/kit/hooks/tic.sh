@@ -23,15 +23,18 @@ case "$_k" in
     echo "tic.sh EMITS tics; it does not read them. To READ, run the reader: .claude/hooks/tics <log | inbox <role> | conductor | claims | sections> [--scope <scope>]. Nothing recorded." >&2
     exit 2 ;;
   [a-z]*)
-    case "$_k" in
-      *[!a-z0-9_-]*) ;;
-      *)
-        if [ "${#_k}" -le 32 ]; then
-          echo "tic.sh: unknown kind '$_k' recorded as note (orig_kind=$_k)" >&2
+    # ASCII-only class check: under UTF-8 collation (macOS bash 3.2) [a-z] spans accented letters.
+    if printf '%s' "$_k" | LC_ALL=C grep -Eq '^[a-z][a-z0-9_-]{0,31}$'; then
+      {
+          if [ "${TICS:-1}" = "1" ]; then
+            echo "tic.sh: unknown kind '$_k' recorded as note (orig_kind=$_k)" >&2
+          else
+            echo "tic.sh: tics are off (TICS=0) — nothing recorded" >&2
+          fi
           emit_tic "$1" "${2:-*}" note "${4:-}" "${5:-}" "${6:-}" ",\"orig_kind\":\"$_k\""
           exit 0
-        fi ;;
-    esac
+      }
+    fi
     echo "tic.sh: '$3' is not a tic kind (a kind is a lowercase identifier). Valid: delegate handoff signal block stuck verdict msg note claim release contract need section session commit landmark assign status. Nothing recorded. Usage: tic.sh FROM TO KIND MSG [REF] [RESULT]" >&2
     exit 2 ;;
   *)

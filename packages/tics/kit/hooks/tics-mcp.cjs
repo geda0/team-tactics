@@ -70,7 +70,7 @@ function rpcError(id, code, message) {
   return { jsonrpc: "2.0", id: (id === undefined ? null : id), error: { code: code, message: message } };
 }
 
-const EMITTABLE_KINDS = ["delegate","handoff","stuck","verdict","msg","note","claim","release","contract","need","section","landmark"];
+const EMITTABLE_KINDS = ["delegate","handoff","stuck","verdict","msg","note","claim","release","contract","need","section","landmark","assign","status"];
 
 // Hook-only `from` identities: emitted by the run-suite/SubagentStop/guard/witness hooks (via emit_tic in
 // tics-lib.sh), NEVER by an agent. Reserving them keeps GT-1's from=subagent delegation signal unforgeable.
@@ -208,7 +208,7 @@ function callEmit(id, args, ctx) {
   }
   // 3. Honesty check BEFORE any emit
   if (EMITTABLE_KINDS.indexOf(args.kind) === -1) {
-    return toolError(id, "kind '" + args.kind + "' is not agent-emittable — signal/block/commit/session are hook-only and excluded (ADR 0014 §3)");
+    return toolError(id, "kind '" + args.kind + "' is not in the emittable vocabulary (" + EMITTABLE_KINDS.join("/") + ") — signal/block/commit/session are hook-only and excluded (ADR 0014 §3)");
   }
   // 4. Build argv positionally
   const argv = [args.from, args.to, args.kind, args.msg];
