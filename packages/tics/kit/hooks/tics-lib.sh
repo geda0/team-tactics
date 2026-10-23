@@ -67,9 +67,9 @@ _tic_git_open() {
 # (never a tracked .gitignore), so emits leave the project's status and HEAD untouched.
 _tic_git_hide() {
   case "$_gd" in "$ROOT"/*) ;; *) return 0 ;; esac
-  _pg() { env -u GIT_DIR -u GIT_WORK_TREE -u GIT_INDEX_FILE -u GIT_PREFIX -u GIT_COMMON_DIR git -C "$ROOT" "$@"; }
-  _pp="$(_pg rev-parse --show-prefix 2>/dev/null)" || return 0
-  _ex="$(_pg rev-parse --git-path info/exclude 2>/dev/null)" || return 0
+  _tic_git_proj() { env -u GIT_DIR -u GIT_WORK_TREE -u GIT_INDEX_FILE -u GIT_PREFIX -u GIT_COMMON_DIR git -C "$ROOT" "$@"; }
+  _pp="$(_tic_git_proj rev-parse --show-prefix 2>/dev/null)" || return 0
+  _ex="$(_tic_git_proj rev-parse --git-path info/exclude 2>/dev/null)" || return 0
   case "$_ex" in /*) ;; *) _ex="$ROOT/$_ex" ;; esac
   _rel="/$_pp${_gd#"$ROOT"/}/"
   mkdir -p "$(dirname "$_ex")" 2>/dev/null || true

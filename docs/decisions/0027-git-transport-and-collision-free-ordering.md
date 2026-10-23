@@ -60,6 +60,12 @@ Two facts make a git transport cheap and safe:
    emit never drops a tic and never blocks the caller with an error exit (the same never-fail contract as today's
    `>> … || true`).
 
+**Keeping the project tree clean (P5):** when `TICS_GIT_DIR` sits inside `ROOT` (the default does), the store adds
+it to the project's `info/exclude` (located with `git rev-parse --git-path info/exclude`), never to a tracked
+`.gitignore`, so emits leave the project's `git status` and HEAD untouched. This happens once, when the checkout is
+first created: a checkout made before this slice is not hidden retroactively (add the line by hand, or delete the
+checkout and let the next emit recreate it).
+
 **The read side:**
 - `tics` with `TIC_STORE=git` fetches `TICS_BRANCH` (best effort, offline-safe) and reads `TICS_GIT_DIR/tics.d/`
   exactly as it reads a spool. Every existing view (log, inbox, board, cycle, gate) works unchanged.
