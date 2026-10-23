@@ -1,0 +1,1 @@
+{"ts":"2026-10-23T12:11:18Z","seq":41,"kind":"delegate","from":"orchestrator","to":"implementer","phase":"green","layer":"app","scope":"app","session":"local_navigator-delegation","msg":"P1c green per contract adr-0026-P1b: lock local mutations only (never across push), stale by pid or age, rename-based reclaim, add -A tics.d, rebase --abort","ref":"adr-0026-P1b","result":""}
