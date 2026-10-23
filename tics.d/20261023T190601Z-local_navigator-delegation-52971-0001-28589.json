@@ -1,0 +1,1 @@
+{"ts":"2026-10-23T19:06:01Z","seq":154,"kind":"delegate","from":"orchestrator","to":"test-writer","phase":"red","layer":"app","scope":"app","session":"local_navigator-delegation","msg":"ADR 0028 K1-K3 red: assign/status accepted; banana becomes note+orig_kind rc 0; forged/malformed FROM rc 2","ref":"adr-0028","result":""}
