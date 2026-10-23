@@ -1787,4 +1787,65 @@ test("P1c (ADR 0026): TIC_STORE=git — the per-checkout lock covers local mutat
       for (const p of [d, tmp]) fs.rmSync(p, { recursive: true, force: true });
     }
   });
+
+  // P1c-4 design: the loss window is INSIDE one `rebase || rebase --abort` line (after the rebase moved HEAD, before
+  // the abort resets to ORIG_HEAD), so no timing or pre-made lock can land a second emit there deterministically (a
+  // fresh, alive pre-made lock just makes both emits give up uncommitted, and nothing is ever reset). git itself
+  // gives the hook point: a rebase runs post-checkout right after it detaches HEAD onto FETCH_HEAD (rebase-merge/
+  // already written). That hook, run ONCE, plays the double-hold: it ages emit X's live lock past 2 x TICS_NET_TIMEOUT
+  // (the stale-reclaim race) and runs emit Y, which breaks the lock, commits on the rebasing HEAD and backs off the
+  // network (a fresh failure marker; X itself ignores it via TICS_FETCH_TTL=0). The rebase then conflicts on the
+  // P1c-2 same-path fixture and X's abort runs with Y's commit on HEAD. Afterwards origin points at a clean bare
+  // remote (the shared base only) and `tics sync` publishes. If the hook never fired, the test says so.
+  await t.test("P1c-4 (ADR 0026): with a forced double-hold racing a rejected push, every emitted msg reaches origin after a tics sync, and no tic file is ever deleted", { timeout: 60000 }, async () => {
+    const h = p6Hosts(), scratch = fs.mkdtempSync(path.join(os.tmpdir(), "tics-p1c4-"));
+    const bus = busOf(h.hostA), name = "tics.d/20260101T000000Z-hostA-1-1.json";
+    const ticJson = (msg) => '{"ts":"2026-01-01T00:00:00Z","seq":9,"kind":"note","from":"a","to":"*","phase":"off","layer":"app","scope":"app","session":"hostA","msg":"' + msg + '","ref":"","result":""}\n';
+    const fired = path.join(scratch, "hook-fired"), seenInHook = path.join(scratch, "seen-in-hook"), clean = path.join(scratch, "clean.git");
+    const lsTics = () => fs.readdirSync(path.join(bus, "tics.d"));
+    try {
+      assert.strictEqual(srcLib(h.hostA, "emit_tic a '*' note base-A").status, 0);     // published: a shared base
+      const seen = new Set(lsTics());
+      assert.strictEqual(git(scratch, "clone", "-q", "--bare", "--branch", "tics-bus", h.remote, clean).status, 0);   // the clean remote: base only
+      // P1c-2's fixture: a local unpushed tic at `name`, a different remote file at the same path -> push rejected, rebase conflicts
+      fs.writeFileSync(path.join(bus, name), ticJson("local-version"));
+      assert.strictEqual(git(bus, "add", "--", name).status, 0);
+      assert.strictEqual(git(bus, "commit", "-q", "-m", "tic").status, 0);
+      assert.strictEqual(git(scratch, "clone", "-q", "--branch", "tics-bus", h.remote, "c").status, 0);
+      const c = path.join(scratch, "c");
+      fs.writeFileSync(path.join(c, name), ticJson("remote-version"));
+      assert.strictEqual(git(c, "add", "--", name).status, 0);
+      assert.strictEqual(git(c, "commit", "-q", "-m", "tic").status, 0);
+      assert.strictEqual(git(c, "push", "-q", "origin", "HEAD:refs/heads/tics-bus").status, 0);
+      lsTics().forEach((f) => seen.add(f));
+      fs.writeFileSync(path.join(bus, ".git", "tics-net-failed"), Math.floor(Date.now() / 1000) + "\n");   // Y backs off
+      const hook = path.join(bus, ".git", "hooks", "post-checkout");
+      fs.mkdirSync(path.dirname(hook), { recursive: true });
+      fs.writeFileSync(hook, "#!/bin/sh\n" +
+        "[ -e '" + fired + "' ] && exit 0\n: > '" + fired + "'\n" +
+        "touch -t 200001010000 '" + lockDirOf(h.hostA) + "' 2>/dev/null\n" +
+        "cd '" + h.hostA + "' && env -u GIT_DIR -u GIT_WORK_TREE -u GIT_INDEX_FILE -u GIT_PREFIX -u GIT_COMMON_DIR " +
+        "TICS_NET_TIMEOUT=1 TICS_LOCK_WAIT=1 TICS_FETCH_TTL=60 TICS_SESSION=hostAy " +
+        "bash -c '. \"" + path.join(h.hostA, ".claude", "hooks", "tics-lib.sh") + "\"; emit_tic y \"*\" note intervening-Y' >/dev/null 2>&1\n" +
+        "ls '" + path.join(bus, "tics.d") + "' > '" + seenInHook + "'\nexit 0\n");
+      fs.chmodSync(hook, 0o755);
+      const x = await timedEmit(h.hostA, "emit_tic a '*' note emit-X", 30000, { ...ENV, TICS_FETCH_TTL: "0" });
+      fs.rmSync(hook, { force: true });
+      const hookFired = fs.existsSync(fired);
+      (hookFired && fs.existsSync(seenInHook) ? fs.readFileSync(seenInHook, "utf8").split("\n").filter(Boolean) : []).forEach((f) => seen.add(f));
+      lsTics().forEach((f) => seen.add(f));
+      const deletedByX = [...seen].filter((f) => !fs.existsSync(path.join(bus, "tics.d", f))).sort();
+      assert.strictEqual(git(bus, "remote", "set-url", "origin", clean).status, 0);
+      const s = await timedRun("node", [BIN, "sync", h.hostA], { env: ENV }, 30000);
+      const inHead = new Set(git(bus, "ls-tree", "-r", "--name-only", "HEAD", "--", "tics.d").stdout.trim().split("\n").filter(Boolean).map((p) => path.basename(p)));
+      const lost = [...seen].filter((f) => !fs.existsSync(path.join(bus, "tics.d", f)) && !inHead.has(f)).sort();
+      assert.deepStrictEqual(
+        { hookFired, x: x.status, sync: s.status, remote: remoteMsgs(clean).filter((m) => m !== "local-version" && m !== "remote-version"), lost, deletedByX },
+        { hookFired: true, x: 0, sync: 0, remote: ["base-A", "emit-X", "intervening-Y"], lost: [], deletedByX: [] },
+        "a second emit committing inside emit X's rebase (forced double-hold) must survive X's rebase abort (X ms " + x.ms + ")");
+    } finally {
+      h.cleanup();
+      fs.rmSync(scratch, { recursive: true, force: true });
+    }
+  });
 });
