@@ -71,8 +71,8 @@ are in ADR 0025. What the distributed run taught:
   mirrored as a tic, or the bus undercounts delegation by an order of magnitude.
 - **Identity was mostly missing.** Only 10 distinct session ids appear on the shared bus. The leader,
   coordinator and macm12 carried none on any tic; the auditor and the cloud lanes that did carry one
-  were the easiest to follow. 13 tics carried `seq` 0, the shared bus has 61 duplicate seqs and 53
-  ts-order inversions, and the lane branches ran their own counters (411–796).
+  were the easiest to follow. 13 tics carried `seq` 0, the shared bus has 61 duplicate seqs and ~55–60
+  seq inversions in timestamp order (the exact count depends on how same-second ties are broken), and the lane branches ran their own counters (411–796).
 - **One account is one fault domain.** On 10-22 between 12:17 and 12:38 the leader, the coordinator,
   macM1 and macm12 all hit usage limits, and the bus went silent for three hours (12:38 → 15:22).
   The designated failover (the coordinator) failed with the leader. Cloud lanes went dark for up to
@@ -82,8 +82,8 @@ are in ADR 0025. What the distributed run taught:
   token, GPU work went to rented hosts over ssh, and one session had no Node. Routing lived in the
   lead's head, and test work was later sent to the host without Node. → the roster needs each
   session's **host capabilities and fault domain**, and a failover role must sit in a different one.
-- **Liveness and recovery were done by hand.** The leader ran stall checks itself ("STUCK: holds Q16
-  with no tic for 34 min", seq 614, 623); one worker was silent because it sat on a permission prompt
+- **Liveness and recovery were done by hand.** The leader ran stall checks itself, twice: an Intel
+  worker holding Q10 (seq 614) and m12 holding Q16 (623), each "with no tic for 34 min"; one worker was silent because it sat on a permission prompt
   (`requires_action`). Recovery was a hand-rolled `RESUMABLE` checkpoint tic (7 of them) and work
   reassigned by claim (622, 641). Claims carried no lease, so a dead holder kept its claim until a
   human noticed. → liveness, claim leases and resumable checkpoints belong in the session registry
