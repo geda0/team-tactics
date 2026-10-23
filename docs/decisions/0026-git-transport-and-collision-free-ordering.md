@@ -132,6 +132,19 @@ written. Hooks and agents both emit, so that froze sessions and broke the never-
 5. **Rejected: a detached asynchronous push.** It would outlive the session and race concurrent emits on the same
    checkout.
 
+**A moved bus fails loud; `tics rebind` moves it (architect contract, ref trial).** The checkout's `origin` is set once,
+when the checkout is created, so a later change to `TICS_REMOTE` was silently ignored and emits kept publishing to the
+old remote (found in the tics-project fleet trial). Auto-switching is rejected: rebasing onto an unrelated remote would
+replay the whole old local history into the new bus.
+- On a mismatch (the checkout's `origin` ≠ the configured `TICS_REMOTE`), an emit still commits locally (never
+  drops) but does not push, and `tics log` / `tics board` print `bus remote mismatch: checkout=<X> config=<Y> — run
+  tics rebind`.
+- `tics rebind` re-creates the checkout for the configured remote and carries over **only the unpushed** tics (those
+  not on the old remote's branch), then publishes them.
+- **P8 (rebind):** (a) after `TICS_REMOTE` changes, an emit exits 0, commits locally, and nothing reaches the old
+  remote; (b) `log` and `board` print the mismatch line; (c) `tics rebind` publishes exactly the unpushed tics to the
+  new remote, not the old history, and afterwards emits publish there.
+
 **Hook telemetry stays local (architect contract adr-0026-hook-local).** With `TIC_STORE=git`, a tic whose `from` is a
 hook identity (`subagent`, `run-suite`, `guard`, `witness`: the one list `tic.sh` reserves and ADR 0027 pins) always
 goes to the local jsonl: no git commit, no network, no lock. Hooks fire on every tool use, suite run and subagent
