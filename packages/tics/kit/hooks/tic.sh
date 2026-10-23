@@ -12,19 +12,23 @@ HERE="$(cd "$(dirname "$0")" && pwd)"; ROOT="$(cd "$HERE/../.." && pwd)"
 case "${1:-}" in -*) echo "tic.sh: FROM ('$1') looks like a flag — usage: tic.sh FROM TO KIND MSG [REF] [RESULT]. Nothing recorded." >&2; exit 2 ;; esac
 case "${2:-}" in -*) echo "tic.sh: TO ('$2') looks like a flag — usage: tic.sh FROM TO KIND MSG [REF] [RESULT]. Nothing recorded." >&2; exit 2 ;; esac
 case "${1:-}" in subagent|run-suite|guard|witness) echo "tic.sh: FROM ('$1') is a hook-only identity — agents cannot self-assert it (reserved for the run-suite/subagent/guard/witness hooks). Nothing recorded." >&2; exit 2 ;; esac
-case "${3:-}" in
+_k=$(printf '%s' "${3:-}" | tr '[:upper:]' '[:lower:]')
+case "$_k" in
   delegate|handoff|signal|block|stuck|verdict|msg|note|claim|release|contract|need|section|session|commit|landmark|assign|status)
+    set -- "$1" "$2" "$_k" "${@:4}"
     emit_tic "$@" ;;
   log|inbox|conductor|claims|sections|cycle|report|-*)
     echo "tic.sh EMITS tics; it does not read them. To READ, run the reader: .claude/hooks/tics <log | inbox <role> | conductor | claims | sections> [--scope <scope>]. Nothing recorded." >&2
     exit 2 ;;
   [a-z]*)
-    case "$3" in
+    case "$_k" in
       *[!a-z0-9_-]*) ;;
       *)
-        echo "tic.sh: unknown kind '$3' recorded as note (orig_kind=$3)" >&2
-        emit_tic "$1" "${2:-*}" note "${4:-}" "${5:-}" "${6:-}" ",\"orig_kind\":\"$3\""
-        exit 0 ;;
+        if [ "${#_k}" -le 32 ]; then
+          echo "tic.sh: unknown kind '$_k' recorded as note (orig_kind=$_k)" >&2
+          emit_tic "$1" "${2:-*}" note "${4:-}" "${5:-}" "${6:-}" ",\"orig_kind\":\"$_k\""
+          exit 0
+        fi ;;
     esac
     echo "tic.sh: '$3' is not a tic kind (a kind is a lowercase identifier). Valid: delegate handoff signal block stuck verdict msg note claim release contract need section session commit landmark assign status. Nothing recorded. Usage: tic.sh FROM TO KIND MSG [REF] [RESULT]" >&2
     exit 2 ;;
