@@ -1,4 +1,4 @@
-# 0026 — Field learnings from a fleet run (1,490 tics, 34 roles, 4 machines + cloud): the run that pulls the coordination roadmap
+# 0025 — Field learnings from a fleet run (1,490 tics, 34 roles, 4 machines + cloud): the run that pulls the coordination roadmap
 
 - **Status:** **Proposed.** This is a field ingest plus a contribution order: docs only, no code. Each contribution in
   §4 gets its own ADR and goes through the red→green gate when it is built. Nothing here changes a hook, a tic kind or
