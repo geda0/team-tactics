@@ -73,8 +73,10 @@ flag merges every git worktree's bus for a whole-picture view.
 .claude/hooks/tic.sh implementer "*" claim "editing login" src/auth/login.ts
 ```
 
-**Kinds:** `delegate handoff signal block verdict msg note claim release contract need
-section commit`.
+**Kinds:** `delegate handoff signal block stuck verdict msg note claim release contract need
+section session commit landmark assign status`. A kind is case-folded; an unknown lowercase identifier (≤ 32 chars)
+is never dropped — it is recorded as `note` with `orig_kind`, and `log`/`inbox` show `note(<orig_kind>)`. Anything
+else (`frontend:green`, a reader verb, a reserved hook identity as FROM) is refused with rc 2 (ADR 0028).
 
 ## Read
 

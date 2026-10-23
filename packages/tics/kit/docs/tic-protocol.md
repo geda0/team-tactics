@@ -20,6 +20,7 @@ One JSON object per line in `.claude/state/tics.jsonl` (transient — gitignored
 | `msg` | caller | one-line summary |
 | `ref` | caller | pointer to the objective artifact (slice id / file / test) |
 | `result` | caller | `green`/`red`/`pass`/`concerns`/`block`/`blocked` |
+| `orig_kind` | auto | only on a tic whose kind was unknown: the original (case-folded) kind, recorded as `note` (ADR 0028) |
 
 ## The kinds
 | kind | from → to | meaning |
@@ -31,6 +32,8 @@ One JSON object per line in `.claude/state/tics.jsonl` (transient — gitignored
 | `verdict` | tdd-critic / qa-verifier → orchestrator | a review / acceptance ruling |
 | `msg` | any → role or `*` | **slack-like in-session message** — contact/update another agent |
 | `note` | any → `*` | a log-only annotation |
+| `assign` | lead → role | hands a job to a role (the fleet's dispatch word; acks are folded on `ref` + `to`, never on kind) |
+| `status` | any → role or `*` | a progress report |
 | `landmark` | any → `*` | a **context-map crumb** (learned navigation): `ref`=path/area, `result`=`landmark`\|`route`\|`caveat`\|`retract`, `msg`=the recall sentence; surfaced by `tics map`/`where`/`how`, not the thread. See `context-map.md`. |
 
 `signal` subsumes the old suite-telemetry event (it carries `exit` + `durationSec`), so
