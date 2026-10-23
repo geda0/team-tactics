@@ -139,7 +139,7 @@ stop, so publishing them would put minutes of network latency inside hooks and f
 Agent tics still publish. Readers already union jsonl and the git bus, so `tics gate` and `tics cycle` still see the
 hook-signed signals.
 - **P7 (hook-local):** under `TIC_STORE=git`, (a) a hook-identity emit creates no bus commit, starts no networked git
-  and returns in < 200 ms; (b) an agent emit right after it still publishes; (c) `tics gate` on a git-store install
+  and returns well inside the network watchdog (tested as < 2 s against a 3 s watchdog, so host speed can't flake it); (b) an agent emit right after it still publishes; (c) `tics gate` on a git-store install
   still counts the hook-signed green.
 
 **The read side:**

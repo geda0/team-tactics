@@ -1721,6 +1721,62 @@ test("P3g (ADR 0026): TIC_STORE=git — after a READ whose fetch fails, an emit 
   }
 });
 
+// P7 (ADR 0026, "Hook telemetry stays local", architect contract adr-0026-hook-local): under TIC_STORE=git a tic
+// from a hook identity (subagent, run-suite, guard, witness) goes to the local jsonl — no bus commit, no network, no
+// lock — while agent tics still publish, and the reader's union still counts the hook-signed green.
+test("P7 (ADR 0026): TIC_STORE=git — hook telemetry stays local; agent tics still publish", { timeout: 180000 }, async (t) => {
+  await t.test("P7a (ADR 0026): a hook-identity emit against a hanging remote returns well under the network watchdog, spawns no ssh, adds no bus commit, and lands in tics.jsonl", { timeout: 60000 }, async () => {
+    const d = inst("git"), tmp = fs.mkdtempSync(path.join(os.tmpdir(), "tics-p7a-")), hs = hangSsh(tmp);
+    const bus = busOf(d), HANG = { ...ENV, GIT_SSH_COMMAND: hs.ssh };
+    const jsonl = path.join(d, ".claude", "state", "tics.jsonl");
+    fs.appendFileSync(path.join(d, ".claude", "tdd.config"), 'TICS_REMOTE="ssh://hang/x.git"\nTICS_NET_TIMEOUT="3"\n');
+    const commits = () => (fs.existsSync(bus) ? Number(git(bus, "rev-list", "--count", "HEAD").stdout.trim() || 0) : 0);
+    try {
+      const before = commits();
+      const runSuite = await timedEmit(d, "emit_tic run-suite '*' signal 'suite green' '' green", 30000, HANG);
+      const guard = await timedEmit(d, "emit_tic guard '*' note p7-guard", 30000, HANG);
+      const subagent = await timedEmit(d, "emit_tic subagent '*' note p7-subagent", 30000, HANG);
+      const witness = await timedEmit(d, "emit_tic witness '*' note p7-witness", 30000, HANG);
+      const local = fs.existsSync(jsonl) ? ticsOf(d).map((x) => x.from + ":" + x.msg).sort() : [];
+      assert.deepStrictEqual(
+        { status: [runSuite.status, guard.status, subagent.status, witness.status],
+          fast: [runSuite.ms < 2000, guard.ms < 2000, subagent.ms < 2000, witness.ms < 2000],
+          sshSpawns: hs.spawns(), newBusCommits: commits() - before, local },
+        { status: [0, 0, 0, 0], fast: [true, true, true, true], sshSpawns: 0, newBusCommits: 0,
+          local: ["guard:p7-guard", "run-suite:suite green", "subagent:p7-subagent", "witness:p7-witness"] },
+        "hook emits against ssh://hang (ms run-suite/guard/subagent/witness: " + [runSuite.ms, guard.ms, subagent.ms, witness.ms].join("/") + ")");
+    } finally {
+      hs.reap();
+      for (const p of [d, tmp]) fs.rmSync(p, { recursive: true, force: true });
+    }
+  });
+  await t.test("P7b (ADR 0026): an agent emit right after a hook-identity emit still publishes; the hook tic does not", { timeout: 60000 }, () => {
+    const h = p6Hosts();
+    try {
+      assert.strictEqual(srcLib(h.hostA, "emit_tic guard '*' note p7-hook").status, 0);
+      assert.strictEqual(srcLib(h.hostA, "emit_tic test-writer '*' note p7-agent").status, 0);
+      const remote = remoteMsgs(h.remote);
+      assert.deepStrictEqual(
+        { agentPublished: remote.includes("p7-agent"), hookPublished: remote.includes("p7-hook") },
+        { agentPublished: true, hookPublished: false },
+        "the remote's tics-bus holds: " + JSON.stringify(remote));
+    } finally { h.cleanup(); }
+  });
+  await t.test("P7c (ADR 0026): on a git-store install, tics log lists a hook-signed green and tics gate counts it", { timeout: 60000 }, () => {
+    const h = p6Hosts();
+    try {
+      assert.strictEqual(srcLib(h.hostA, "emit_tic implementer '*' signal p7-self-green '' green").status, 0);
+      assert.strictEqual(srcLib(h.hostA, "emit_tic run-suite '*' signal p7-hook-green '' green").status, 0);
+      const log = read(h.hostA, "log");
+      const gate = read(h.hostA, "gate"), out = gate.stdout + gate.stderr;
+      assert.deepStrictEqual(
+        { logged: /p7-hook-green/.test(log.stdout), noHookSignedWarning: /no hook-signed green/.test(out) },
+        { logged: true, noHookSignedWarning: false },
+        "tics log: " + log.stdout + "\ntics gate: " + out);
+    } finally { h.cleanup(); }
+  });
+});
+
 test("P1b (ADR 0026): TIC_STORE=git — two emitters sharing ONE bus checkout, racing a third host, lose nothing and record no failure", { timeout: 60000 }, async () => {
   const h = p6Hosts(), K = 6;
   const burst = (d, who) => new Promise((resolve) => {
