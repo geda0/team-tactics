@@ -1804,12 +1804,14 @@ function p8Moved() {
   fs.writeFileSync(cfg, fs.readFileSync(cfg, "utf8").replace('TICS_REMOTE="' + h.remote + '"', 'TICS_REMOTE="' + NEW + '"'));
   const moved = srcLib(h.hostA, "emit_tic test-writer '*' note p8-after-move");
   const cleanup = () => { h.cleanup(); fs.rmSync(NEW, { recursive: true, force: true }); };
-  return { A: h.hostA, OLD: h.remote, NEW, cfg, oldEmit, moved, cleanup };
+  return { A: h.hostA, B: h.hostB, OLD: h.remote, NEW, cfg, oldEmit, moved, cleanup };
 }
 const busHeadMsgs = (bus) => git(bus, "ls-tree", "-r", "--name-only", "HEAD", "--", "tics.d").stdout.trim().split("\n").filter(Boolean)
   .map((p) => { try { return JSON.parse(git(bus, "show", "HEAD:" + p).stdout).msg; } catch (_) { return null; } }).filter(Boolean).sort();
+// rewrite the TICS_REMOTE line of a tdd.config from one URL to another (a config change, as an operator would make it)
+const setCfgRemote = (cfg, from, to) => fs.writeFileSync(cfg, fs.readFileSync(cfg, "utf8").replace('TICS_REMOTE="' + from + '"', 'TICS_REMOTE="' + to + '"'));
 
-test("P8 (ADR 0026): TIC_STORE=git — a moved TICS_REMOTE fails loud and tics rebind moves the bus", { timeout: 180000 }, async (t) => {
+test("P8 (ADR 0026): TIC_STORE=git — a moved TICS_REMOTE fails loud and tics rebind moves the bus", { timeout: 600000 }, async (t) => {
   await t.test("P8a (ADR 0026): after TICS_REMOTE changes, an emit exits 0, commits locally, and nothing reaches the old remote", { timeout: 60000 }, () => {
     const s = p8Moved();
     try {
@@ -1874,6 +1876,115 @@ test("P8 (ADR 0026): TIC_STORE=git — a moved TICS_REMOTE fails loud and tics r
         "OLD tics-bus after env emit: " + JSON.stringify(oldAfterEnv) + "\nNEW tics-bus: " + JSON.stringify(newAfterEnv) +
         "\nenv emit stderr: " + envEmit.stderr + "\nOLD2 tics-bus: " + JSON.stringify(old2) + "\nhandset stderr: " + handset.stderr + "\ntics log:\n" + logOut);
     } finally { h.cleanup(); for (const p of [NEW, OLD2]) fs.rmSync(p, { recursive: true, force: true }); }
+  });
+
+  await t.test("P8e (ADR 0026): tics sync on a moved bus prints the mismatch line and pushes nothing to the old remote", { timeout: 60000 }, () => {
+    const s = p8Moved();
+    try {
+      const sy = cp.spawnSync("node", [BIN, "sync", s.A], { encoding: "utf8", env: ENV });
+      const oldRemote = remoteMsgs(s.OLD);
+      assert.deepStrictEqual(
+        { mismatch: sy.stdout.includes("bus remote mismatch"), oldHasMoved: oldRemote.includes("p8-after-move") },
+        { mismatch: true, oldHasMoved: false },
+        "tics sync stdout:\n" + sy.stdout + "\nstderr:\n" + sy.stderr + "\nOLD tics-bus: " + JSON.stringify(oldRemote));
+    } finally { s.cleanup(); }
+  });
+
+  await t.test("P8f (ADR 0026): on a mismatch the reader skips the fetch, so tics log --fetch does not list a tic published to the old remote after the move", { timeout: 60000 }, () => {
+    const s = p8Moved();
+    try {
+      const late = srcLib(s.B, "emit_tic b '*' note p8-b-late");
+      const oldRemote = remoteMsgs(s.OLD);
+      const log = read(s.A, "log", "--fetch");
+      assert.deepStrictEqual(
+        { lateStatus: late.status, oldHasLate: oldRemote.includes("p8-b-late"), logListsLate: log.stdout.includes("p8-b-late") },
+        { lateStatus: 0, oldHasLate: true, logListsLate: false },
+        "OLD tics-bus: " + JSON.stringify(oldRemote) + "\ntics log --fetch:\n" + log.stdout + log.stderr);
+    } finally { s.cleanup(); }
+  });
+
+  await t.test("P8g (ADR 0026): a legacy checkout with no record adopts its origin (no mismatch when origin equals config) and is a mismatch when config differs from origin", { timeout: 60000 }, () => {
+    const same = p6Hosts(), moved = p6Hosts(), NEW = fs.mkdtempSync(path.join(os.tmpdir(), "tics-remote-new-"));
+    git(NEW, "init", "-q", "--bare");
+    const recSame = path.join(busOf(same.hostA), ".git", "tics-remote"), recMoved = path.join(busOf(moved.hostA), ".git", "tics-remote");
+    try {
+      // case 1: origin == config, record deleted (a legacy checkout)
+      const base1 = srcLib(same.hostA, "emit_tic test-writer '*' note p8g-base");
+      fs.rmSync(recSame, { force: true });
+      const adopt = srcLib(same.hostA, "emit_tic test-writer '*' note p8g-adopt");
+      const sameOld = remoteMsgs(same.remote), log1 = read(same.hostA, "log"), log1Out = log1.stdout + log1.stderr;
+      const recorded = fs.existsSync(recSame) ? fs.readFileSync(recSame, "utf8").trim() : null;
+      // case 2: record deleted, tdd.config moved to NEW while the checkout's origin is still OLD
+      const base2 = srcLib(moved.hostA, "emit_tic test-writer '*' note p8g-base2");
+      fs.rmSync(recMoved, { force: true });
+      setCfgRemote(path.join(moved.hostA, ".claude", "tdd.config"), moved.remote, NEW);
+      const kept = srcLib(moved.hostA, "emit_tic test-writer '*' note p8g-kept");
+      const movedOld = remoteMsgs(moved.remote), log2 = read(moved.hostA, "log"), log2Out = log2.stdout + log2.stderr;
+      assert.deepStrictEqual(
+        { base1: base1.status, adopt: adopt.status, oldHasAdopt: sameOld.includes("p8g-adopt"), mismatch1: log1Out.includes("bus remote mismatch"), recorded,
+          base2: base2.status, kept: kept.status, oldHasKept: movedOld.includes("p8g-kept"), mismatch2: log2Out.includes("bus remote mismatch") },
+        { base1: 0, adopt: 0, oldHasAdopt: true, mismatch1: false, recorded: same.remote,
+          base2: 0, kept: 0, oldHasKept: false, mismatch2: true },
+        "case 1 OLD tics-bus: " + JSON.stringify(sameOld) + "\ncase 1 tics log:\n" + log1Out +
+        "\ncase 2 OLD tics-bus: " + JSON.stringify(movedOld) + "\ncase 2 tics log:\n" + log2Out);
+    } finally { same.cleanup(); moved.cleanup(); fs.rmSync(NEW, { recursive: true, force: true }); }
+  });
+
+  await t.test("P8h (ADR 0026): tics rebind carries a tic file left uncommitted in the moved checkout to the new remote", { timeout: 60000 }, () => {
+    const s = p8Moved();
+    try {
+      // an emit that wrote its file but never committed it (e.g. the checkout lock was not had in time)
+      fs.writeFileSync(path.join(busOf(s.A), "tics.d", "20260101T000000Z-hostA-1-1.json"),
+        '{"ts":"2026-01-01T00:00:00Z","seq":2,"kind":"note","from":"a","to":"*","phase":"off","layer":"app","scope":"app","session":"hostA","msg":"p8h-uncommitted","ref":"","result":""}\n');
+      const rb = cp.spawnSync("node", [BIN, "rebind", s.A], { encoding: "utf8", env: ENV });
+      const newRemote = remoteMsgs(s.NEW);
+      assert.deepStrictEqual(
+        { rebindStatus: rb.status, newHasUncommitted: newRemote.includes("p8h-uncommitted") },
+        { rebindStatus: 0, newHasUncommitted: true },
+        "rebind: " + rb.stdout + rb.stderr + "\nNEW tics-bus: " + JSON.stringify(newRemote));
+    } finally { s.cleanup(); }
+  });
+
+  await t.test("P8i (ADR 0026): one trailing slash is trimmed before comparing (config <OLD>/ is not a mismatch) and nothing else is (config <OLD>// is)", { timeout: 60000 }, () => {
+    const h = p6Hosts(), cfg = path.join(h.hostA, ".claude", "tdd.config");
+    try {
+      const base = srcLib(h.hostA, "emit_tic test-writer '*' note p8i-base");
+      setCfgRemote(cfg, h.remote, h.remote + "/");
+      const slash = srcLib(h.hostA, "emit_tic test-writer '*' note p8i-slash");
+      const afterSlash = remoteMsgs(h.remote), log1 = read(h.hostA, "log"), log1Out = log1.stdout + log1.stderr;
+      setCfgRemote(cfg, h.remote + "/", h.remote + "//");
+      const dbl = srcLib(h.hostA, "emit_tic test-writer '*' note p8i-double");
+      const afterDbl = remoteMsgs(h.remote), log2 = read(h.hostA, "log"), log2Out = log2.stdout + log2.stderr;
+      assert.deepStrictEqual(
+        { base: base.status, slash: slash.status, oldHasSlash: afterSlash.includes("p8i-slash"), mismatchSlash: log1Out.includes("bus remote mismatch"),
+          dbl: dbl.status, oldHasDouble: afterDbl.includes("p8i-double"), mismatchDouble: log2Out.includes("bus remote mismatch") },
+        { base: 0, slash: 0, oldHasSlash: true, mismatchSlash: false,
+          dbl: 0, oldHasDouble: false, mismatchDouble: true },
+        "OLD after <OLD>/: " + JSON.stringify(afterSlash) + "\ntics log:\n" + log1Out +
+        "\nOLD after <OLD>//: " + JSON.stringify(afterDbl) + "\ntics log:\n" + log2Out);
+    } finally { h.cleanup(); }
+  });
+
+  await t.test("P8j (ADR 0026, P5): tics rebind leaves the project's own git tree clean (the kept old checkout is excluded too)", { timeout: 60000 }, () => {
+    const h = p6Hosts(), NEW = fs.mkdtempSync(path.join(os.tmpdir(), "tics-remote-new-")), A = h.hostA, cfg = path.join(A, ".claude", "tdd.config");
+    git(NEW, "init", "-q", "--bare");
+    try {
+      // the install is itself a git repo with a committed file; .claude/state is not ignored by the project
+      git(A, "init", "-q");
+      fs.writeFileSync(path.join(A, "app.txt"), "x\n");
+      git(A, "add", "-A");
+      git(A, "commit", "-q", "-m", "base");
+      const oldEmit = srcLib(A, "emit_tic test-writer '*' note p8j-old");
+      setCfgRemote(cfg, h.remote, NEW);
+      git(A, "commit", "-q", "-am", "move the bus");   // the config change is a committed project act
+      const moved = srcLib(A, "emit_tic test-writer '*' note p8j-after-move");
+      const rb = cp.spawnSync("node", [BIN, "rebind", A], { encoding: "utf8", env: ENV });
+      const status = git(A, "--no-optional-locks", "status", "--porcelain").stdout;
+      assert.deepStrictEqual(
+        { oldEmit: oldEmit.status, moved: moved.status, rebind: rb.status, projectStatus: status },
+        { oldEmit: 0, moved: 0, rebind: 0, projectStatus: "" },
+        "rebind: " + rb.stdout + rb.stderr + "\nproject state dir: " + JSON.stringify(fs.readdirSync(path.join(A, ".claude", "state"))));
+    } finally { h.cleanup(); fs.rmSync(NEW, { recursive: true, force: true }); }
   });
 });
 
