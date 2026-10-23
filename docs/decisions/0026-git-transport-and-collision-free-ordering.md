@@ -162,11 +162,13 @@ written. Hooks and agents both emit, so that froze sessions and broke the never-
 
 - A tic's **identity** is its spool filename (the git store; `(filename, line index)` for a legacy merged file,
   P1d) or `(ts, session, seq)` (jsonl). It is never `seq` alone.
-- The reader **orders** by `ts`, then by `session`, then by the spool filename. That is a total, stable order that
-  every host computes the same way. `seq` stays in the record (back-compat, and it is still monotonic within one
-  host) but is never used to dedupe or identify.
-- Under `TIC_STORE=git` a missing `session` is filled from the host name, so the order key never ties on an empty
-  string.
+- **Built today:** the git-bus reader orders by `ts`, then `seq`, then filename, then line index, and dedupes the
+  union by filename. `loadTicsAll` (the worktree merge) still orders by `ts`, then `seq`, and its dedup key still
+  includes `seq`.
+- **Not yet built (slice 4, P2 + P4):** ordering by `ts`, then `session`, then filename on every path, with `seq`
+  advisory only (never used to dedupe or identify), and filling a missing `session` from the host name under
+  `TIC_STORE=git`. Today only the *filename's* origin falls back to the host name; the tic's `session` field stays
+  empty.
 
 ### 3. What does not change
 
@@ -210,7 +212,7 @@ written. Hooks and agents both emit, so that froze sessions and broke the never-
 2b. **P6**: the reader reads the git bus (fetch on read, offline-safe). Added after dogfooding: P1 and P5 shipped
    a bus the fleet could write but not read, because no predicate covered the read side.
 2c. **P1d**: unique tic files (shared name builder + exclusive create) and line-by-line readers with a skipped-line
-   count in `log` (added after a soak found merged files; P1d-1..3 red, P1d-4 to follow).
+   count in `log` (added after a soak found merged files; P1d-1..5; green).
 3. **P3**: offline emit plus `tics sync`.
 4. **P2 + P4**: the reader orders by (ts, session, filename) and identifies by filename.
 5. Docs: `tic-protocol.md` store section, and `tdd.config` keys.

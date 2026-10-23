@@ -1750,11 +1750,16 @@ const perFileMsgs = (contents) => contents.map((c) => c.trim().split("\n").map((
   .sort((a, b) => JSON.stringify(a).localeCompare(JSON.stringify(b)));
 const spoolFiles = (dir) => (fs.existsSync(dir) ? fs.readdirSync(dir).filter((f) => f.endsWith(".json")).map((f) => fs.readFileSync(path.join(dir, f), "utf8")) : []);
 const remoteFiles = (bare) => git(bare, "ls-tree", "-r", "--name-only", "tics-bus").stdout.trim().split("\n").filter(Boolean).map((p) => git(bare, "show", "tics-bus:" + p).stdout);
-async function sameSecondPair(mk, a, b) {
+// oneShell: both emits in ONE shell (the per-process counter differs between them). twoSubshells: each emit in its
+// OWN subshell — same $$, the counter starts from the same value in each, same re-seeded $RANDOM — so the two
+// first-try names are identical and only the exclusive create + retry can keep both tics (P1d-5).
+const oneShell = (a, b) => 'RANDOM=12345; emit_tic a "*" note ' + a + '; RANDOM=12345; emit_tic a "*" note ' + b;
+const twoSubshells = (a, b) => '( RANDOM=12345; emit_tic a "*" note ' + a + ' ); ( RANDOM=12345; emit_tic a "*" note ' + b + ' )';
+async function sameSecondPair(mk, emits) {
   for (let i = 0; i < 5; i++) {
     const fx = mk();
     await new Promise((r) => setTimeout(r, 1000 - (Date.now() % 1000) + 20));
-    const r = srcLib(fx.d, 's0=$(date -u +%s); RANDOM=12345; emit_tic a "*" note ' + a + '; RANDOM=12345; emit_tic a "*" note ' + b + '; echo "$s0 $(date -u +%s)"');
+    const r = srcLib(fx.d, 's0=$(date -u +%s); ' + emits + '; echo "$s0 $(date -u +%s)"');
     const [s0, s1] = r.stdout.trim().split(" ");
     if (r.status === 0 && s0 === s1) return fx;
     fx.cleanup();
@@ -1762,10 +1767,10 @@ async function sameSecondPair(mk, a, b) {
   throw new Error("could not run the emit pair inside one UTC second in 5 tries");
 }
 
-test("P1d (ADR 0026): never-drop — a repeated $RANDOM within one second never merges two tics, and the reader never hides one", { timeout: 120000 }, async (t) => {
+test("P1d (ADR 0026): never-drop — a repeated $RANDOM within one second never merges two tics, and the reader never hides one", { timeout: 180000 }, async (t) => {
   await t.test("P1d-1 (ADR 0026): two emits from one process in one second with the same $RANDOM land in two files and both are listed (spool and git)", { timeout: 60000 }, async () => {
-    const sp = await sameSecondPair(() => { const d = inst("spool"); return { d, cleanup: () => fs.rmSync(d, { recursive: true, force: true }) }; }, "spool-a", "spool-b");
-    const h = await sameSecondPair(() => { const x = p6Hosts(); return { d: x.hostA, remote: x.remote, cleanup: x.cleanup }; }, "git-a", "git-b");
+    const sp = await sameSecondPair(() => { const d = inst("spool"); return { d, cleanup: () => fs.rmSync(d, { recursive: true, force: true }) }; }, oneShell("spool-a", "spool-b"));
+    const h = await sameSecondPair(() => { const x = p6Hosts(); return { d: x.hostA, remote: x.remote, cleanup: x.cleanup }; }, oneShell("git-a", "git-b"));
     try {
       const spLog = read(sp.d, "log").stdout, gLog = read(h.d, "log").stdout;
       assert.deepStrictEqual(
@@ -1819,7 +1824,7 @@ test("P1d (ADR 0026): never-drop — a repeated $RANDOM within one second never 
         {
           logStatus: log.status,
           logListed: ["after-garbage", "clean-file"].filter((m) => log.stdout.includes(m)),
-          logReportsOne: /1 unparsable tic line\(s\) skipped/.test(out(log)),
+          logReportsOne: /(^|\n)1 unparsable tic line\(s\) skipped/.test(out(log)),
           boardMentions: /unparsable/.test(out(board)),
           inboxMentions: /unparsable/.test(out(inbox)),
           cleanLogMentions: /unparsable/.test(out(cleanLog)),
@@ -1834,6 +1839,30 @@ test("P1d (ADR 0026): never-drop — a repeated $RANDOM within one second never 
         },
         "only tics log reports skipped unparsable lines, and only when there are some:\n--- log\n" + out(log) + "--- board\n" + out(board) + "--- inbox\n" + out(inbox) + "--- clean log\n" + out(cleanLog));
     } finally { fs.rmSync(d, { recursive: true, force: true }); fs.rmSync(clean, { recursive: true, force: true }); }
+  });
+
+  await t.test("P1d-5 (ADR 0026): two same-second emits whose first-try names are identical (own subshells, same $$, counter and $RANDOM) still land in two files and both are listed (spool and git)", { timeout: 60000 }, async () => {
+    const sp = await sameSecondPair(() => { const d = inst("spool"); return { d, cleanup: () => fs.rmSync(d, { recursive: true, force: true }) }; }, twoSubshells("s1", "s2"));
+    const h = await sameSecondPair(() => { const x = p6Hosts(); return { d: x.hostA, remote: x.remote, cleanup: x.cleanup }; }, twoSubshells("s1", "s2"));
+    try {
+      const spLog = read(sp.d, "log").stdout, gLog = read(h.d, "log").stdout;
+      assert.deepStrictEqual(
+        {
+          spoolFiles: perFileMsgs(spoolFiles(path.join(sp.d, ".claude", "state", "tics.d"))),
+          spoolLog: ["s1", "s2"].filter((m) => spLog.includes(m)),
+          gitLocalFiles: perFileMsgs(spoolFiles(path.join(busOf(h.d), "tics.d"))),
+          gitRemoteFiles: perFileMsgs(remoteFiles(h.remote)),
+          gitLog: ["s1", "s2"].filter((m) => gLog.includes(m)),
+        },
+        {
+          spoolFiles: [["s1"], ["s2"]],
+          spoolLog: ["s1", "s2"],
+          gitLocalFiles: [["s1"], ["s2"]],
+          gitRemoteFiles: [["s1"], ["s2"]],
+          gitLog: ["s1", "s2"],
+        },
+        "the exclusive create refuses the taken name and the retry gives the second tic its own file; tics log lists both");
+    } finally { sp.cleanup(); h.cleanup(); }
   });
 });
 
