@@ -1,0 +1,1 @@
+{"ts":"2026-10-23T18:13:16Z","seq":126,"kind":"delegate","from":"orchestrator","to":"implementer","phase":"green","layer":"app","scope":"app","session":"local_navigator-delegation","msg":"P8 green: origin/TICS_REMOTE mismatch fails loud; tics rebind (unpushed-only carry-over)","ref":"adr-0026-P8","result":""}
