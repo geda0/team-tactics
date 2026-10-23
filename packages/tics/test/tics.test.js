@@ -2409,3 +2409,49 @@ test("P1e (ADR 0026): TIC_STORE=git — the per-checkout lock: owner-only unlock
     } finally { h.cleanup(); }
   });
 });
+
+// K (ADR 0028): one tic vocabulary end to end. The installed tic.sh is driven as an agent would call it.
+const ticSh = (d, ...a) => cp.spawnSync(path.join(d, ".claude", "hooks", "tic.sh"), a, { cwd: d, encoding: "utf8", env: ENV });
+const busText = (d) => { try { return fs.readFileSync(path.join(d, ".claude", "state", "tics.jsonl"), "utf8"); } catch (_) { return ""; } };
+
+test("K (ADR 0028): one tic vocabulary — assign/status are kinds, an unknown kind is kept as a note, malformed calls are rejected", { timeout: 180000 }, async (t) => {
+  await t.test("K1 (ADR 0028): kinds assign and status exit 0 and reach the store with that kind", { timeout: 60000 }, () => {
+    const d = inst();
+    try {
+      const a = ticSh(d, "a", "b", "assign", "k1-assign", "k1");
+      const s = ticSh(d, "a", "b", "status", "k1-status", "k1");
+      const kindOf = (m) => (ticsOf(d).find((x) => x.msg === m) || {}).kind;
+      assert.deepStrictEqual(
+        { assign: a.status, status: s.status, assignKind: kindOf("k1-assign"), statusKind: kindOf("k1-status") },
+        { assign: 0, status: 0, assignKind: "assign", statusKind: "status" },
+        "assign/status are recorded as themselves: " + a.stderr + s.stderr);
+    } finally { fs.rmSync(d, { recursive: true, force: true }); }
+  });
+
+  await t.test("K2 (ADR 0028): an unknown kind exits 0 with a warning, is stored as note + orig_kind, shown by tics log, and published under TIC_STORE=git", { timeout: 60000 }, () => {
+    const d = inst(), h = p6Hosts();
+    try {
+      const r = ticSh(d, "a", "b", "banana", "k2-banana", "k2");
+      const stored = busText(d).trim().split("\n").filter(Boolean).map((l) => JSON.parse(l)).find((x) => x.msg === "k2-banana") || {};
+      const log = read(d, "log");
+      const g = ticSh(h.hostA, "a", "b", "banana", "k2-banana-git", "k2");
+      assert.deepStrictEqual(
+        { rc: r.status, warned: r.stderr.trim().length > 0, kind: stored.kind, orig_kind: stored.orig_kind, logShowsBanana: log.stdout.includes("banana"),
+          gitRc: g.status, published: remoteMsgs(h.remote).includes("k2-banana-git") },
+        { rc: 0, warned: true, kind: "note", orig_kind: "banana", logShowsBanana: true, gitRc: 0, published: true },
+        "an unknown kind is never dropped: " + r.stderr + g.stderr + "\n" + log.stdout);
+    } finally { fs.rmSync(d, { recursive: true, force: true }); h.cleanup(); }
+  });
+
+  await t.test("K3 (ADR 0028): a reserved hook identity or a flag-shaped FROM exits 2 and records nothing", { timeout: 60000 }, () => {
+    const d = inst();
+    try {
+      const forged = ticSh(d, "run-suite", "b", "note", "k3-forged");
+      const flag = ticSh(d, "-x", "b", "note", "k3-flag");
+      assert.deepStrictEqual(
+        { forged: forged.status, flag: flag.status, recorded: ["k3-forged", "k3-flag"].filter((m) => busText(d).includes(m)) },
+        { forged: 2, flag: 2, recorded: [] },
+        "malformed calls stay hard rejects");
+    } finally { fs.rmSync(d, { recursive: true, force: true }); }
+  });
+});
