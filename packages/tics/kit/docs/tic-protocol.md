@@ -101,7 +101,7 @@ seq race). Default `TIC_STORE=jsonl` (one append-only file) suits a single sessi
 merge either store transparently. For several hosts and sessions, `TIC_STORE=git` (ADR 0026) commits one file per
 tic to a bus branch of `TICS_REMOTE`: emits commit locally first and push under a watchdog, readers show the union
 of local and fetched tics (`bus as of <time>` on `log`/`board`, `log --fetch` to refresh now), and `tics sync`
-publishes anything unpushed. Hook telemetry (tics from `subagent`, `run-suite`, `guard`, `witness`) stays in the
+publishes anything unpushed. A moved bus (configured `TICS_REMOTE` differs from the recorded one) prints a mismatch line; `tics rebind` moves it and keeps the old checkout as `tics.git.old-*`, excluded from the project. Hook telemetry (tics from `subagent`, `run-suite`, `guard`, `witness`) stays in the
 local `tics.jsonl` and is never published; agent tics are. Spool and git files are created exclusively and never appended to; a reader keeps
 every valid line of a file and `tics log` reports `N unparsable tic line(s) skipped`. SQLite is intentionally avoided — it would break the zero-dep
 / Node>=16 / bash-hook portability invariants for wins not needed at session scale.

@@ -31,7 +31,8 @@ function loadTics(targetDir, ignoreEnv) {
 }
 // TIC_STORE=git read side (ADR 0026 §1): union of the bus checkout's working-tree tics.d (local, unpushed
 // included) and the remote-tracking tree origin/<TICS_BRANCH>, deduped by filename. A read never mutates the
-// checkout: the only write is a TTL-throttled fetch into the remote-tracking ref (+ a stamp file in .git).
+// checkout: the only writes are a TTL-throttled fetch into the remote-tracking ref (+ a stamp file in .git) and, third, the
+// idempotent adoption of a record-less legacy checkout's origin into .git/tics-remote.
 let FORCE_FETCH = false;
 function setFetch(on) { FORCE_FETCH = !!on; }
 function cfgVal(targetDir, key, def, ignoreEnv) { return (!ignoreEnv && process.env[key]) || cfgStr(targetDir, key, def); }
@@ -699,7 +700,7 @@ function main(argv, defaultRoot) {
     case "answer": return ticsAnswer(target, ansHandle, ansText, fromRole, all);
     case "sync": return ticsSync(target);
     case "rebind": return ticsRebind(target);
-    default: console.error("usage: tics <log [--scope S] | inbox <role> [--scope S] | conductor | claims | sections | board | roster | review | answer <handle> \"<text>\" | sync | claim-check <file> <scope> | claim-owner <file> | section-status <name> | fan-out <spec>] [--all]>"); return 2;
+    default: console.error("usage: tics <log [--scope S] | inbox <role> [--scope S] | conductor | claims | sections | board | roster | review | answer <handle> \"<text>\" | sync | rebind (move a moved bus; old checkout kept as tics.git.old-*) | claim-check <file> <scope> | claim-owner <file> | section-status <name> | fan-out <spec>] [--all]>"); return 2;
   }
 }
 if (require.main === module) {

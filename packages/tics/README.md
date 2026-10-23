@@ -48,6 +48,7 @@ Three store backends (set `TIC_STORE`):
   default 3 × `TICS_NET_TIMEOUT`); the push itself is never locked.
   Readers show the union of local and fetched tics, never modifying the checkout, and `log` / `board`
   print `bus as of <last fetch>` so stale data is visible. `tics sync` publishes unpushed tics.
+  `tics rebind`: a moved bus (configured TICS_REMOTE differs from the recorded one) prints the mismatch line; rebind moves it and keeps the old checkout as `tics.git.old-*`, excluded from the project.
   Hook telemetry stays local: tics from the hook identities (`subagent`, `run-suite`, `guard`, `witness`) go to
   `.claude/state/tics.jsonl` and are never committed, pushed or synced; agent tics publish.
   Tic files are created exclusively and never appended to; a reader keeps every valid line of a file, and

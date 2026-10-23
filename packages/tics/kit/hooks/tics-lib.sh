@@ -62,10 +62,14 @@ emit_tic() {
 # commits from different hosts touch disjoint paths: a rebase cannot conflict and a retried push loses nothing.
 _tic_git() { env -u GIT_DIR -u GIT_WORK_TREE -u GIT_INDEX_FILE -u GIT_PREFIX -u GIT_COMMON_DIR \
   git -C "$_gd" -c user.name=tics -c user.email=tics@localhost "$@"; }
+# A record-less legacy checkout adopts its current origin as the remote it was created for (idempotent).
+_tic_git_record() {
+  [ -e "$_gd/.git/tics-remote" ] || _tic_git remote get-url origin > "$_gd/.git/tics-remote" 2>/dev/null
+}
 _tic_git_open() {
   _gd="${TICS_GIT_DIR:-$ROOT/.claude/state/tics.git}"; _gb="${TICS_BRANCH:-tics-bus}"
   if [ -d "$_gd/.git" ]; then   # a legacy checkout with no record adopts its current origin
-    [ -e "$_gd/.git/tics-remote" ] || _tic_git remote get-url origin > "$_gd/.git/tics-remote" 2>/dev/null
+    _tic_git_record
     return 0
   fi
   mkdir -p "$_gd" 2>/dev/null || true
@@ -88,6 +92,8 @@ _tic_git_hide() {
   _rel="/$_pp${_gd#"$ROOT"/}/"
   mkdir -p "$(dirname "$_ex")" 2>/dev/null || true
   grep -qxF "$_rel" "$_ex" 2>/dev/null || printf '%s\n' "$_rel" >> "$_ex" 2>/dev/null || true
+  _old="${_rel%/}.old-*/"   # the checkout `tics rebind` keeps aside
+  grep -qxF "$_old" "$_ex" 2>/dev/null || printf '%s\n' "$_old" >> "$_ex" 2>/dev/null || true
 }
 # Commit the new tic file, then publish it (P3: bounded, never hangs, never drops the tic). Emits sharing one
 # checkout serialize their LOCAL steps (add, commit; the rebase after a rejected push) on a short per-checkout lock
@@ -108,7 +114,7 @@ _tic_git_publish() {
 # .git/tics-remote; one trailing "/" trimmed, no other normalization). A deliberate `git remote set-url` is an
 # operator act, not a mismatch. A record-less legacy checkout adopts its current origin. `tics rebind` moves it.
 _tic_git_moved() {
-  [ -e "$_gd/.git/tics-remote" ] || _tic_git remote get-url origin > "$_gd/.git/tics-remote" 2>/dev/null
+  _tic_git_record
   _mr="$(cat "$_gd/.git/tics-remote" 2>/dev/null)"
   _cr="${TICS_REMOTE:-}"
   [ "${_mr%/}" != "${_cr%/}" ]
@@ -274,6 +280,7 @@ tics_rebind() {
   _gd="${TICS_GIT_DIR:-$ROOT/.claude/state/tics.git}"; _gb="${TICS_BRANCH:-tics-bus}"
   [ -d "$_gd/.git" ] || { echo "tics rebind: no bus checkout yet; nothing to move"; return 0; }
   _tic_git_moved || { echo "tics rebind: bus already on ${TICS_REMOTE:-}"; return 0; }
+  _tic_git_lock || { echo "tics rebind: the bus checkout is busy; retry shortly"; return 0; }   # no emit lands only in the old checkout
   _rbt="$_gd.rebind-$$"; rm -rf "$_rbt"; mkdir -p "$_rbt"
   { _tic_git ls-files -- tics.d; _tic_git ls-files -o --exclude-standard -- tics.d; } 2>/dev/null | sort -u | while IFS= read -r _rf; do
     [ -f "$_gd/$_rf" ] || continue
@@ -281,7 +288,7 @@ tics_rebind() {
     mkdir -p "$_rbt/$(dirname "$_rf")"; cp "$_gd/$_rf" "$_rbt/$_rf"
   done
   _rbo="$_gd.old-$(date +%s)-$$"
-  mv "$_gd" "$_rbo" || { echo "tics rebind: cannot move the old checkout"; return 0; }
+  mv "$_gd" "$_rbo" || { _tic_git_unlock; echo "tics rebind: cannot move the old checkout"; return 0; }   # the lock moves with the old checkout
   _tic_git_open
   if _tic_net fetch -q origin "+$_gb:refs/remotes/origin/$_gb"; then
     _tic_git checkout -q -B "$_gb" "refs/remotes/origin/$_gb" 2>/dev/null
