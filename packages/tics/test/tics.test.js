@@ -1743,8 +1743,9 @@ test("P1b (ADR 0026): TIC_STORE=git — two emitters sharing ONE bus checkout, r
 // P1d (ADR 0026, never-drop, found by soak): two emits from ONE process in ONE second must land in two files even
 // when $RANDOM repeats, and the reader must never hide a valid tic because its file holds more than one line.
 // The collision is forced: bash 3.2+ returns the same next $RANDOM after re-seeding with RANDOM=<n>. The pair must
-// also share a UTC second, so it starts just past a second boundary; a pair that still straddles one is discarded
-// with its fixture and retried on a fresh one (sameSecondPair). perFileMsgs: one entry per tic file, its msgs line
+// also share the filename's UTC second, whatever the host speed (a git emit can take over 1 s), so sameSecondPair
+// puts a stub `date` first on PATH: `date -u +%Y%m%dT%H%M%SZ` (the filename stamp) prints a FIXED stamp, every
+// other call execs the real date, so tic timestamps stay real. perFileMsgs: one entry per tic file, its msgs line
 // by line ("<bad>" for a line that is not JSON), sorted, so a merged file shows up as one entry with two msgs.
 const perFileMsgs = (contents) => contents.map((c) => c.trim().split("\n").map((l) => { try { return JSON.parse(l).msg; } catch (_) { return "<bad>"; } }))
   .sort((a, b) => JSON.stringify(a).localeCompare(JSON.stringify(b)));
@@ -1755,16 +1756,19 @@ const remoteFiles = (bare) => git(bare, "ls-tree", "-r", "--name-only", "tics-bu
 // first-try names are identical and only the exclusive create + retry can keep both tics (P1d-5).
 const oneShell = (a, b) => 'RANDOM=12345; emit_tic a "*" note ' + a + '; RANDOM=12345; emit_tic a "*" note ' + b;
 const twoSubshells = (a, b) => '( RANDOM=12345; emit_tic a "*" note ' + a + ' ); ( RANDOM=12345; emit_tic a "*" note ' + b + ' )';
+const FIXED_STAMP = "20260101T000000Z";
 async function sameSecondPair(mk, emits) {
-  for (let i = 0; i < 5; i++) {
-    const fx = mk();
-    await new Promise((r) => setTimeout(r, 1000 - (Date.now() % 1000) + 20));
-    const r = srcLib(fx.d, 's0=$(date -u +%s); ' + emits + '; echo "$s0 $(date -u +%s)"');
-    const [s0, s1] = r.stdout.trim().split(" ");
-    if (r.status === 0 && s0 === s1) return fx;
-    fx.cleanup();
-  }
-  throw new Error("could not run the emit pair inside one UTC second in 5 tries");
+  const fx = mk();
+  const stubDir = fs.mkdtempSync(path.join(os.tmpdir(), "tics-datestub-"));
+  fs.writeFileSync(path.join(stubDir, "date"),
+    '#!/bin/sh\n' +
+    'if [ "$#" -eq 2 ] && [ "$1" = "-u" ] && [ "$2" = "+%Y%m%dT%H%M%SZ" ]; then echo ' + FIXED_STAMP + '; exit 0; fi\n' +
+    'if [ -x /bin/date ]; then exec /bin/date "$@"; fi\n' +
+    'exec /usr/bin/date "$@"\n', { mode: 0o755 });
+  const r = srcLib(fx.d, 'export PATH="' + stubDir + ':$PATH"; ' + emits);
+  fs.rmSync(stubDir, { recursive: true, force: true });
+  if (r.status !== 0) { fx.cleanup(); throw new Error("the emit pair failed (status " + r.status + "):\n" + r.stdout + r.stderr); }
+  return fx;
 }
 
 test("P1d (ADR 0026): never-drop — a repeated $RANDOM within one second never merges two tics, and the reader never hides one", { timeout: 180000 }, async (t) => {
@@ -1842,24 +1846,24 @@ test("P1d (ADR 0026): never-drop — a repeated $RANDOM within one second never 
   });
 
   await t.test("P1d-5 (ADR 0026): two same-second emits whose first-try names are identical (own subshells, same $$, counter and $RANDOM) still land in two files and both are listed (spool and git)", { timeout: 60000 }, async () => {
-    const sp = await sameSecondPair(() => { const d = inst("spool"); return { d, cleanup: () => fs.rmSync(d, { recursive: true, force: true }) }; }, twoSubshells("s1", "s2"));
-    const h = await sameSecondPair(() => { const x = p6Hosts(); return { d: x.hostA, remote: x.remote, cleanup: x.cleanup }; }, twoSubshells("s1", "s2"));
+    const sp = await sameSecondPair(() => { const d = inst("spool"); return { d, cleanup: () => fs.rmSync(d, { recursive: true, force: true }) }; }, twoSubshells("p1d5-first", "p1d5-second"));
+    const h = await sameSecondPair(() => { const x = p6Hosts(); return { d: x.hostA, remote: x.remote, cleanup: x.cleanup }; }, twoSubshells("p1d5-first", "p1d5-second"));
     try {
       const spLog = read(sp.d, "log").stdout, gLog = read(h.d, "log").stdout;
       assert.deepStrictEqual(
         {
           spoolFiles: perFileMsgs(spoolFiles(path.join(sp.d, ".claude", "state", "tics.d"))),
-          spoolLog: ["s1", "s2"].filter((m) => spLog.includes(m)),
+          spoolLog: ["p1d5-first", "p1d5-second"].filter((m) => spLog.includes(m)),
           gitLocalFiles: perFileMsgs(spoolFiles(path.join(busOf(h.d), "tics.d"))),
           gitRemoteFiles: perFileMsgs(remoteFiles(h.remote)),
-          gitLog: ["s1", "s2"].filter((m) => gLog.includes(m)),
+          gitLog: ["p1d5-first", "p1d5-second"].filter((m) => gLog.includes(m)),
         },
         {
-          spoolFiles: [["s1"], ["s2"]],
-          spoolLog: ["s1", "s2"],
-          gitLocalFiles: [["s1"], ["s2"]],
-          gitRemoteFiles: [["s1"], ["s2"]],
-          gitLog: ["s1", "s2"],
+          spoolFiles: [["p1d5-first"], ["p1d5-second"]],
+          spoolLog: ["p1d5-first", "p1d5-second"],
+          gitLocalFiles: [["p1d5-first"], ["p1d5-second"]],
+          gitRemoteFiles: [["p1d5-first"], ["p1d5-second"]],
+          gitLog: ["p1d5-first", "p1d5-second"],
         },
         "the exclusive create refuses the taken name and the retry gives the second tic its own file; tics log lists both");
     } finally { sp.cleanup(); h.cleanup(); }
