@@ -1,0 +1,1 @@
+{"ts":"2026-10-24T17:30:13Z","seq":128,"kind":"delegate","from":"orchestrator","to":"test-writer","phase":"red","layer":"app","scope":"fleet-lanes","session":"claude-0030","msg":"F1-F9 red tests for ADR 0030 (packages/tics/test/fleet.test.js)","ref":"adr-0030-red","result":""}
