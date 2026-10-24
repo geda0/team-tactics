@@ -1,0 +1,1 @@
+{"ts":"2026-10-24T17:41:54Z","seq":133,"kind":"note","from":"orchestrator","to":"*","phase":"refactor","layer":"app","scope":"fleet-lanes","session":"claude-0030","msg":"dogfood finding: tics acks listed 2 days of history as unacknowledged — added ACK_WINDOW_MIN (F4e); tics fleet columns overflowed on long ids (F5d)","ref":"adr-0030-dogfood","result":""}
