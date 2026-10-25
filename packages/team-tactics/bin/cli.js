@@ -374,7 +374,7 @@ for (const h of ["guard-edit-scope", "run-suite", "require-green-to-stop", "sess
 }
 // @ttics/tics — protocol files sourced from the tics package (composite); team-tactics' refresh
 // keeps the non-destructive backup + manifest, just pointing the source at @ttics/tics' kit.
-for (const h of ["tics-lib.sh", "tic.sh", "tics", "tics-view.cjs", "tics-mcp.cjs"]) refresh(path.join(tics.KIT, "hooks", h), path.join(".claude", "hooks", h));
+for (const h of ["tics-lib.sh", "tic.sh", "tics", "tics-view.cjs", "tics-fleet.cjs", "tics-mcp.cjs"]) refresh(path.join(tics.KIT, "hooks", h), path.join(".claude", "hooks", h));
 for (const h of ["tics-lib.sh", "tic.sh", "tics"]) { try { fs.chmodSync(path.join(target, ".claude", "hooks", h), 0o755); } catch (e) {} }
 try { fs.unlinkSync(path.join(target, ".claude", "hooks", "tics-view.js")); } catch (e) {} // migrate stale .js reader -> .cjs
 refreshGitHooks(target);   // N5: keep already-installed portable git hooks current (no silent rot); never installs/clobbers

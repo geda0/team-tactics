@@ -367,7 +367,21 @@ function livenessTier(lastTs, nowMs, idleSec, staleSec) {
 }
 // Active claims for a target dir (claim minus release, minus release-on-section-done).
 // The single entry every claim consumer uses.
-function claimsFor(targetDir, tics) { return activeClaims(tics); }
+// ADR 0030 §5 (N4): with CLAIMS_LEASE_SEC > 0 a claim lapses when its holder has emitted no progress tic
+// (any tic but a bare `session` heartbeat) for that long. Default 0: unchanged.
+function claimsFor(targetDir, tics) {
+  const active = activeClaims(tics), lease = cfgNum(targetDir, "CLAIMS_LEASE_SEC", 0);
+  if (lease <= 0) return active;
+  const last = new Map(), n = nowMs();
+  for (const x of tics) { const id = memberId(x); if (id && x.kind !== "session") last.set(id, Date.parse(x.ts)); }
+  for (const [ref, x] of active) { const t = last.get(memberId(x)); if (t != null && (n - t) / 1000 > lease) active.delete(ref); }
+  return active;
+}
+// "Now" for every time-dependent fold: TICS_NOW (ISO) when set (tests pin it), else the wall clock.
+function nowMs() { const t = process.env.TICS_NOW ? Date.parse(process.env.TICS_NOW) : NaN; return isNaN(t) ? Date.now() : t; }
+// ADR 0030: the fleet folds live in tics-fleet.cjs, required lazily (main runs before this module's exports exist).
+let FLEET = null;
+function fleet() { return FLEET || (FLEET = require("./tics-fleet.cjs")({ loadFor, cfgNum, cfgStr, memberId, activeClaims, claimsFor, livenessTier, HOOK_IDENTITIES, nowMs })); }
 // Who a tic counts toward on the board (ADR 0027): its session, else its role shown as "<from> (no session)",
 // so a lead that never sets TICS_SESSION is still visible. The referee is not a member: the hook identities
 // tic.sh reserves (agents cannot self-assert them) create none. Excluded by identity only, never by kind:
@@ -382,7 +396,7 @@ function memberId(x) {
 // opts.nowMs injectable for tests; idleSec/staleSec come from tdd.config with defaults.
 function fleetModel(targetDir, tics, opts) {
   opts = opts || {};
-  const nowMs = opts.nowMs != null ? opts.nowMs : Date.now();
+  const nowMs_ = opts.nowMs != null ? opts.nowMs : nowMs();
   const idleSec = cfgNum(targetDir, "LIVENESS_IDLE_SEC", 300);
   const staleSec = cfgNum(targetDir, "LIVENESS_STALE_SEC", 900);
   // One pass here builds sessLatest and the per-scope session sets (for collision detection);
@@ -404,7 +418,7 @@ function fleetModel(targetDir, tics, opts) {
   const members = [];
   for (const [id, lastTs] of sessLatest.entries()) {
     const scope = sessScope.get(id) || null;
-    const liveness = livenessTier(lastTs, nowMs, idleSec, staleSec);
+    const liveness = livenessTier(lastTs, nowMs_, idleSec, staleSec);
     const stuck = scope != null && liveness === "stale";
     members.push({ session: id, scope, liveness, lastTs, stuck });
   }
@@ -488,6 +502,8 @@ function ticsBoard(targetDir, all) {
       console.log("  collision: " + c.scope + "  sessions=" + c.sessions.join(", "));
     }
   }
+  const un = fleet().unackedCount(targetDir, tics);   // ADR 0030 §4
+  if (un) console.log(un + " dispatch(es) unacknowledged — see `tics acks`");
   return 0;
 }
 function claimCheck(targetDir, file, myScope) {
@@ -571,6 +587,8 @@ function ticsCycle(targetDir) {
   const stuck = fm.members.filter((m) => m.stuck).length;
   const tl = fm.tally;
   console.log("  Fleet: " + stuck + " stuck, " + fm.collisions.length + " collisions | live " + tl.live + " idle " + tl.idle + " stale " + tl.stale + " unknown " + tl.unknown);
+  const ref = fleet().referee(targetDir, t);   // ADR 0030 §6 (N13)
+  if (ref) console.log("  " + ref);
   return 0;
 }
 function verdictOutcome(x) {
@@ -662,8 +680,8 @@ function fanOut(targetDir, specPath) {
   return 0;
 }
 function main(argv, defaultRoot) {
-  let scope = null, all = true, fromRole = null, showWitness = false, full = false; const rest = [];   // whole-picture by default (merge every worktree's bus); --here restricts to the local bus
-  for (let i = 0; i < argv.length; i++) { const a = argv[i]; if (a === "--scope") scope = argv[++i] || ""; else if (a === "--all") all = true; else if (a === "--here") all = false; else if (a === "--from") fromRole = argv[++i] || null; else if (a === "--witness") showWitness = true; else if (a === "--full") full = true; else if (a === "--fetch") setFetch(true); else rest.push(a); }
+  let scope = null, sha = null, emit = null, stats = false, all = true, fromRole = null, showWitness = false, full = false; const rest = [];   // whole-picture by default (merge every worktree's bus); --here restricts to the local bus
+  for (let i = 0; i < argv.length; i++) { const a = argv[i]; if (a === "--scope") scope = argv[++i] || ""; else if (a === "--all") all = true; else if (a === "--here") all = false; else if (a === "--from") fromRole = argv[++i] || null; else if (a === "--witness") showWitness = true; else if (a === "--full") full = true; else if (a === "--sha") sha = argv[++i] || ""; else if (a === "--emit") emit = argv[++i] || ""; else if (a === "--stats") stats = true; else if (a === "--fetch") setFetch(true); else rest.push(a); }
   const cmd = rest.shift();
   const role = cmd === "inbox" ? rest.shift() : null;
   const cfFile = cmd === "claim-check" ? rest.shift() : null;
@@ -672,6 +690,7 @@ function main(argv, defaultRoot) {
   const csFile = cmd === "claim-session" ? rest.shift() : null;
   const soName = cmd === "section-status" ? rest.shift() : null;
   const foSpec = cmd === "fan-out" ? rest.shift() : null;
+  const advSha = cmd === "advance" && !stats ? rest.shift() : null;
   const whereArg = cmd === "where" ? rest.shift() : null;
   const howArg = cmd === "how" ? rest.shift() : null;
   const ansHandle = cmd === "answer" ? rest.shift() : null;
@@ -688,7 +707,14 @@ function main(argv, defaultRoot) {
     case "where": return ticsWhere(target, whereArg, all);
     case "how": return ticsHow(target, howArg, all);
     case "cycle": return ticsCycle(target);
-    case "gate": return ticsGate(target, all);
+    case "gate": return sha !== null ? fleet().gate(target, all, sha) : ticsGate(target, all);
+    case "predicates": return fleet().predicates(target, all, emit);
+    case "quarantine": return fleet().quarantine(target, all);
+    case "acks": return fleet().acks(target, all);
+    case "fleet": return fleet().fleet(target, all);
+    case "delegation": return fleet().delegation(target, all);
+    case "triage": return fleet().triage(target, all);
+    case "advance": return fleet().advance(target, all, advSha, stats);
     case "claim-check": return claimCheckCli(target, cfFile, cfScope);
     case "claim-owner": return claimOwnerCli(target, coFile);
     case "claim-session": return claimSessionCli(target, csFile);
@@ -700,7 +726,7 @@ function main(argv, defaultRoot) {
     case "answer": return ticsAnswer(target, ansHandle, ansText, fromRole, all);
     case "sync": return ticsSync(target);
     case "rebind": return ticsRebind(target);
-    default: console.error("usage: tics <log [--scope S] | inbox <role> [--scope S] | conductor | claims | sections | board | roster | review | answer <handle> \"<text>\" | sync | rebind (move a moved bus; old checkout kept as tics.git.old-*) | claim-check <file> <scope> | claim-owner <file> | section-status <name> | fan-out <spec>] [--all]>"); return 2;
+    default: console.error("usage: tics <log [--scope S] | inbox <role> [--scope S] | conductor | claims | sections | board | roster | review | answer <handle> \"<text>\" | sync | rebind (move a moved bus; old checkout kept as tics.git.old-*) | claim-check <file> <scope> | claim-owner <file> | section-status <name> | fan-out <spec> | gate [--sha <sha>] | predicates [--emit <from>] | quarantine | acks | fleet | delegation | triage | advance <sha>|--stats] [--all]>"); return 2;
   }
 }
 if (require.main === module) {
@@ -871,4 +897,4 @@ function ticsLandmarks(targetDir, all) {
   }
   return 0;
 }
-module.exports = { HOOK_IDENTITIES, setFetch, ticsSync, ticsRebind, loadTics, loadSignalEvents, ticsLog, ticsInbox, ticsConductor, ticsClaims, ticsSections, ticsCycle, ticsGate, claimCheck, claimCheckCli, claimOwner, claimOwnerCli, claimSession, claimSessionCli, sectionStatus, sectionStatusCli, livenessTier, fleetModel, ticsBoard, ticsRoster, ticsReview, ticsAnswer, fanOut, greenAttestation, attestationTally, isHookSignedRed, cfgStr, evidenceFor, openNeeds, main, toolTally, ticsLandmarks, landmarkMap, ticsWhere, ticsHow };
+module.exports = { nowMs, activeClaims, claimsFor, memberId, cfgNum, loadFor, HOOK_IDENTITIES, setFetch, ticsSync, ticsRebind, loadTics, loadSignalEvents, ticsLog, ticsInbox, ticsConductor, ticsClaims, ticsSections, ticsCycle, ticsGate, claimCheck, claimCheckCli, claimOwner, claimOwnerCli, claimSession, claimSessionCli, sectionStatus, sectionStatusCli, livenessTier, fleetModel, ticsBoard, ticsRoster, ticsReview, ticsAnswer, fanOut, greenAttestation, attestationTally, isHookSignedRed, cfgStr, evidenceFor, openNeeds, main, toolTally, ticsLandmarks, landmarkMap, ticsWhere, ticsHow };

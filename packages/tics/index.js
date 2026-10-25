@@ -23,7 +23,7 @@ function installTics(target, manifest) {
   const H = path.join(target, ".claude", "hooks");
   ensureDir(H); ensureDir(path.join(target, ".claude", "state"));
   const laid = [];
-  for (const f of ["tics-lib.sh", "tic.sh", "tics", "tics-view.cjs", "tics-mcp.cjs"]) { copy(path.join(KIT, "hooks", f), path.join(H, f)); laid.push(path.join(".claude", "hooks", f)); }
+  for (const f of ["tics-lib.sh", "tic.sh", "tics", "tics-view.cjs", "tics-fleet.cjs", "tics-mcp.cjs"]) { copy(path.join(KIT, "hooks", f), path.join(H, f)); laid.push(path.join(".claude", "hooks", f)); }
   for (const f of ["tics-lib.sh", "tic.sh", "tics"]) { try { fs.chmodSync(path.join(H, f), 0o755); } catch (e) {} }
   copy(path.join(KIT, "docs", "tic-protocol.md"), path.join(target, "docs", "tics", "tic-protocol.md")); laid.push(path.join("docs", "tics", "tic-protocol.md"));
   ensureGitignore(target);

@@ -5,6 +5,11 @@ const fs = require("fs"), path = require("path"), os = require("os"), cp = requi
 const { TV, PKG, installTics } = require("../index.js");
 
 const argv = process.argv.slice(2);
+// ADR 0030 fleet verbs (and `gate --sha`) parse their own flags in the reader's main.
+// The verb is the first positional argument, skipping the values of flags that take one.
+const FLEET = ["predicates", "quarantine", "acks", "fleet", "delegation", "triage", "advance"];
+const verb = argv.find((a, i) => !a.startsWith("--") && !["--scope", "--from", "--sha", "--emit"].includes(argv[i - 1]));
+if (FLEET.includes(verb) || (verb === "gate" && argv.includes("--sha"))) process.exit(TV.main(argv, process.cwd()) || 0);
 let scope = null, all = true, fromRole = null, showWitness = false; const rest = [];   // whole-picture by default (merge every worktree's bus); --here restricts to the local bus
 for (let i = 0; i < argv.length; i++) { const a = argv[i]; if (a === "--scope") scope = argv[++i] || ""; else if (a === "--all") all = true; else if (a === "--here") all = false; else if (a === "--from") fromRole = argv[++i] || null; else if (a === "--witness") showWitness = true; else if (a === "--fetch") TV.setFetch(true); else rest.push(a); }
 const KNOWN = ["log", "inbox", "conductor", "claims", "sections", "board", "roster", "review", "cycle", "gate", "claim-check", "answer", "sync", "rebind", "init", "install", "update", "selftest", "mcp", "mcp-install", "help"];

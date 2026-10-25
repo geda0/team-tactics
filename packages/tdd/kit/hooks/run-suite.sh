@@ -79,5 +79,8 @@ fi
 
 # Tic: record the suite SIGNAL (subsumes the old telemetry event) — one per run, hook-emitted
 # (agents cannot forge a signal). 'tics report' aggregates these; 'tics log' shows the thread.
-emit_tic run-suite "*" signal "[$LAYER] suite $RESULT" "${EDITED:-}" "$RESULT" ",\"exit\":$CODE,\"durationSec\":$DUR"
+# ADR 0030 §6 (N13): stamp the installed kit version so `tics cycle` can tell an armed referee from a stale one.
+KITV="$(sed -n 's/.*"kitVersion"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' "$ROOT/.claude/.team-tactics/manifest.json" 2>/dev/null | head -1 | tr -cd '0-9A-Za-z.+-')"
+KITX=""; [ -n "$KITV" ] && KITX=",\"kit\":\"$KITV\""
+emit_tic run-suite "*" signal "[$LAYER] suite $RESULT" "${EDITED:-}" "$RESULT" ",\"exit\":$CODE,\"durationSec\":$DUR$KITX"
 exit 0
