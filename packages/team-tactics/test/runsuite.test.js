@@ -162,3 +162,18 @@ test("E12-3: tool-witness PostToolUse hook emits one note from=witness when TOOL
     assert.strictEqual(witnessNotes(off).length, 0, "no witness note when the knob is off (default)");
   } finally { fs.rmSync(off, { recursive: true, force: true }); }
 });
+
+test("F6c (ADR 0030, N13): run-suite stamps the installed kit version into its signal tic", () => {
+  const d = rsSandbox();
+  try {
+    fs.copyFileSync(path.join(require("@ttics/tics").KIT, "hooks", "tics-lib.sh"), path.join(d, ".claude", "hooks", "tics-lib.sh"));
+    fs.mkdirSync(path.join(d, ".claude", ".team-tactics"), { recursive: true });
+    fs.writeFileSync(path.join(d, ".claude", ".team-tactics", "manifest.json"), JSON.stringify({ kit: "team-tactics", kitVersion: "9.9.9" }, null, 2));
+    const r = fireEnv(d, edit("src/app.js"), { RSFAIL: "0" });
+    assert.strictEqual(r.status, 0, r.stderr);
+    const sig = fs.readFileSync(path.join(d, ".claude", "state", "tics.jsonl"), "utf8").trim().split("\n").map((l) => JSON.parse(l)).filter((t) => t.from === "run-suite" && t.kind === "signal").pop();
+    assert.ok(sig, "run-suite emitted a signal");
+    assert.strictEqual(sig.kit, "9.9.9");
+    assert.strictEqual(sig.result, "green");
+  } finally { fs.rmSync(d, { recursive: true, force: true }); }
+});
