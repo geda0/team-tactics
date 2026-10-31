@@ -123,8 +123,18 @@ written. Hooks and agents both emit, so that froze sessions and broke the never-
    macOS has no `timeout(1)`, so the watchdog is plain bash.
 3. **Retry only on a rejection** (fetch + rebase + push, bounded as before): a non-fast-forward, or a lost race to
    create or update the bus ref (`cannot lock ref` / `failed to update ref`, seen when two fresh hosts open the bus
-   at once). Never retry on a timeout or a network error: retrying a hang multiplies it. Each emit keeps its own
-   error capture, so concurrent emits on one checkout can't misread each other's failures.
+   at once, and the server's `[remote rejected]` reasons `reference already exists` / `incorrect old value provided`).
+   Observed with real concurrent pushes on git 2.53: before those two reasons counted, P1 failed about half its Linux
+   runs, because the loser recorded a false network failure, skipped the network for `TICS_FETCH_TTL`, and left its
+   tics unpublished until a later push or `tics sync`. The match stays on those specific reasons, never on
+   `[remote rejected]` generally: any other server refusal (a declined hook, permissions) is not a rejection, so it
+   records a failure and isn't retried. Never retry on a timeout or a network error: retrying a hang multiplies it.
+   At the retry's fetch, only rc 1 is a network failure; rc 2 or 3 (a local ref lock collision, no remote ref visible
+   yet) skips the rebase and loops, bounded by `TICS_PUSH_TRIES`. Each emit keeps its own error capture, so concurrent
+   emits on one checkout can't misread each other's failures. Known gaps, not addressed here: the reader's fetch
+   (`tics_fetch`) marks a failure on rc 2, the same false-failure class; and `_tic_net` scans all of stderr, including
+   `remote:` lines, so a declined hook whose text contains a rejection phrase is retried, and exhausting
+   `TICS_PUSH_TRIES` records no failure, so later emits repeat the loop with no backoff.
 4. **On a network failure, mark it and return 0.** Reader and writer share one record of the last failed attempt
    (whichever side failed), so inside the TTL after any failed attempt both emits and reads skip the network; the
    tics ride out with the next publish or `tics sync`. A successful push or `tics sync` clears it and refreshes the
@@ -232,6 +242,10 @@ remote gate would need a published, attested summary tic, which is a later need,
   lists every valid line of a merged file and a valid line after a garbage one; (3) the git-bus reader lists both
   lines of a merged file fetched from the remote; (4) `log` reports the count of skipped unparsable lines when it
   is non-zero, and prints nothing extra when it is zero.
+- **P1f (a lost ref race is a rejection):** a lost race publishes on the retry with no failure recorded; a network
+  failure or a permanent server refusal records one and isn't retried.
+- **P1g (the retry's fetch):** only a network failure stops the retry and is recorded. A retry fetch that finds no
+  ref yet or loses a local ref lock isn't a network failure: the tic publishes and no failure is recorded.
 - **P6 (the reader sees the bus):** with `TIC_STORE=git` (from `tdd.config` or the environment): (a) host A's
   `tics log` lists host B's tics and A's `claim-check` sees B's claim; (b) with the remote unreachable, A's local
   tics (unpushed included) are still listed and the read exits 0; (c) a read leaves the bus checkout's HEAD, index
