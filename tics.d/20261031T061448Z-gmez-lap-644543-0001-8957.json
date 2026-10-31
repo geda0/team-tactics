@@ -1,0 +1,1 @@
+{"ts":"2026-10-31T06:14:48Z","seq":271,"kind":"verdict","from":"orchestrator","to":"implementer","phase":"green","layer":"app","scope":"app","session":"","msg":"draft review: mismatch shown read-only, write gated","ref":"adr-0031-view","result":"accept"}
