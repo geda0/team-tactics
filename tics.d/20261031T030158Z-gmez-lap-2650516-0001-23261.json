@@ -1,0 +1,1 @@
+{"ts":"2026-10-31T03:01:58Z","seq":152,"kind":"delegate","from":"orchestrator","to":"architect","phase":"refactor","layer":"app","scope":"app","session":"","msg":"ADR 0026 amendment: rule 3 lost-race reasons, retry-fetch rule, P1f/P1g predicates","ref":"adr-0026-P1-race","result":""}
