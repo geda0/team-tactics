@@ -13,8 +13,24 @@ _tics_lib_dir="$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")" && pwd)"
 # LAYER, else "*". TICS_DIR shares one spool across worktrees; TICS_FILE overrides the jsonl path.
 # emit_tic FROM TO KIND MSG [REF] [RESULT] [EXTRA_JSON]
 _tic_esc() { printf '%s' "$1" | tr -d '\r\n' | sed 's/\\/\\\\/g; s/"/\\"/g'; }
+# ADR 0029: EXTRA_JSON allowlist — zero or more ,"key":int|"plain string"; no fixed-field keys. 0 = ok.
+_tic_extra_ok() {
+  local rest="$1" re_i='^,"([A-Za-z_][A-Za-z0-9_]*)":(-?(0|[1-9][0-9]*))' re_s='^,"([A-Za-z_][A-Za-z0-9_]*)":"([^"\[:cntrl:]]*)"'
+  local LC_ALL=C
+  case "$rest" in *$'\n'*|*$'\r'*) return 1 ;; esac
+  while [ -n "$rest" ]; do
+    if [[ $rest =~ $re_i ]]; then :; elif [[ $rest =~ $re_s ]]; then :; else return 1; fi
+    case "${BASH_REMATCH[1]}" in ts|seq|kind|from|to|phase|layer|scope|session|msg|ref|result) return 1 ;; esac
+    rest="${rest:${#BASH_REMATCH[0]}}"
+  done
+  return 0
+}
 emit_tic() {
   [ "${TICS:-1}" = "1" ] || return 0
+  local _extra="${7:-}"
+  if [ -n "$_extra" ] && ! _tic_extra_ok "$_extra"; then
+    echo "emit_tic: EXTRA_JSON violates the allowlist (ADR 0029) — dropped; the tic is still recorded." >&2; _extra=""
+  fi
   _tf="${TICS_FILE:-$ROOT/.claude/state/tics.jsonl}"
   _td="${TICS_DIR:-$ROOT/.claude/state/tics.d}"
   mkdir -p "$ROOT/.claude/state" 2>/dev/null || true
@@ -36,7 +52,7 @@ emit_tic() {
     "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$_seq" \
     "$(_tic_esc "${3:-note}")" "$(_tic_esc "${1:-?}")" "$(_tic_esc "${2:-*}")" \
     "$(_tic_esc "$_ph")" "$(_tic_esc "$_ly")" "$(_tic_esc "$_sc")" "$(_tic_esc "$_se")" \
-    "$(_tic_esc "${4:-}")" "$(_tic_esc "${5:-}")" "$(_tic_esc "${6:-}")" "${7:-}")"
+    "$(_tic_esc "${4:-}")" "$(_tic_esc "${5:-}")" "$(_tic_esc "${6:-}")" "$_extra")"
   if [ "$_ts" = "git" ] || [ "$_ts" = "spool" ]; then
     mkdir -p "$_td" 2>/dev/null || true
     _TIC_N=$(( ${_TIC_N:-0} + 1 ))

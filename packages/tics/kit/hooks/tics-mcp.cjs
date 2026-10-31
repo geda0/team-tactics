@@ -202,6 +202,10 @@ function callEmit(id, args, ctx) {
   if (args.from[0] === "-" || args.to[0] === "-") {
     return toolError(id, "from/to must not start with '-'");
   }
+  // 2a. ADR 0029 rule 1b: identity allowlist.
+  const ID_RE = /^[A-Za-z0-9][A-Za-z0-9._:@-]{0,63}$/;
+  if (!ID_RE.test(args.from)) return toolError(id, "from is not a valid identity (allowed: [A-Za-z0-9][A-Za-z0-9._:@-]{0,63})");
+  if (args.to !== "*" && !ID_RE.test(args.to)) return toolError(id, "to is not a valid identity (allowed: [A-Za-z0-9][A-Za-z0-9._:@-]{0,63} or *)");
   // 2b. Hook-only identities can't be self-asserted by an agent (GT-1 provenance).
   if (RESERVED_FROM.indexOf(args.from) !== -1) {
     return toolError(id, "from '" + args.from + "' is a hook-only identity — agents cannot self-assert it (reserved for the run-suite/subagent/guard/witness hooks). Emit under your role name.");
