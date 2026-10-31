@@ -2616,4 +2616,62 @@ test("I (ADR 0029): the sanctioned emitter cannot forge a hook identity; readers
       } finally { fs.rmSync(d, { recursive: true, force: true }); }
     });
   }
+
+  // Hook telemetry never goes to the git bus (ADR 0026 P7), so a hook identity on the bus is forged or from an old host.
+  // The stray files are stored by host A's next emit (P1e-5): A reads them from its checkout, B only from origin/tics-bus.
+  // Each hook identity gets a signal line, not a note: tics log hides witness notes anyway, which would hide a refusal gap.
+  await t.test("I7 (git): a clean bus line from any hook identity is not listed, is reported as skipped and is not hook-signed; a real hook-local signal is still read", { timeout: 60000 }, () => {
+    const h = p6Hosts();
+    const hooks = ["guard", "run-suite", "subagent", "witness"];
+    const forged = (id) => '{"ts":"2026-01-01T00:00:00Z","seq":1,"kind":"signal","from":"' + id + '","to":"*","phase":"off","layer":"app","scope":"app","session":"","msg":"i7-forged-' + id + '","ref":"","result":"green"}\n';
+    const view = (d) => {
+      const log = read(d, "log", "--fetch"), gate = read(d, "gate");
+      return {
+        status: log.status,
+        forgedListed: hooks.filter((id) => log.stdout.includes("i7-forged-" + id)), normalListed: log.stdout.includes("i7-normal"),
+        reportsFourSkipped: /(^|\n)4 unparsable tic line\(s\) skipped/.test(log.stdout + log.stderr),
+        gateHasNoHookSignedGreen: /no hook-signed green/.test(gate.stdout + gate.stderr),
+      };
+    };
+    try {
+      assert.strictEqual(srcLib(h.hostB, "emit_tic b '*' note i7-open-B").status, 0);
+      assert.strictEqual(srcLib(h.hostA, "emit_tic implementer '*' signal i7-normal-green '' green").status, 0);
+      hooks.forEach((id, i) => fs.writeFileSync(path.join(busOf(h.hostA), "tics.d", "20260101T000000Z-oldhost-1-000" + (i + 1) + "-1.json"), forged(id)));
+      assert.strictEqual(srcLib(h.hostA, "emit_tic implementer '*' note i7-normal").status, 0);
+      assert.deepStrictEqual(remoteMsgs(h.remote).filter((m) => m.startsWith("i7-forged-")), hooks.map((id) => "i7-forged-" + id), "the fixture: the forged files are committed on origin");
+      const fromCheckout = view(h.hostA), fromOrigin = view(h.hostB);
+      assert.strictEqual(srcLib(h.hostA, "emit_tic run-suite '*' signal i7-real-hook-green '' green").status, 0);
+      const log = read(h.hostA, "log"), gate = read(h.hostA, "gate");
+      const refused = { status: 0, forgedListed: [], normalListed: true, reportsFourSkipped: true, gateHasNoHookSignedGreen: true };
+      assert.deepStrictEqual(
+        {
+          fromCheckout, fromOrigin,
+          realHookListed: log.stdout.includes("i7-real-hook-green"),
+          realHookForgedListed: log.stdout.includes("i7-forged"),
+          realHookCounted: !/no hook-signed green/.test(gate.stdout + gate.stderr),
+        },
+        { fromCheckout: refused, fromOrigin: refused, realHookListed: true, realHookForgedListed: false, realHookCounted: true },
+        "host A log:\n" + log.stdout + "host A gate:\n" + gate.stdout + gate.stderr);
+    } finally { h.cleanup(); }
+  });
+
+  // The refusal is bus-only: spool is where hook telemetry lives. The self-reported green gives the gate assertion teeth:
+  // with the run-suite line wrongly refused it would be the only green, and only then does the gate print its warning.
+  await t.test("I7-spool (spool): a run-suite green in the spool store is listed, is not skipped and counts as hook-signed", { timeout: 60000 }, () => {
+    const d = inst("spool");
+    try {
+      assert.strictEqual(srcLib(d, "emit_tic implementer '*' signal i7-spool-self '' green").status, 0);
+      assert.strictEqual(srcLib(d, "emit_tic run-suite '*' signal i7-spool-green '' green").status, 0);
+      const log = read(d, "log"), gate = read(d, "gate");
+      assert.deepStrictEqual(
+        {
+          status: log.status,
+          listed: log.stdout.includes("i7-spool-green"),
+          reportsSkipped: /unparsable tic line\(s\) skipped/.test(log.stdout + log.stderr),
+          gateHasNoHookSignedGreen: /no hook-signed green/.test(gate.stdout + gate.stderr),
+        },
+        { status: 0, listed: true, reportsSkipped: false, gateHasNoHookSignedGreen: false },
+        "tics log:\n" + log.stdout + "tics gate:\n" + gate.stdout + gate.stderr);
+    } finally { fs.rmSync(d, { recursive: true, force: true }); }
+  });
 });

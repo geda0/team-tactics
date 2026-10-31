@@ -32,18 +32,18 @@ const SKIPPED_SET = new Set();   // keys of skipped lines (a file read via sever
 function loadTics(targetDir, ignoreEnv) {
   const { jsonl, spool } = storePaths(targetDir, ignoreEnv);
   const out = [];
-  const lines = (name, text, base) => {
+  const lines = (name, text, base, refuseHook) => {
     text.split("\n").forEach((l, i) => {
       if (!l.trim()) return;
       let o = null;
       try { o = JSON.parse(l); if (hasDupTopKey(l)) o = null; } catch (e) {}
-      if (o && typeof o === "object" && !Array.isArray(o)) out.push({ o, f: name, i }); else SKIPPED_SET.add(path.resolve(base || "", name) + ":" + i);
+      if (o && typeof o === "object" && !Array.isArray(o) && !(refuseHook && HOOK_IDENTITIES.has(o.from))) out.push({ o, f: name, i }); else SKIPPED_SET.add(path.resolve(base || "", name) + ":" + i);
     });
   };
   try { lines(jsonl, fs.readFileSync(jsonl, "utf8")); } catch (e) {}
   try { for (const f of fs.readdirSync(spool)) if (f.endsWith(".json")) { let c; try { c = fs.readFileSync(path.join(spool, f), "utf8"); } catch (e) { continue; } lines(f, c, spool); } } catch (e) {}
   const gs = gitStore(targetDir, ignoreEnv);
-  if (gs) for (const [f, s] of gitBusTics(gs)) lines(f, s, gs.dir);
+  if (gs) for (const [f, s] of gitBusTics(gs)) lines(f, s, gs.dir, true);
   const cmp = (a, b) => (a < b ? -1 : a > b ? 1 : 0);
   out.sort((a, b) => String(a.o.ts || "").localeCompare(String(b.o.ts || "")) || ((a.o.seq || 0) - (b.o.seq || 0)) || cmp(a.f, b.f) || (a.i - b.i));
   return out.map((e) => e.o);

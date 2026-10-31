@@ -4,8 +4,8 @@
 - **Date:** 2026-10-23
 - **Deciders:** architect (contract `security` on the team-tactics bus, which reproduced the issue on main),
   tdd-critic (found the related newline variant on the ADR 0028 branch), navigator.
-- **Relates to:** 0009 / 0011 (hook-signed vs self-reported greens), 0024 (enforcement is host-dependent), 0028 (one
-  tic vocabulary; its own kind gate is hardened by the same rules).
+- **Relates to:** 0009 / 0011 (hook-signed vs self-reported greens), 0024 (enforcement is host-dependent), 0026 (P7:
+  hook telemetry stays off the git bus), 0028 (one tic vocabulary; its own kind gate is hardened by the same rules).
 - **Supersedes:** nothing.
 
 ## Context
@@ -35,12 +35,27 @@ the sanctioned emitter.
    session msg ref result`). On a violation the EXTRA is dropped with a stderr warning; the tic itself is still
    recorded (never-drop).
 3. **Readers reject any line with a duplicated top-level key**, counted as unreadable. The bus is shared across kit
-   versions, so an older host can still write a forged line; this makes the read side refuse it everywhere.
+   versions, so an older host can still write a forged line; this makes the read side refuse that form everywhere.
+   **Readers also refuse a git-bus line whose `from` is a hook identity** (amended after the re-audit: an older host
+   can still publish through the CR/LF forge, a clean `from: run-suite` line with no duplicate key to catch). Hook
+   telemetry never publishes under `TIC_STORE=git` (ADR 0026 P7), so such a line is forged or came from an old host.
+   The two can't be told apart, so a genuine hook line from a v0.69.x host (the git store shipped there, P7 in v0.70.0)
+   is refused too. The check is an exact match on the parsed `from`, line by line, on the bus read path only (the
+   checkout's `tics.d/` and `origin/<TICS_BRANCH>`). Hook tics in the jsonl and spool stores stay readable; that is
+   where hook telemetry lives. A refused line counts among `tics log`'s skipped lines, whose wording says "unparsable"
+   though this line parses. The refusal is a read filter: it changes no bus file, so forged lines already there remain
+   in the bus history.
 4. **The MCP emit path** passes at most the six positionals.
 
-**Honest scope.** This closes the *sanctioned emitter* only. An agent with shell write access can still source
-`tics-lib.sh` and call `emit_tic run-suite …`, or append to the store file directly. Hook-identity attestation is only
-as strong as the host's file permissions (ADR 0024). The kit does not claim "unforgeable". Follow-up need:
+**Honest scope.** This closes the *sanctioned emitter* and the *old-host hole* the re-audit raised: a hook identity an
+older host publishes to the bus is refused by a reader with this filter. It stops there. A reader without the filter
+still honors such a line, and the line stays in the bus history. Rule 3's "on the bus read path only" has an exception
+too: the spool read path is unfiltered, so a reader whose `TICS_DIR` points at the bus checkout's `tics.d` honors such
+a line even though it has this filter. That is a misconfiguration: it needs control of local config, and no doc
+suggests it (the docs point `TICS_DIR` at `<git-common-dir>/tics-bus`). An agent with shell write access can still
+source `tics-lib.sh` and call `emit_tic run-suite …`, or append to a local store (jsonl or spool) directly, and those
+lines are read as hook tics. Hook-identity attestation is only as strong as the host's file permissions (ADR 0024).
+The kit does not claim "unforgeable". Follow-up need:
 tamper-evident hook signals (e.g. a hook-only store the agent's permission rules deny, or a keyed MAC from a
 hook-only location).
 
@@ -56,9 +71,17 @@ hook-only location).
   character in KIND is rc 2 with nothing recorded, on tic.sh and MCP; real ids (`macM1-lane2`, `session_01KqABC`,
   `navigator-delegation-setup`, TO `*`) are accepted.
 - **I6:** a leading-zero integer in EXTRA is dropped with a warning; every stored line parses.
+- **I7:** a well-formed git-bus line whose `from` is a hook identity, read from the checkout or from `origin`, is not
+  listed, is counted among `tics log`'s skipped lines and is not counted as a hook-signed green; a hook tic in the
+  jsonl or spool store is still listed and counted.
 
 ## Consequences
 
-- **Good:** the documented emitter and every reader now refuse hook-identity forgery; mixed-version buses are
-  protected by the read side.
+- **Good:** the documented emitter and every reader at this version now refuse hook-identity forgery; on a
+  mixed-version bus the read side protects each host that has upgraded, not the hosts that haven't.
 - **Cost:** EXTRA is narrower (flat integers and plain strings). The kit's own hooks fit it today.
+- **Cost:** genuine hook lines from v0.69.x hosts are refused along with forged ones, and refused lines stay in the bus
+  history, so `tics log`'s skipped count doesn't clear. This project's bus holds one such line today (seq 104, a P7
+  probe). These lines aren't only telemetry: `guard` also emits `claim`, `section` and `need` (`guard-edit-scope.sh`),
+  so refusing them drops a v0.69.x peer's auto-claims and claim enforcement fails open against that peer. The exposure
+  is limited to mixed fleets, because v0.70+ hosts never publish these lines (P7 first shipped in v0.70.0).
