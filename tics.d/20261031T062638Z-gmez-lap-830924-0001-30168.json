@@ -1,0 +1,1 @@
+{"ts":"2026-10-31T06:26:38Z","seq":279,"kind":"delegate","from":"orchestrator","to":"qa-verifier","phase":"off","layer":"app","scope":"app","session":"","msg":"re-verify tics web after the truth round at 265ca19","ref":"adr-0031-view","result":""}
