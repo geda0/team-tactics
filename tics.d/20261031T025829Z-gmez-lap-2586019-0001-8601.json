@@ -1,0 +1,1 @@
+{"ts":"2026-10-31T02:58:29Z","seq":149,"kind":"delegate","from":"orchestrator","to":"implementer","phase":"green","layer":"app","scope":"app","session":"","msg":"P1g green: at the retry fetch only rc 1 marks a network failure; rc 2/3 unlock and loop","ref":"adr-0026-P1-race","result":""}
