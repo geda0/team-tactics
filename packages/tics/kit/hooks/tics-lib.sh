@@ -176,8 +176,9 @@ _tic_git_unlock() {
   [ "$(cat "$_gd/.git/tics-emit.lock/pid" 2>/dev/null)" = "$$" ] && rm -rf "$_gd/.git/tics-emit.lock" 2>/dev/null
   return 0
 }
-# Push HEAD to the bus branch, unlocked. Only a non-fast-forward rejection is retried (fetch + rebase under the
-# lock, then push again unlocked; bounded by TICS_PUSH_TRIES, jittered); a failed rebase is always aborted. A
+# Push HEAD to the bus branch, unlocked. A rejection (non-fast-forward or a lost ref race) is retried (fetch + rebase
+# under the lock, then push again unlocked; bounded by TICS_PUSH_TRIES, jittered; a fetch that loses a local ref
+# lock race or sees no remote ref yet skips the rebase and just retries); a failed rebase is always aborted. A
 # timeout or network error is not retried, and records the failure (attempt stamp + fail marker) so emits and
 # reads inside TICS_FETCH_TTL skip the network. Unpublished tics stay committed locally and ride out with the
 # next push or `tics sync`. Returns 0 when published.
@@ -189,8 +190,9 @@ _tic_git_push() {
     [ "$_rc" -eq 2 ] || { _tic_net_fail; return 1; }
     _n=$((_n + 1)); [ "$_n" -ge "${TICS_PUSH_TRIES:-8}" ] && return 1
     _tic_git_lock || return 1
-    if ! _tic_net fetch -q origin "$_gb"; then _tic_git_unlock; _tic_net_fail; return 1; fi
-    _tic_git rebase -q FETCH_HEAD >/dev/null 2>&1 || _tic_git_rebase_abort
+    _tic_net fetch -q origin "$_gb"; _rc=$?
+    if [ "$_rc" -eq 1 ]; then _tic_git_unlock; _tic_net_fail; return 1; fi
+    if [ "$_rc" -eq 0 ]; then _tic_git rebase -q FETCH_HEAD >/dev/null 2>&1 || _tic_git_rebase_abort; fi
     _tic_git_unlock
     sleep "0.$(( (RANDOM % 4) + 1 ))"
   done
@@ -214,7 +216,7 @@ _tic_git_rebase_abort() {
 # Run one networked git command under a watchdog: TICS_NET_TIMEOUT seconds (default 5), pure bash (macOS has no
 # timeout(1)). git and the sleeper each run in their own process group (set -m), so expiry kills git with its
 # ssh/helper children, and a git that finishes first takes the sleeper down with it. Nothing is left running.
-# Returns 0 ok, 2 rejected (non-fast-forward or a lost ref race), 1 timeout or any other failure.
+# Returns 0 ok, 2 rejected (non-fast-forward or a lost ref race), 3 reachable with no bus branch yet, 1 timeout or any other failure.
 _tic_net() {
   _ne="$_gd/.git/tics-net.$$.err"; _om=; case $- in *m*) _om=1 ;; esac
   {
@@ -226,9 +228,9 @@ _tic_net() {
     [ -n "$_om" ] || set +m
   } 2>/dev/null
   _nrc2=1
-  # a lost race on the remote ref (another emitter updated it mid-push) is a rejection too, not a network error
+  # a lost race on the remote ref (another emitter updated or created it mid-push, incl. server-side "reference already exists"/"incorrect old value") is a rejection too, not a network error
   if [ "$_nrc" -eq 0 ]; then _nrc2=0
-  elif grep -qE '\[rejected\]|non-fast-forward|fetch first|cannot lock ref|failed to update ref' "$_ne" 2>/dev/null; then _nrc2=2
+  elif grep -qE '\[rejected\]|non-fast-forward|fetch first|cannot lock ref|failed to update ref|reference already exists|incorrect old value' "$_ne" 2>/dev/null; then _nrc2=2
   elif grep -qE "couldn't find remote ref" "$_ne" 2>/dev/null; then _nrc2=3   # reachable, no bus branch yet
   fi
   rm -f "$_ne" 2>/dev/null

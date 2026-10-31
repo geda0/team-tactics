@@ -2007,6 +2007,77 @@ test("P1b (ADR 0026): TIC_STORE=git — two emitters sharing ONE bus checkout, r
   } finally { h.cleanup(); }
 });
 
+// P1f (ADR 0026, the lost ref race): when two hosts push at once, the server can refuse the loser with a [remote
+// rejected] line. That is a rejection (fetch, rebase, retry), not a network failure. No real race: a stub `git` first
+// on PATH fails the listed git verbs IN ORDER, each once, with the given stderr and exit code (an entry can fire only
+// after the one before it), and passes everything else to the real git. A rival host publishes first, so what the
+// loser fetches is really there, as in the race. Each entry fails only once, so a tic that stays off the remote proves
+// no retry happened. `fired` lists the verbs that really failed, guarding against a stub that never fired.
+function gitFailsInOrder(failures) {
+  const h = p6Hosts(), stubDir = fs.mkdtempSync(path.join(os.tmpdir(), "tics-gitstub-"));
+  const realGit = cp.spawnSync("sh", ["-c", "command -v git"], { encoding: "utf8" }).stdout.trim();
+  const firedDir = (i) => path.join(stubDir, "fired." + i);
+  failures.forEach((f, i) => fs.writeFileSync(path.join(stubDir, "stderr." + i), f.stderr));
+  fs.writeFileSync(path.join(stubDir, "git"),
+    '#!/bin/sh\n' +
+    failures.map((f, i) =>
+      'case " $* " in *" ' + f.verb + ' "*)\n' +
+      '  if ' + (i ? '[ -d "' + firedDir(i - 1) + '" ] && ' : '') + 'mkdir "' + firedDir(i) + '" 2>/dev/null; then cat "' + stubDir + '/stderr.' + i + '" >&2; exit ' + f.code + '; fi ;;\n' +
+      'esac\n').join("") +
+    'exec "' + realGit + '" "$@"\n', { mode: 0o755 });
+  try {
+    const rival = srcLib(h.hostB, "emit_tic b '*' note rival");
+    const emit = srcLib(h.hostA, 'export PATH="' + stubDir + ':$PATH"; emit_tic a "*" note raced');
+    return {
+      rival: rival.status, emit: emit.status, fired: failures.filter((f, i) => fs.existsSync(firedDir(i))).map((f) => f.verb),
+      remote: remoteMsgs(h.remote), netFailed: fs.existsSync(path.join(busOf(h.hostA), ".git", "tics-net-failed")),
+    };
+  } finally {
+    h.cleanup();
+    fs.rmSync(stubDir, { recursive: true, force: true });
+  }
+}
+function pushFailsOnce(stderr, code) {
+  const { fired, ...rest } = gitFailsInOrder([{ verb: "push", stderr, code }]);
+  return { ...rest, pushFailed: fired.includes("push") };
+}
+const remoteRejected = (reason) => "To /remote\n ! [remote rejected] HEAD -> tics-bus (" + reason + ")\nerror: failed to push some refs to '/remote'\n";
+
+test("P1f (ADR 0026): TIC_STORE=git — a push that loses the remote ref race is retried and publishes the tic; a genuine network failure or a permanent server refusal is recorded and not retried", { timeout: 60000 }, () => {
+  const results = {
+    referenceAlreadyExists: pushFailsOnce(remoteRejected("reference already exists"), 1),
+    incorrectOldValue: pushFailsOnce(remoteRejected("incorrect old value provided"), 1),
+    connectionRefused: pushFailsOnce("fatal: unable to access 'https://bus.invalid/x.git/': Failed to connect to bus.invalid port 443: Connection refused\n", 128),
+    hookDeclined: pushFailsOnce(remoteRejected("pre-receive hook declined"), 1),
+  };
+  const published = { rival: 0, emit: 0, pushFailed: true, remote: ["raced", "rival"], netFailed: false };
+  assert.deepStrictEqual(results, {
+    referenceAlreadyExists: published,
+    incorrectOldValue: published,
+    connectionRefused: { rival: 0, emit: 0, pushFailed: true, remote: ["rival"], netFailed: true },
+    hookDeclined: { rival: 0, emit: 0, pushFailed: true, remote: ["rival"], netFailed: true },
+  }, "a lost ref race publishes on the retry and records no failure; a network failure or a hook refusal (a [remote rejected] that is no race) records one and keeps the tic off the remote");
+});
+
+const retryFetchFails = (stderr, code) => gitFailsInOrder([
+  { verb: "push", stderr: remoteRejected("failed to update ref"), code: 1 },
+  { verb: "fetch", stderr, code },
+]);
+
+test("P1g (ADR 0026): TIC_STORE=git — at the retry's fetch only a network failure stops the retry and is recorded: a fetch that finds no bus ref yet or loses a local ref lock still publishes the tic with no failure recorded", { timeout: 60000 }, () => {
+  const results = {
+    noRemoteRef: retryFetchFails("fatal: couldn't find remote ref tics-bus\n", 128),
+    localRefLock: retryFetchFails("error: cannot lock ref 'refs/remotes/origin/tics-bus': is at abc but expected def\n", 1),
+    networkFailure: retryFetchFails("fatal: unable to access 'https://example.invalid/': Could not resolve host\n", 128),
+  };
+  const published = { rival: 0, emit: 0, fired: ["push", "fetch"], remote: ["raced", "rival"], netFailed: false };
+  assert.deepStrictEqual(results, {
+    noRemoteRef: published,
+    localRefLock: published,
+    networkFailure: { rival: 0, emit: 0, fired: ["push", "fetch"], remote: ["rival"], netFailed: true },
+  }, "the emit retries past a fetch that finds no ref yet or loses a local ref lock, publishes the tic and records no failure; a network failure at that fetch records one and keeps the tic off the remote");
+});
+
 // P1d (ADR 0026, never-drop, found by soak): two emits from ONE process in ONE second must land in two files even
 // when $RANDOM repeats, and the reader must never hide a valid tic because its file holds more than one line.
 // The collision is forced: bash 3.2+ returns the same next $RANDOM after re-seeding with RANDOM=<n>. The pair must
