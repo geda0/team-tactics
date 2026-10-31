@@ -1,0 +1,1 @@
+{"ts":"2026-10-31T02:48:17Z","seq":142,"kind":"delegate","from":"orchestrator","to":"tdd-critic","phase":"refactor","layer":"app","scope":"app","session":"","msg":"audit P1f: lost-race classification in _tic_net and its test","ref":"adr-0026-P1-race","result":""}
