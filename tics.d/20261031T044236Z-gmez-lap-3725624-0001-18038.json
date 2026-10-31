@@ -1,0 +1,1 @@
+{"ts":"2026-10-31T04:42:36Z","seq":215,"kind":"delegate","from":"orchestrator","to":"test-writer","phase":"red","layer":"app","scope":"app","session":"","msg":"ADR 0031 slice 2 red: teamModel","ref":"adr-0031-view","result":""}
