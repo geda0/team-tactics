@@ -1,0 +1,1 @@
+{"ts":"2026-10-31T04:30:45Z","seq":206,"kind":"delegate","from":"orchestrator","to":"architect","phase":"off","layer":"app","scope":"app","session":"","msg":"ADR 0031: team meeting decisions and the read-only view contract","ref":"adr-0031-view","result":""}
