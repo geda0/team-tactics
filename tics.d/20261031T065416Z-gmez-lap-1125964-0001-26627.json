@@ -1,0 +1,1 @@
+{"ts":"2026-10-31T06:54:16Z","seq":295,"kind":"verdict","from":"orchestrator","to":"implementer","phase":"green","layer":"app","scope":"app","session":"","msg":"draft review: next-step removed, doing by delegate age","ref":"adr-0031-view","result":"accept"}
