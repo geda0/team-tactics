@@ -1,0 +1,1 @@
+{"ts":"2026-10-31T07:50:27Z","seq":332,"kind":"verdict","from":"orchestrator","to":"implementer","phase":"green","layer":"app","scope":"app","session":"","msg":"draft review: hook closes latest open, labelled paired by order","ref":"adr-0031-view","result":"accept"}
