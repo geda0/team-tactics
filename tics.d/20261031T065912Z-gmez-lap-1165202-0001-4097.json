@@ -1,0 +1,1 @@
+{"ts":"2026-10-31T06:59:12Z","seq":299,"kind":"delegate","from":"orchestrator","to":"implementer","phase":"green","layer":"app","scope":"app","session":"","msg":"green: subagent-handoff records the role from stdin","ref":"adr-0031-view","result":""}
