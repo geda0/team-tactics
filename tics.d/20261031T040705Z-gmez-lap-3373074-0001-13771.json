@@ -1,0 +1,1 @@
+{"ts":"2026-10-31T04:07:05Z","seq":192,"kind":"delegate","from":"orchestrator","to":"test-writer","phase":"red","layer":"app","scope":"app","session":"","msg":"I7-spool: reader keeps spool hook tics; bus refusal covers all four hook identities","ref":"adr-0029-I7","result":""}
