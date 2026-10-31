@@ -1,0 +1,1 @@
+{"ts":"2026-10-31T07:06:33Z","seq":303,"kind":"verdict","from":"orchestrator","to":"implementer","phase":"refactor","layer":"app","scope":"app","session":"","msg":"draft review edit: handoff role, timeout(1) replaced for macOS","ref":"adr-0031-view","result":"edit"}
