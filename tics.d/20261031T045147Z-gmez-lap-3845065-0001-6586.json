@@ -1,0 +1,1 @@
+{"ts":"2026-10-31T04:51:47Z","seq":221,"kind":"delegate","from":"orchestrator","to":"test-writer","phase":"red","layer":"app","scope":"app","session":"","msg":"ADR 0031 slices 3-4 red: tics web server and page, V3-V6","ref":"adr-0031-view","result":""}
