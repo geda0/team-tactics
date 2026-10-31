@@ -1,0 +1,1 @@
+{"ts":"2026-10-31T06:31:11Z","seq":284,"kind":"delegate","from":"orchestrator","to":"test-writer","phase":"red","layer":"app","scope":"app","session":"","msg":"QA FAIL: parallel delegates on one ref both stay open; remove next-step closure","ref":"adr-0031-view","result":""}
