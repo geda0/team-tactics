@@ -1,0 +1,1 @@
+{"ts":"2026-10-31T07:55:30Z","seq":336,"kind":"delegate","from":"orchestrator","to":"test-writer","phase":"red","layer":"app","scope":"app","session":"","msg":"hook return pairs only with the role newest brief, else closes nothing","ref":"adr-0031-view","result":""}
