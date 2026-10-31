@@ -1,0 +1,1 @@
+{"ts":"2026-10-31T07:27:05Z","seq":318,"kind":"verdict","from":"orchestrator","to":"implementer","phase":"refactor","layer":"app","scope":"app","session":"","msg":"draft review: Will do never overstates","ref":"adr-0031-view","result":"accept"}
