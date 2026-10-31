@@ -1,0 +1,1 @@
+{"ts":"2026-10-31T08:16:00Z","seq":348,"kind":"verdict","from":"orchestrator","to":"implementer","phase":"green","layer":"app","scope":"app","session":"","msg":"draft review: hook pairs only with newest delegate while open","ref":"adr-0031-view","result":"accept"}
