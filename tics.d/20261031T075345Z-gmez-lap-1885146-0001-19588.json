@@ -1,0 +1,1 @@
+{"ts":"2026-10-31T07:53:45Z","seq":334,"kind":"delegate","from":"orchestrator","to":"qa-verifier","phase":"off","layer":"app","scope":"app","session":"","msg":"final verify at HEAD","ref":"adr-0031-view","result":""}
