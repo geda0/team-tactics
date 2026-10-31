@@ -1,0 +1,1 @@
+{"ts":"2026-10-31T04:30:15Z","seq":205,"kind":"delegate","from":"orchestrator","to":"project-manager","phase":"off","layer":"app","scope":"app","session":"","msg":"merge PR 3 at 384091e if CI and the accept hold; no tag","ref":"adr-0029-I7","result":""}
