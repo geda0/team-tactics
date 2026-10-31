@@ -1,0 +1,1 @@
+{"ts":"2026-10-31T04:00:52Z","seq":188,"kind":"delegate","from":"orchestrator","to":"tdd-critic","phase":"refactor","layer":"app","scope":"app","session":"","msg":"security audit: ADR 0029 with I7, merged with main","ref":"adr-0029-I7","result":""}
