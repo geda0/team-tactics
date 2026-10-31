@@ -1,0 +1,1 @@
+{"ts":"2026-10-31T04:29:45Z","seq":203,"kind":"verdict","from":"product-owner","to":"orchestrator","phase":"off","layer":"app","scope":"app","session":"","msg":"PR 3 at sha 384091e accepted: I1-I7 and Honest scope met, CI green on both runs, clone suite 349 pass 1 skipped 0 fail, sandbox forgeries refused, P1 fix included","ref":"adr-0029-I7","result":"accept"}
