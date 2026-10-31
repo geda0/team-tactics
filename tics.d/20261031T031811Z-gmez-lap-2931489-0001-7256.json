@@ -1,0 +1,1 @@
+{"ts":"2026-10-31T03:18:11Z","seq":164,"kind":"need","from":"orchestrator","to":"*","phase":"refactor","layer":"app","scope":"app","session":"","msg":"tics_fetch marks a false network failure on rc 2 (local ref lock); ADR 0026 rule 3 known gap","ref":"adr-0026-read-rc2","result":""}
