@@ -1,0 +1,1 @@
+{"ts":"2026-10-31T04:33:32Z","seq":209,"kind":"delegate","from":"orchestrator","to":"test-writer","phase":"red","layer":"app","scope":"app","session":"","msg":"ADR 0031 red: read-only load and teamModel","ref":"adr-0031-view","result":""}
